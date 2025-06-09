@@ -8,27 +8,33 @@
 #include "config.hpp"
 #include "types.hpp"
 
+//TODO: fold epoch number into Log
 class Log {
-public:
-    static const size_t max_size = 1 << 4;
     size_t size = 0;
-    size_t consumed_count = 0;
-    uintptr_t invalid_cl[max_size];
+    std::atomic<size_t> consumed_count{0};
+    uintptr_t invalid_cl[LOGSIZE];
 
 public:
     inline bool write(uintptr_t cl_addr) {
-        //overwrite
-        if (consumed_count == NODECOUNT-1) {
-            size = 0;
-            consumed_count = 0;
-        } else if (size == max_size)
+        if (size == LOGSIZE)
             return false;
         invalid_cl[size++] = cl_addr;
         return true;
     }
 
+    inline bool claim() {
+        if (size == 0)
+            return true;
+        if (consumed_count == NODECOUNT-1) {
+            size = 0;
+            consumed_count = 0;
+            return true;
+        }
+        return false;
+    }
+
     inline bool isFull() {
-        return size == max_size;
+        return size == LOGSIZE;
     }
 
     void consume() {
@@ -40,50 +46,49 @@ public:
     }
 
     const uintptr_t *end() const {
-        return &invalid_cl[max_size];
+        return &invalid_cl[LOGSIZE];
     }
 };
 
 //TODO: use iterators instead indexing by epoch
 class LogBuffer {
-    static const size_t max_size = 1 << 4;
     Log *logs;
     epoch_t next_epoch = 0;
     //epoch of head
     std::atomic<epoch_t> head{0};
 
-    Log *begin() const {
-        return &logs[0];
-    }
-
-    Log *end() const {
-        return &logs[max_size];
-    }
-
     Log *logFromEpoch(epoch_t ep) const {
-        return &logs[ep % max_size];
+        return &logs[ep % LOGBUFSIZE];
     }
 
 public:
     LogBuffer() {
-        logs = new Log[max_size];
+        logs = new Log[LOGBUFSIZE];
     }
 
     ~LogBuffer() {
         delete[] logs;
     }
 
-    epoch_t moveHead() {
-        unsigned h;
+    Log *begin() const {
+        return &logs[0];
+    }
+
+    Log *end() const {
+        return &logs[LOGBUFSIZE];
+    }
+
+    Log *moveHead() {
+        epoch_t h;
         do {
             h = head;
         } while(!head.compare_exchange_strong(h, h+1));
-        return h+1;
+        return logFromEpoch(h+1);
     }
 
-    //returns if there are more logs to consume
+    //returns whether there are more logs to consume
     const Log *consumeTail(epoch_t &tail) {
-        if (tail >= head) {
+        if (tail == head) {
             return NULL;
         }
         Log *tail_log = logFromEpoch(tail);

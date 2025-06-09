@@ -30,8 +30,7 @@ public:
                 for (auto invalid_cl: *tail_log) {
                     invalid_dir.insert(invalid_cl);
                 }
-                std::cout << "node " << node_id << ": consume log " << tails[i]-1 << " of " << i << std::endl;
-                count++;
+                std::cout << "node " << node_id << ": consume log " << count++ << " of " << i << std::endl;
             }
         }
     }

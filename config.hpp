@@ -6,5 +6,7 @@
 #define CACHELINEMASK (uintptr_t) (~(CACHELINESIZE-1))
 #define NODECOUNT 2
 #define EPOCH 100
+#define LOGSIZE (1 << 4)
+#define LOGBUFSIZE (1 << 4)
 
 #endif

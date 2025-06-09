@@ -11,7 +11,7 @@
 #include "config.hpp"
 #include "logBuffer.hpp"
 
-intptr_t genRandPtr() {
+static intptr_t genRandPtr() {
     std::random_device rd;
     std::uniform_int_distribution<uintptr_t> dist(0,UINTPTR_MAX);
     return dist(rd);
@@ -19,7 +19,7 @@ intptr_t genRandPtr() {
 
 extern thread_local unsigned node_id;
 class Worker {
-    std::unordered_set<uintptr_t> to_flush;
+    std::unordered_set<uintptr_t> dirty_cls;
     LogBuffer *my_buffer;
     Log *curr_log;
 
@@ -31,16 +31,20 @@ public:
         while(count < EPOCH) {
                 uintptr_t addr = genRandPtr();
                 uintptr_t cl_addr = addr & CACHELINEMASK;
-                if(curr_log->isFull()) {
-                    count++;
-                    epoch_t head = my_buffer->moveHead();
-                    curr_log = my_buffer->getHead();
+                dirty_cls.insert(cl_addr);
+                bool is_release = (rand() % 100) == 0;
+                if(is_release || dirty_cls.size() == LOGSIZE) {
+                    auto iter = dirty_cls.begin();
+                    if (!curr_log->claim())
+                        //wait for copiers to finish
+                        sleep(0);
                     
-                    std::cout << "node " << node_id << ": produce log " << head << std::endl;
-    }
-                while(!curr_log->write(cl_addr))
-                    //wait for copiers to finish
-                    sleep(1);
+                    for(auto cl: dirty_cls)
+                        curr_log->write(cl);
+
+                    curr_log = my_buffer->moveHead();
+                    std::cout << "node " << node_id << ": produce log " << count++ << std::endl;
+                }
         }
     }
 };
