@@ -21,10 +21,9 @@ extern thread_local unsigned node_id;
 class Worker {
     std::unordered_set<uintptr_t> dirty_cls;
     LogBuffer *my_buffer;
-    Log *curr_log;
 
 public:
-    Worker(LogBuffer *buf): my_buffer(buf), curr_log(buf->getHead()) {}
+    Worker(LogBuffer *buf): my_buffer(buf) {}
 
     void run() {
         unsigned count = 0;
@@ -34,15 +33,15 @@ public:
                 dirty_cls.insert(cl_addr);
                 bool is_release = (rand() % 100) == 0;
                 if(is_release || dirty_cls.size() == LOGSIZE) {
-                    auto iter = dirty_cls.begin();
-                    if (!curr_log->claim())
+                    Log *curr_log;
+                    while(!(curr_log = my_buffer->takeHead()))
                         //wait for copiers to finish
                         sleep(0);
                     
                     for(auto cl: dirty_cls)
                         curr_log->write(cl);
+                    curr_log->publish();
 
-                    curr_log = my_buffer->moveHead();
                     std::cout << "node " << node_id << ": produce log " << count++ << std::endl;
                 }
         }

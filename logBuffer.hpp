@@ -2,16 +2,24 @@
 #define _LOG_BUFFER_H_
 
 #include <atomic>
+#include <cassert>
 #include <cstdint>
 #include <cstddef>
+#include <mutex>
+#include <iostream>
 
 #include "config.hpp"
 #include "types.hpp"
 
-//TODO: fold epoch number into Log
+//TODO: use vector clocks
+//TODO: allow multiple writers to operate on a buffer
 class Log {
     size_t size = 0;
-    std::atomic<size_t> consumed_count{0};
+    //status = 0 => free
+    //status = n in {1 .. NODECOUNT-1} => published, yet to be consumed by n nodes
+    //status = NODECOUNT => in use by worker
+    std::atomic<unsigned> status{0};
+    epoch_t epoch = 0;
     uintptr_t invalid_cl[LOGSIZE];
 
 public:
@@ -22,23 +30,32 @@ public:
         return true;
     }
 
-    inline bool claim() {
-        if (size == 0)
-            return true;
-        if (consumed_count == NODECOUNT-1) {
-            size = 0;
-            consumed_count = 0;
-            return true;
-        }
-        return false;
+    inline bool published() {
+        return status != 0 && status != NODECOUNT;
     }
 
-    inline bool isFull() {
-        return size == LOGSIZE;
+    inline bool use(epoch_t ep) {
+        if (status != 0)
+            return false;
+        //setting status first avoids race on other variables
+        status = NODECOUNT;
+        size = 0;
+        epoch = ep;
+        return true;
     }
+
+    epoch_t getEpoch() {
+        return epoch;
+    }   
 
     void consume() {
-        consumed_count++;
+        assert(status > 0);
+        status--;
+    }
+    
+    void publish() {
+        assert(status ==NODECOUNT );
+        status--;
     }
 
     const uintptr_t *begin() const {
@@ -50,14 +67,13 @@ public:
     }
 };
 
-//TODO: use iterators instead indexing by epoch
+//TODO: use ptr instead indexing by epoch
 class LogBuffer {
     Log *logs;
     epoch_t next_epoch = 0;
-    //epoch of head
-    std::atomic<epoch_t> head{0};
+    std::mutex lock;
 
-    Log *logFromEpoch(epoch_t ep) const {
+    inline Log *logFromEpoch(epoch_t ep) {
         return &logs[ep % LOGBUFSIZE];
     }
 
@@ -70,35 +86,31 @@ public:
         delete[] logs;
     }
 
-    Log *begin() const {
+    inline Log *begin() const {
         return &logs[0];
     }
 
-    Log *end() const {
+    inline Log *end() const {
         return &logs[LOGBUFSIZE];
     }
 
-    Log *moveHead() {
-        epoch_t h;
-        do {
-            h = head;
-        } while(!head.compare_exchange_strong(h, h+1));
-        return logFromEpoch(h+1);
-    }
-
-    //returns whether there are more logs to consume
-    const Log *consumeTail(epoch_t &tail) {
-        if (tail == head) {
+    Log *takeHead() {
+        std::lock_guard<std::mutex> guard(lock);
+        Log *head = logFromEpoch(next_epoch);
+        if (!head->use(next_epoch))
             return NULL;
-        }
-        Log *tail_log = logFromEpoch(tail);
-        tail_log->consume();
-        tail++;
-        return tail_log;
+        next_epoch++;
+        return head;
     }
 
-    Log *getHead() const {
-        return logFromEpoch(head);
+    Log *consumeTail(epoch_t ep) {
+        Log *tail = logFromEpoch(ep);
+        if (!tail->published())
+            return NULL;
+        if (tail->getEpoch() < ep)
+            return NULL;
+        tail->consume();
+        return tail;
     }
 };
 
