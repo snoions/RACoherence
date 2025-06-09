@@ -46,7 +46,7 @@ public:
 
     epoch_t getEpoch() {
         return epoch;
-    }   
+    }
 
     void consume() {
         assert(status > 0);
@@ -54,7 +54,7 @@ public:
     }
     
     void publish() {
-        assert(status ==NODECOUNT );
+        assert(status ==NODECOUNT);
         status--;
     }
 

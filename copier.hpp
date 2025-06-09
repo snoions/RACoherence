@@ -22,7 +22,7 @@ public:
 
     void run() {
         unsigned count = 0;
-        while(count < EPOCH) {
+        while(count < EPOCH * WORKER_PER_NODE) {
             for (int i=0; i<NODECOUNT; i++) {
                 if (i == node_id)
                     continue;

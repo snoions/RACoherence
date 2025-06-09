@@ -13,22 +13,26 @@ LogBuffer buffers[NODECOUNT];
 int main() {
     std::vector<std::thread> worker_group;
     std::vector<std::thread> copier_group;
-    for (unsigned i=0; i<NODECOUNT; i++)
-
-        worker_group.push_back(std::thread{[=](){
+    for (unsigned i=0; i<NODECOUNT; i++) {
+        auto run_worker = [=]() {
             node_id = i;
             Worker worker(&buffers[node_id]);
             worker.run();
-        }});
-    for (unsigned i=0; i<NODECOUNT; i++)
-        copier_group.push_back(std::thread{[=](){
+        };
+        for (int j=0; j<WORKER_PER_NODE;j++)
+            worker_group.push_back(std::thread{run_worker});
+    }
+    for (unsigned i=0; i<NODECOUNT; i++) {
+        auto run_copier = [=](){
             node_id = i;
             Copier copier(buffers);
             copier.run();
-        }});
-    for (unsigned i=0; i<NODECOUNT; i++)
+        };
+        copier_group.push_back(std::thread{run_copier});
+    }
+    for (unsigned i=0; i<worker_group.size(); i++)
         worker_group[i].join();
-    for (unsigned i=0; i<NODECOUNT; i++)
+    for (unsigned i=0; i<copier_group.size(); i++)
         copier_group[i].join();
     return 0;
 }
