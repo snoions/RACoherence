@@ -2,38 +2,37 @@
 #include <thread>
 
 #include "config.hpp"
-#include "copier.hpp"
-#include "worker.hpp"
+#include "cacheAgent.hpp"
+#include "user.hpp"
 #include "logBuffer.hpp"
-#include "types.hpp"
 
 thread_local unsigned node_id;
 LogBuffer buffers[NODECOUNT];
 
 int main() {
-    std::vector<std::thread> worker_group;
-    std::vector<std::thread> copier_group;
+    std::vector<std::thread> user_group;
+    std::vector<std::thread> cacheAgent_group;
     for (unsigned i=0; i<NODECOUNT; i++) {
-        auto run_worker = [=]() {
+        auto run_user = [=]() {
             node_id = i;
-            Worker worker(&buffers[node_id]);
-            worker.run();
+            User user(&buffers[node_id]);
+            user.run();
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
-            worker_group.push_back(std::thread{run_worker});
+            user_group.push_back(std::thread{run_user});
     }
     for (unsigned i=0; i<NODECOUNT; i++) {
-        auto run_copier = [=](){
+        auto run_cacheAgent = [=](){
             node_id = i;
-            Copier copier(buffers);
-            copier.run();
+            CacheAgent cacheAgent(buffers);
+            cacheAgent.run();
         };
-        copier_group.push_back(std::thread{run_copier});
+        cacheAgent_group.push_back(std::thread{run_cacheAgent});
     }
-    for (unsigned i=0; i<worker_group.size(); i++)
-        worker_group[i].join();
-    for (unsigned i=0; i<copier_group.size(); i++)
-        copier_group[i].join();
+    for (unsigned i=0; i<user_group.size(); i++)
+        user_group[i].join();
+    for (unsigned i=0; i<cacheAgent_group.size(); i++)
+        cacheAgent_group[i].join();
     return 0;
 }
 

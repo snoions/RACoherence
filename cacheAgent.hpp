@@ -6,33 +6,33 @@
 
 #include "unistd.h"
 
-#include "types.hpp"
 #include "config.hpp"
 #include "logBuffer.hpp"
 
+// TODO: use 1 thread per buffer, maybe with work stealing
+// how to make stale_dir thread-safe?
 extern thread_local unsigned node_id;
 
-class Copier {
-    epoch_t tail_epochs[NODECOUNT] = {0};
-    std::unordered_set<uintptr_t> invalid_dir;
+class CacheAgent {
+    idx_t tails[NODECOUNT] = {0};
+    std::unordered_set<uintptr_t> stale_dir;
     LogBuffer *buffers;
 
 public:
-    Copier(LogBuffer *bufs): buffers(bufs) {}
+    CacheAgent(LogBuffer *bufs): buffers(bufs) {}
 
     void run() {
         unsigned count = 0;
-        while(count < EPOCH * WORKER_PER_NODE) {
+        while(count < EPOCH * WORKER_PER_NODE * (NODECOUNT-1)) {
             for (int i=0; i<NODECOUNT; i++) {
                 if (i == node_id)
                     continue;
-                Log* tail = buffers[i].consumeTail(tail_epochs[i]);
+                Log* tail = buffers[i].consumeTail(tails[i]);
                 if (!tail)
                     continue;
                 for (auto invalid_cl: *tail) {
-                    invalid_dir.insert(invalid_cl);
+                    stale_dir.insert(invalid_cl);
                 }
-                tail_epochs[i]++;
                 std::cout << "node " << node_id << ": consume log " << count++ << " of " << i << std::endl;
             }
         }

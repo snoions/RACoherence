@@ -9,17 +9,23 @@
 #include <iostream>
 
 #include "config.hpp"
-#include "types.hpp"
 
 //TODO: use vector clocks
 //TODO: allow multiple writers to operate on a buffer
+
+using idx_t = unsigned;
+
+inline idx_t next_index(idx_t idx) {
+    return (idx+1) % (LOGBUFSIZE * 2);
+}
+
 class Log {
     size_t size = 0;
     //status = 0 => free
     //status = n in {1 .. NODECOUNT-1} => published, yet to be consumed by n nodes
     //status = NODECOUNT => in use by worker
     std::atomic<unsigned> status{0};
-    epoch_t epoch = 0;
+    idx_t index = 0;
     uintptr_t invalid_cl[LOGSIZE];
 
 public:
@@ -34,18 +40,18 @@ public:
         return status != 0 && status != NODECOUNT;
     }
 
-    inline bool use(epoch_t ep) {
+    inline bool use(idx_t idx) {
         if (status != 0)
             return false;
         //setting status first avoids race on other variables
         status = NODECOUNT;
         size = 0;
-        epoch = ep;
+        index = idx;
         return true;
     }
 
-    epoch_t getEpoch() {
-        return epoch;
+    idx_t getIndex() {
+        return index;
     }
 
     void consume() {
@@ -70,11 +76,15 @@ public:
 //TODO: use ptr instead indexing by epoch
 class LogBuffer {
     Log *logs;
-    epoch_t next_epoch = 0;
+    // idx_t encodes a position in log buffer
+    // in range [0, 2*LOGBUFSIZE) to distinguish
+    // two copiers who can be at most 
+    // LOGBUFSIZE apart
+    idx_t head = 0;
     std::mutex lock;
 
-    inline Log *logFromEpoch(epoch_t ep) {
-        return &logs[ep % LOGBUFSIZE];
+    inline Log *logFromIndex(idx_t idx) {
+        return &logs[idx % LOGBUFSIZE];
     }
 
 public:
@@ -96,20 +106,21 @@ public:
 
     Log *takeHead() {
         std::lock_guard<std::mutex> guard(lock);
-        Log *head = logFromEpoch(next_epoch);
-        if (!head->use(next_epoch))
+        Log *head_log = logFromIndex(head);
+        if (!head_log->use(head))
             return NULL;
-        next_epoch++;
-        return head;
+        head++;
+        return head_log;
     }
 
-    Log *consumeTail(epoch_t ep) {
-        Log *tail = logFromEpoch(ep);
+    Log *consumeTail(idx_t &idx) {
+        Log *tail = logFromIndex(idx);
         if (!tail->published())
             return NULL;
-        if (tail->getEpoch() < ep)
+        if (tail->getIndex() < idx)
             return NULL;
         tail->consume();
+        idx = next_index(idx);
         return tail;
     }
 };
