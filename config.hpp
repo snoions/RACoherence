@@ -9,5 +9,7 @@
 #define EPOCH 100
 #define LOGSIZE (1 << 4)
 #define LOGBUFSIZE (1 << 4)
+#define CXLMEM_RANGE (1 << 4)
+#define CXLMEM_ATOMIC_RANGE (1 << 2)
 
 #endif

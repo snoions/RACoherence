@@ -8,18 +8,18 @@
 
 #include "config.hpp"
 #include "logBuffer.hpp"
+#include "memLayout.hpp"
 
-// TODO: use 1 thread per buffer, maybe with work stealing
-// how to make stale_dir thread-safe?
+// TODO: stale_dir probably needs to be concurrent. Single writer or multiple writer?
 extern thread_local unsigned node_id;
 
 class CacheAgent {
-    idx_t tails[NODECOUNT] = {0};
     std::unordered_set<uintptr_t> stale_dir;
-    LogBuffer *buffers;
+    PerNodeData<LogBuffer> *bufs;
+    Monitor<VectorClock> *cache_clock;
 
 public:
-    CacheAgent(LogBuffer *bufs): buffers(bufs) {}
+    CacheAgent(std::array<LogBuffer, NODECOUNT> *b, Monitor<VectorClock> *clk): bufs(b), cache_clock(clk) {}
 
     void run() {
         unsigned count = 0;
@@ -27,12 +27,15 @@ public:
             for (int i=0; i<NODECOUNT; i++) {
                 if (i == node_id)
                     continue;
-                Log* tail = buffers[i].consumeTail(tails[i]);
+                Log* tail = (*bufs)[i].consumeTail(node_id);
                 if (!tail)
                     continue;
                 for (auto invalid_cl: *tail) {
                     stale_dir.insert(invalid_cl);
                 }
+                cache_clock->mod([&](auto &cl) {
+                    cl.tick(i);
+                });
                 std::cout << "node " << node_id << ": consume log " << count++ << " of " << i << std::endl;
             }
         }

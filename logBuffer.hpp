@@ -9,30 +9,36 @@
 #include <iostream>
 
 #include "config.hpp"
+#include "vectorClock.hpp"
 
 //TODO: use vector clocks
 //TODO: allow multiple writers to operate on a buffer
 
-using idx_t = unsigned;
 
-inline idx_t next_index(idx_t idx) {
-    return (idx+1) % (LOGBUFSIZE * 2);
+using bufpos_t = unsigned;
+
+inline bufpos_t next_pos(bufpos_t pos) {
+    return (pos+1) % (LOGBUFSIZE * 2);
 }
 
-class Log {
-    size_t size = 0;
+class alignas(CACHELINESIZE) Log {
+    using Data = std::array<uintptr_t, LOGSIZE>;
+    using iterator = Data::iterator;
+    using const_iterator = Data::const_iterator;
     //status = 0 => free
     //status = n in {1 .. NODECOUNT-1} => published, yet to be consumed by n nodes
     //status = NODECOUNT => in use by worker
     std::atomic<unsigned> status{0};
-    idx_t index = 0;
-    uintptr_t invalid_cl[LOGSIZE];
+    //saving buffer position here avoids having to check buffer head when taking tail
+    bufpos_t pos = 0;
+    std::array<uintptr_t, LOGSIZE> entries;
+    size_t size = 0;
 
 public:
     inline bool write(uintptr_t cl_addr) {
         if (size == LOGSIZE)
             return false;
-        invalid_cl[size++] = cl_addr;
+        entries[size++] = cl_addr;
         return true;
     }
 
@@ -40,18 +46,18 @@ public:
         return status != 0 && status != NODECOUNT;
     }
 
-    inline bool use(idx_t idx) {
+    inline bool use(bufpos_t p) {
         if (status != 0)
             return false;
         //setting status first avoids race on other variables
         status = NODECOUNT;
         size = 0;
-        index = idx;
+        pos = p;
         return true;
     }
 
-    idx_t getIndex() {
-        return index;
+    bufpos_t getPos() {
+        return pos;
     }
 
     void consume() {
@@ -64,48 +70,40 @@ public:
         status--;
     }
 
-    const uintptr_t *begin() const {
-        return &invalid_cl[0];
+    const_iterator begin() const {
+        return entries.begin();
     }
 
-    const uintptr_t *end() const {
-        return &invalid_cl[LOGSIZE];
+    const_iterator end() const {
+        return entries.end();
     }
 };
 
-//TODO: use ptr instead indexing by epoch
-class LogBuffer {
-    Log *logs;
-    // idx_t encodes a position in log buffer
-    // in range [0, 2*LOGBUFSIZE) to distinguish
-    // two copiers who can be at most 
-    // LOGBUFSIZE apart
-    idx_t head = 0;
-    std::mutex lock;
+class alignas(CACHELINESIZE) LogBuffer {
+    using Data = std::array<Log, LOGBUFSIZE>;
+    using iterator = Data::iterator;
+    Data logs;
+    
+    bufpos_t head = 0;
+    std::mutex head_lock;
+    bufpos_t tails[NODECOUNT] = {0};
 
-    inline Log *logFromIndex(idx_t idx) {
+    inline Log *logFromIndex(bufpos_t idx) {
         return &logs[idx % LOGBUFSIZE];
     }
 
 public:
-    LogBuffer() {
-        logs = new Log[LOGBUFSIZE];
+
+    inline iterator begin() {
+        return logs.begin();
     }
 
-    ~LogBuffer() {
-        delete[] logs;
-    }
-
-    inline Log *begin() const {
-        return &logs[0];
-    }
-
-    inline Log *end() const {
-        return &logs[LOGBUFSIZE];
+    inline iterator end() {
+        return logs.end();
     }
 
     Log *takeHead() {
-        std::lock_guard<std::mutex> guard(lock);
+        std::lock_guard<std::mutex> guard(head_lock);
         Log *head_log = logFromIndex(head);
         if (!head_log->use(head))
             return NULL;
@@ -113,14 +111,14 @@ public:
         return head_log;
     }
 
-    Log *consumeTail(idx_t &idx) {
-        Log *tail = logFromIndex(idx);
+    Log *consumeTail(unsigned nid) {
+        Log *tail = logFromIndex(tails[nid]);
         if (!tail->published())
             return NULL;
-        if (tail->getIndex() < idx)
+        if (tail->getPos() < tails[nid])
             return NULL;
         tail->consume();
-        idx = next_index(idx);
+        tails[nid] = next_pos(tails[nid]);
         return tail;
     }
 };
