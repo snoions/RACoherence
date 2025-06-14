@@ -60,13 +60,13 @@ public:
             std::stringstream ss;
             ss << "node " << node_id << ": " << std::endl;
             if(is_release) {
-                ss << "release at " << std::hex << cl_addr << std::endl;
+                ss << "release at " << std::hex << addr << std::endl;
                 alocs->at(addr).mod([&](auto &self) {
                     self.setLog(curr_log);
                     self.setClock(thread_clock);
                 });
             }
-            std::cout << ss.str() << "produce log " << count++ << std::endl;
+            std::cout << ss.str() << "produce log " << std::dec << count++ << std::endl;
         }
     }
 

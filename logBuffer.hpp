@@ -11,9 +11,7 @@
 #include "config.hpp"
 #include "vectorClock.hpp"
 
-//TODO: use vector clocks
 //TODO: allow multiple writers to operate on a buffer
-
 
 using bufpos_t = unsigned;
 
@@ -21,6 +19,8 @@ inline bufpos_t next_pos(bufpos_t pos) {
     return (pos+1) % (LOGBUFSIZE * 2);
 }
 
+
+extern thread_local unsigned node_id;
 class alignas(CACHELINESIZE) Log {
     using Data = std::array<uintptr_t, LOGSIZE>;
     using iterator = Data::iterator;
@@ -43,14 +43,17 @@ public:
     }
 
     inline bool published() {
-        return status != 0 && status != NODECOUNT;
+        return status > 0 && status < NODECOUNT;
+    }
+
+    inline bool free() {
+        return status == 0;
     }
 
     inline bool use(bufpos_t p) {
-        if (status != 0)
-            return false;
+        assert(free());
         //setting status first avoids race on other variables
-        status = NODECOUNT;
+        status.store(NODECOUNT);
         size = 0;
         pos = p;
         return true;
@@ -84,8 +87,9 @@ class alignas(CACHELINESIZE) LogBuffer {
     using iterator = Data::iterator;
     Data logs;
     
-    bufpos_t head = 0;
-    std::mutex head_lock;
+    std::atomic<bufpos_t> head {0};
+    //bufpos_t head = 0;
+    //std::mutex head_lock;
     bufpos_t tails[NODECOUNT] = {0};
 
     inline Log *logFromIndex(bufpos_t idx) {
@@ -103,11 +107,20 @@ public:
     }
 
     Log *takeHead() {
-        std::lock_guard<std::mutex> guard(head_lock);
-        Log *head_log = logFromIndex(head);
-        if (!head_log->use(head))
-            return NULL;
-        head++;
+        bufpos_t h = head.load();
+        Log *head_log;
+        do {
+            head_log = logFromIndex(h);
+            if (!head_log->free()) 
+                return NULL;
+        } while(!head.compare_exchange_weak(h, next_pos(h)));
+        head_log->use(h);
+        //std::lock_guard<std::mutex> g(head_lock);
+        //Log *head_log = logFromIndex(head);
+        //if (!head_log->free()) 
+        //    return NULL;
+        //head_log->use(head);
+        //head = next_pos(head);
         return head_log;
     }
 
@@ -115,7 +128,7 @@ public:
         Log *tail = logFromIndex(tails[nid]);
         if (!tail->published())
             return NULL;
-        if (tail->getPos() < tails[nid])
+        if (tail->getPos() != tails[nid])
             return NULL;
         tail->consume();
         tails[nid] = next_pos(tails[nid]);
