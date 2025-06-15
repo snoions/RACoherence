@@ -8,6 +8,7 @@
 
 #include "config.hpp"
 #include "logBuffer.hpp"
+#include "logger.hpp"
 #include "memLayout.hpp"
 
 // TODO: stale_dir probably needs to be concurrent. Single writer or multiple writer?
@@ -36,7 +37,7 @@ public:
                 cache_clock->mod([&](auto &cl) {
                     cl.tick(i);
                 });
-                std::cout << "node " << node_id << ": consume log " << count++ << " of " << i << std::endl;
+                LOG_DEBUG("node " << node_id << " consume log " << count++ << " of " << i);
             }
         }
     }

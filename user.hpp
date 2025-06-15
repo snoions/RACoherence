@@ -11,6 +11,7 @@
 
 #include "config.hpp"
 #include "logBuffer.hpp"
+#include "logger.hpp"
 #include "memLayout.hpp"
 
 static intptr_t genRandPtr() {
@@ -58,21 +59,20 @@ public:
             Log *curr_log = write_to_log();                    
             dirty_cls.clear();
             std::stringstream ss;
-            ss << "node " << node_id << ": " << std::endl;
             if(is_release) {
-                ss << "release at " << std::hex << addr << std::endl;
+                ss << " release at " << std::hex << addr << " " << std::dec;
                 alocs->at(addr).mod([&](auto &self) {
                     self.setLog(curr_log);
                     self.setClock(thread_clock);
                 });
             }
-            std::cout << ss.str() << "produce log " << std::dec << count++ << std::endl;
+            LOG_DEBUG("node " << node_id << ss.str() << "produce log " << count++);
         }
     }
 
     void handle_load(uintptr_t addr, bool is_acquire) {
         if (is_acquire) {
-            std::cout << "node " << node_id << ": acquire " << std::hex << addr << std::endl;
+            LOG_DEBUG("node " << node_id << " acquire " << std::hex << addr << std::dec);
             bool loop = true;
             while (!loop) {
                 loop = alocs->at(addr).get([&](auto &self) {

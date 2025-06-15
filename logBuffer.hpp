@@ -87,9 +87,8 @@ class alignas(CACHELINESIZE) LogBuffer {
     using iterator = Data::iterator;
     Data logs;
     
-    std::atomic<bufpos_t> head {0};
-    //bufpos_t head = 0;
-    //std::mutex head_lock;
+    bufpos_t head = 0;
+    std::mutex head_lock;
     bufpos_t tails[NODECOUNT] = {0};
 
     inline Log *logFromIndex(bufpos_t idx) {
@@ -107,20 +106,12 @@ public:
     }
 
     Log *takeHead() {
-        bufpos_t h = head.load();
-        Log *head_log;
-        do {
-            head_log = logFromIndex(h);
-            if (!head_log->free()) 
-                return NULL;
-        } while(!head.compare_exchange_weak(h, next_pos(h)));
-        head_log->use(h);
-        //std::lock_guard<std::mutex> g(head_lock);
-        //Log *head_log = logFromIndex(head);
-        //if (!head_log->free()) 
-        //    return NULL;
-        //head_log->use(head);
-        //head = next_pos(head);
+        std::lock_guard<std::mutex> g(head_lock);
+        Log *head_log = logFromIndex(head);
+        if (!head_log->free()) 
+            return NULL;
+        head_log->use(head);
+        head = next_pos(head);
         return head_log;
     }
 
