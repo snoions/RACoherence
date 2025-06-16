@@ -34,9 +34,10 @@ public:
                 for (auto invalid_cl: *tail) {
                     stale_dir.insert(invalid_cl);
                 }
-                cache_clock->mod([&](auto &cl) {
-                    cl.tick(i);
-                });
+                if (tail->is_release())
+                    cache_clock->mod([&](auto &cl) {
+                        cl.tick(i);
+                    });
                 LOG_DEBUG("node " << node_id << " consume log " << count++ << " of " << i);
             }
         }

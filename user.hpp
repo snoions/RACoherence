@@ -47,8 +47,6 @@ public:
         
         for(auto cl: dirty_cls)
             curr_log->write(cl);
-        thread_clock.tick(node_id);
-        curr_log->publish(); 
         return curr_log;
     }
 
@@ -57,13 +55,15 @@ public:
         dirty_cls.insert(cl_addr);
         if(is_release || dirty_cls.size() == LOGSIZE) {
             Log *curr_log = write_to_log();                    
+            thread_clock.tick(node_id);
+            curr_log->publish(is_release); 
             dirty_cls.clear();
             std::stringstream ss;
             if(is_release) {
                 ss << " release at " << std::hex << addr << " " << std::dec;
                 alocs->at(addr).mod([&](auto &self) {
-                    self.setLog(curr_log);
-                    self.setClock(thread_clock);
+                    self.log = curr_log;
+                    self.clock.merge(thread_clock);
                 });
             }
             LOG_DEBUG("node " << node_id << ss.str() << "produce log " << count++);
@@ -74,12 +74,13 @@ public:
         if (is_acquire) {
             LOG_DEBUG("node " << node_id << " acquire " << std::hex << addr << std::dec);
             bool loop = true;
+            //should use the value loaded at this point
+            auto &aloc_clock = alocs->at(addr).get([&](auto &self) { return self.clock; });
             while (!loop) {
-                loop = alocs->at(addr).get([&](auto &self) {
-                    auto &cclk = cache_clock->get([](auto &vc) {return vc; });
-                    return self.clock.le_at(cclk, node_id); 
-                });
+                auto &cclk = cache_clock->get([](auto &vc) {return vc; });
+                loop = aloc_clock.le_at(cclk, node_id); 
             }
+            thread_clock.merge(aloc_clock);
         }
     }
 

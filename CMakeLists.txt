@@ -1,6 +1,6 @@
 # CMakeLists.txt
 cmake_minimum_required(VERSION 3.10)
-project(CXLProtocol LANGUAGES CXX)
+project(RACoherence LANGUAGES CXX)
 add_executable(main main.cpp) 
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)

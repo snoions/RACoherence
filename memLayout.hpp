@@ -13,14 +13,6 @@ static bool isAtomic(uintptr_t addr) {
 struct ALocMeta {
     Log* log;
     VectorClock clock;
-
-    void setClock(VectorClock &c) {
-        clock = c;
-    }
-
-    void setLog(Log *l) {
-        log = l;
-    }
 };
 
 // emulates allocated atomic locations
@@ -29,8 +21,7 @@ using ALocMap = std::map<uintptr_t, Monitor<ALocMeta>>;
 struct CXLMemMeta {
     PerNodeData<LogBuffer> buffers;
     PerNodeData<Monitor<VectorClock>> cache_clocks;
-    //TODO: per-location lock
-    //assume no dynamically allocated atomic locs for now
+    //TODO: support dynamically allocated atomic locs
     ALocMap alocs;
 
     CXLMemMeta () {

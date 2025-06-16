@@ -25,14 +25,16 @@ class alignas(CACHELINESIZE) Log {
     using Data = std::array<uintptr_t, LOGSIZE>;
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
-    //status = 0 => free
-    //status = n in {1 .. NODECOUNT-1} => published, yet to be consumed by n nodes
-    //status = NODECOUNT => in use by worker
+    // status = 0 => free
+    // status = n in {1 .. NODECOUNT-1} => published, yet to be consumed by n nodes
+    // status = NODECOUNT => in use by worker
     std::atomic<unsigned> status{0};
-    //saving buffer position here avoids having to check buffer head when taking tail
+    // saving buffer position here avoids having to check buffer head when taking tail
     bufpos_t pos = 0;
     std::array<uintptr_t, LOGSIZE> entries;
     size_t size = 0;
+    // represents a release write
+    bool is_rel;
 
 public:
     inline bool write(uintptr_t cl_addr) {
@@ -63,14 +65,19 @@ public:
         return pos;
     }
 
+    bool is_release() {
+        return is_rel;
+    }
+
     void consume() {
         assert(status > 0);
         status--;
     }
     
-    void publish() {
+    void publish(bool is_r) {
         assert(status ==NODECOUNT);
         status--;
+        is_rel = is_r;
     }
 
     const_iterator begin() const {
