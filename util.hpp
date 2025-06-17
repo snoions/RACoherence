@@ -18,10 +18,11 @@ T &lvalue(T &&t)
 template<typename T>
 class Monitor
 {
-    //TODO: reader/writer lock
     std::shared_mutex m;
     T t;
 public:
+    Monitor() = default;
+    Monitor(T &&arg_t): t(std::forward<T>(arg_t)) {}
 
     template<typename F>
     auto get(F f) ->decltype(f(t)) const
@@ -29,12 +30,22 @@ public:
         return std::shared_lock<std::shared_mutex>(m),
                f(t);
     }
-    
+ 
     template<typename F>
     auto mod(F f)
     {
         std::lock_guard<std::shared_mutex> g(m);
         f(t);
+    }
+
+    T& get_raw()
+    {
+        return t;
+    }
+ 
+    const T& get_raw() const
+    {
+        return t;
     }
 };
 

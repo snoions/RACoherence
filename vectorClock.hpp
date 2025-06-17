@@ -8,6 +8,7 @@
 
 #include "config.hpp"
 
+//TODO: tree clocks could be faster
 class VectorClock {
 public:
     using clock_t = unsigned;
@@ -17,6 +18,12 @@ private:
     std::array<clock_t, NODECOUNT> vc{};
 
 public:
+    VectorClock() = default;
+    VectorClock(const VectorClock&) = default;
+    VectorClock(VectorClock&&) noexcept = default;
+    VectorClock& operator=(const VectorClock&) = default;
+    VectorClock& operator=(VectorClock&&) noexcept = default;
+
     // Increment the clock at a given index (local tick)
     void tick(sized_t index) {
         if (index < NODECOUNT) {
@@ -49,16 +56,15 @@ public:
         return true;
     }
 
-    // Happens-before or concurrent comparison at a certain node
-    bool le_at(const VectorClock& other, unsigned nid) const {
-        for (sized_t i = 0; i < NODECOUNT; ++i) {
-            if (i==nid)
-                continue;
-            if (vc[i] > other.vc[i]) return false;
-        }
-        return true;
+    clock_t& operator[](sized_t index) {
+        return vc[index];
     }
-        // For debugging/printing
+
+    const clock_t& operator[](sized_t index) const {
+        return vc[index];
+    }
+
+    // For debugging/printing
     friend std::ostream& operator<<(std::ostream& os, const VectorClock& v) {
         os << "[";
         for (sized_t i = 0; i < NODECOUNT; ++i) {

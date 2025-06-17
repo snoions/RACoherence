@@ -27,16 +27,23 @@ class User {
         OP_LOAD,
         OP_END
     };
-
+    
     std::unordered_set<uintptr_t> dirty_cls;
     ALocMap *alocs; 
     LogBuffer *node_buffer;
-    Monitor<VectorClock> *cache_clock;
+    CacheInfo *cache_info;
     VectorClock thread_clock;
     unsigned count = 0;
 
+    static Op genRandOp() {
+        int num = rand() % 100;
+        if (node_id == 0)
+            return num > 80? OP_STORE: OP_LOAD;
+        return num > 20? OP_STORE: OP_LOAD;
+    };
+
 public:
-    User(LogBuffer *buf, Monitor<VectorClock> *clk, ALocMap *alc): node_buffer(buf), cache_clock(clk), alocs(alc) {}
+    User(LogBuffer *buf, CacheInfo *cinfo, ALocMap *alc): node_buffer(buf), cache_info(cinfo), alocs(alc) {}
 
     //should support taking multiple heads for more flexibility
     Log *write_to_log() {
@@ -69,25 +76,52 @@ public:
             LOG_DEBUG("node " << node_id << ss.str() << "produce log " << count++);
         }
     }
+    
+    bool check_clock_add_task(const VectorClock &aloc_clk, const VectorClock &cclk) {
+        bool uptodate = false;
+        std::vector<CacheInfo::Task> tq;
+        for (unsigned i=0; i<NODECOUNT; i++)
+            if (i != node_id && cclk[i] < aloc_clk[i]) {
+                tq.push_back({i, aloc_clk[i]});
+                uptodate = false;
+            }
+
+        if (!tq.empty())
+            cache_info->task_queue.mod([&](auto &self) { 
+                for (auto t: tq)
+                    self->push(t); 
+            });
+        return uptodate;
+    }
+
 
     void handle_load(uintptr_t addr, bool is_acquire) {
         if (is_acquire) {
             LOG_DEBUG("node " << node_id << " acquire " << std::hex << addr << std::dec);
-            bool loop = true;
-            //should use the value loaded at this point
-            auto &aloc_clock = alocs->at(addr).get([&](auto &self) { return self.clock; });
-            while (!loop) {
-                auto &cclk = cache_clock->get([](auto &vc) {return vc; });
-                loop = aloc_clock.le_at(cclk, node_id); 
+            //value should also be loaded at this point
+            auto &aloc_clk = alocs->at(addr).get([&](auto &self) { return self.clock; });
+            auto &cclk = cache_info->clock.get([](auto &self) {return self; });
+            
+            bool uptodate = check_clock_add_task(aloc_clk, cclk);
+            //bool uptodate = false;
+                        
+            for (; !uptodate; uptodate = true) {
+                sleep(0);
+                LOG_DEBUG("block" << uptodate);
+                auto &cclk = cache_info->clock.get([](auto &self) {return self; });
+                for (unsigned i=0; i<NODECOUNT; i++)
+                    if (i != node_id && cclk[i] < aloc_clk[i])
+                        uptodate = false;
             }
-            thread_clock.merge(aloc_clock);
+
+            thread_clock.merge(aloc_clk);
         }
     }
 
     void run() {
         while(count < EPOCH) {
             uintptr_t addr = genRandPtr();
-            Op user_op = (Op) (rand() % OP_END);
+            Op user_op = genRandOp();
             switch (user_op) {
                 case OP_STORE: {
                     bool is_release = isAtomic(addr);

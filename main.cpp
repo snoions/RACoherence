@@ -9,6 +9,7 @@
 
 thread_local unsigned node_id;
 CXLMemMeta cxl_mem_meta;
+PerNodeData<NodeLocalMeta> node_local_meta;
 
 int main() {
     std::vector<std::thread> user_group;
@@ -16,7 +17,7 @@ int main() {
     for (unsigned i=0; i<NODECOUNT; i++) {
         auto run_user = [=]() {
             node_id = i;
-            User user(&cxl_mem_meta.buffers[node_id], &cxl_mem_meta.cache_clocks[node_id], &cxl_mem_meta.alocs);
+            User user(&cxl_mem_meta.buffers[node_id], &node_local_meta[node_id].cache_info, &cxl_mem_meta.alocs);
             user.run();
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
@@ -25,7 +26,7 @@ int main() {
     for (unsigned i=0; i<NODECOUNT; i++) {
         auto run_cacheAgent = [=](){
             node_id = i;
-            CacheAgent cacheAgent(&cxl_mem_meta.buffers, &cxl_mem_meta.cache_clocks[node_id]);
+            CacheAgent cacheAgent(&cxl_mem_meta.buffers, &node_local_meta[node_id].cache_info);
             cacheAgent.run();
         };
         cacheAgent_group.push_back(std::thread{run_cacheAgent});

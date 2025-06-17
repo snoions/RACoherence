@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "config.hpp"
+#include "logger.hpp"
 #include "vectorClock.hpp"
 
 //TODO: allow multiple writers to operate on a buffer
@@ -25,9 +26,9 @@ class alignas(CACHELINESIZE) Log {
     using Data = std::array<uintptr_t, LOGSIZE>;
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
-    // status = 0 => free
+    // status = 0 => may use
     // status = n in {1 .. NODECOUNT-1} => published, yet to be consumed by n nodes
-    // status = NODECOUNT => in use by worker
+    // status = NODECOUNT => in use
     std::atomic<unsigned> status{0};
     // saving buffer position here avoids having to check buffer head when taking tail
     bufpos_t pos = 0;
@@ -37,6 +38,7 @@ class alignas(CACHELINESIZE) Log {
     bool is_rel;
 
 public:
+    
     inline bool write(uintptr_t cl_addr) {
         if (size == LOGSIZE)
             return false;
@@ -44,16 +46,16 @@ public:
         return true;
     }
 
-    inline bool published() {
-        return status > 0 && status < NODECOUNT;
+    inline bool published(unsigned s) {
+        return s > 0 && s < NODECOUNT;
     }
 
-    inline bool free() {
-        return status == 0;
+    inline bool may_use() {
+        return status.load() == 0;
     }
 
     inline bool use(bufpos_t p) {
-        assert(free());
+        assert(may_use());
         //setting status first avoids race on other variables
         status.store(NODECOUNT);
         size = 0;
@@ -61,23 +63,23 @@ public:
         return true;
     }
 
-    bufpos_t getPos() {
-        return pos;
-    }
-
     bool is_release() {
         return is_rel;
     }
 
-    void consume() {
-        assert(status > 0);
-        status--;
+    bool consume(bufpos_t expected_pos) {
+        unsigned s = status.load();
+        if (!published(s))
+            return false;
+        if (pos != expected_pos)
+            return false;
+        return status.compare_exchange_strong(s, s-1);
     }
     
     void publish(bool is_r) {
         assert(status ==NODECOUNT);
-        status--;
         is_rel = is_r;
+        status--;
     }
 
     const_iterator begin() const {
@@ -115,7 +117,7 @@ public:
     Log *takeHead() {
         std::lock_guard<std::mutex> g(head_lock);
         Log *head_log = logFromIndex(head);
-        if (!head_log->free()) 
+        if (!head_log->may_use()) 
             return NULL;
         head_log->use(head);
         head = next_pos(head);
@@ -124,11 +126,8 @@ public:
 
     Log *consumeTail(unsigned nid) {
         Log *tail = logFromIndex(tails[nid]);
-        if (!tail->published())
+        if (!tail->consume(tails[nid]))
             return NULL;
-        if (tail->getPos() != tails[nid])
-            return NULL;
-        tail->consume();
         tails[nid] = next_pos(tails[nid]);
         return tail;
     }
