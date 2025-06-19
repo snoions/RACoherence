@@ -17,7 +17,7 @@ int main() {
     for (unsigned i=0; i<NODECOUNT; i++) {
         auto run_user = [=]() {
             node_id = i;
-            User user(&cxl_mem_meta.buffers[node_id], &node_local_meta[node_id].cache_info, &cxl_mem_meta.alocs);
+            User user(&cxl_mem_meta.buffers[node_id], &cxl_mem_meta.alocs, &node_local_meta[node_id].cache_info, &node_local_meta[node_id].user_clock);
             user.run();
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
@@ -26,7 +26,7 @@ int main() {
     for (unsigned i=0; i<NODECOUNT; i++) {
         auto run_cacheAgent = [=](){
             node_id = i;
-            CacheAgent cacheAgent(&cxl_mem_meta.buffers, &node_local_meta[node_id].cache_info);
+            CacheAgent cacheAgent(&cxl_mem_meta.buffers, &node_local_meta[node_id].cache_info, &node_local_meta[node_id].stale_dir);
             cacheAgent.run();
         };
         cacheAgent_group.push_back(std::thread{run_cacheAgent});

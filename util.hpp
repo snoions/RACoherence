@@ -32,10 +32,10 @@ public:
     }
  
     template<typename F>
-    auto mod(F f)
+    auto mod(F f) ->decltype(f(t))
     {
-        std::lock_guard<std::shared_mutex> g(m);
-        f(t);
+        return std::unique_lock<std::shared_mutex>(m),
+               f(t);
     }
 
     T& get_raw()

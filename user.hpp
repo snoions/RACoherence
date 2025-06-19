@@ -28,22 +28,23 @@ class User {
         OP_END
     };
     
+    //user local data
     std::unordered_set<uintptr_t> dirty_cls;
+    unsigned count = 0;
+    //CXL mem shared adta
     ALocMap *alocs; 
     LogBuffer *node_buffer;
+    //node local data
     CacheInfo *cache_info;
-    VectorClock thread_clock;
-    unsigned count = 0;
+    Monitor<VectorClock> *user_clock;
 
     static Op genRandOp() {
         int num = rand() % 100;
-        if (node_id == 0)
-            return num > 80? OP_STORE: OP_LOAD;
-        return num > 20? OP_STORE: OP_LOAD;
+        return num > 50? OP_STORE: OP_LOAD;
     };
 
 public:
-    User(LogBuffer *buf, CacheInfo *cinfo, ALocMap *alc): node_buffer(buf), cache_info(cinfo), alocs(alc) {}
+    User(LogBuffer *buf, ALocMap *alc, CacheInfo *cinfo, Monitor<VectorClock> *uclk): node_buffer(buf), alocs(alc), cache_info(cinfo), user_clock(uclk) {}
 
     //should support taking multiple heads for more flexibility
     Log *write_to_log() {
@@ -60,26 +61,31 @@ public:
     void handle_store(uintptr_t addr, bool is_release) {
         uintptr_t cl_addr = addr & CACHELINEMASK;
         dirty_cls.insert(cl_addr);
+        //write to log either on release store or on reaching log size limit
         if(is_release || dirty_cls.size() == LOGSIZE) {
             Log *curr_log = write_to_log();                    
-            thread_clock.tick(node_id);
+            const auto &clock = user_clock->mod([] (auto &self) {
+                self.tick(node_id);
+                return self;
+            });
             curr_log->publish(is_release); 
             dirty_cls.clear();
             std::stringstream ss;
             if(is_release) {
-                ss << " release at " << std::hex << addr << " " << std::dec;
+                ss << std::endl << "release at " << std::hex << addr << std::dec << ", clock=" << clock << std::endl;
                 alocs->at(addr).mod([&](auto &self) {
                     self.log = curr_log;
-                    self.clock.merge(thread_clock);
+                    self.clock.merge(clock);
                 });
             }
             LOG_DEBUG("node " << node_id << ss.str() << "produce log " << count++);
         }
     }
     
-    bool check_clock_add_task(const VectorClock &aloc_clk, const VectorClock &cclk) {
-        bool uptodate = false;
+    bool check_clock_add_tasks(const VectorClock &aloc_clk) {
+        bool uptodate = true;
         std::vector<CacheInfo::Task> tq;
+        const auto &cclk = cache_info->clock.get([](auto &self) {return self; });
         for (unsigned i=0; i<NODECOUNT; i++)
             if (i != node_id && cclk[i] < aloc_clk[i]) {
                 tq.push_back({i, aloc_clk[i]});
@@ -97,24 +103,26 @@ public:
 
     void handle_load(uintptr_t addr, bool is_acquire) {
         if (is_acquire) {
-            LOG_DEBUG("node " << node_id << " acquire " << std::hex << addr << std::dec);
             //value should also be loaded at this point
             auto &aloc_clk = alocs->at(addr).get([&](auto &self) { return self.clock; });
-            auto &cclk = cache_info->clock.get([](auto &self) {return self; });
-            
-            bool uptodate = check_clock_add_task(aloc_clk, cclk);
-            //bool uptodate = false;
-                        
-            for (; !uptodate; uptodate = true) {
+            LOG_DEBUG("node " << node_id << " acquire at " << std::hex << addr << std::dec << ", clock=" << aloc_clk);
+            //task queue doesn't help for now
+            //might be useful with skewed
+            //access patterns
+            //bool uptodate = check_clock_add_tasks(aloc_clk);
+            bool uptodate = false;
+            int c = 0;       
+            while(!uptodate) {
                 sleep(0);
-                LOG_DEBUG("block" << uptodate);
                 auto &cclk = cache_info->clock.get([](auto &self) {return self; });
-                for (unsigned i=0; i<NODECOUNT; i++)
-                    if (i != node_id && cclk[i] < aloc_clk[i])
-                        uptodate = false;
+                if (c++>0)
+                    LOG_DEBUG("block on acquire " << c <<" target=" << aloc_clk << ", current=" << cclk );
+                uptodate = aloc_clk.le_skip(cclk, node_id); 
             }
 
-            thread_clock.merge(aloc_clk);
+            user_clock->mod([&](auto &self) {
+                self.merge(aloc_clk);
+            });
         }
     }
 

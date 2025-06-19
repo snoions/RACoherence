@@ -2,6 +2,7 @@
 #define _MEM_LAYOUT_H_
 
 #include <map>
+#include <unordered_set>
 #include <queue>
 
 #include "logBuffer.hpp"
@@ -16,7 +17,7 @@ struct ALocMeta {
     VectorClock clock;
 };
 
-// emulates allocated atomic locations
+// this emulates allocated atomic locations
 using ALocMap = std::map<uintptr_t, Monitor<ALocMeta>>;
 
 struct CXLMemMeta {
@@ -41,8 +42,12 @@ struct CacheInfo {
     CacheInfo(): task_queue(Monitor(std::make_unique<TaskQueue>())) {}
 };
 
+using CLTable = std::unordered_set<uintptr_t>;
+
 struct NodeLocalMeta{
     CacheInfo cache_info;
+    CLTable stale_dir;
+    Monitor<VectorClock> user_clock;
 };
 
 #endif

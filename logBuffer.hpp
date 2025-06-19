@@ -12,16 +12,14 @@
 #include "logger.hpp"
 #include "vectorClock.hpp"
 
-//TODO: allow multiple writers to operate on a buffer
-
 using bufpos_t = unsigned;
 
 inline bufpos_t next_pos(bufpos_t pos) {
     return (pos+1) % (LOGBUFSIZE * 2);
 }
 
-
 extern thread_local unsigned node_id;
+
 class alignas(CACHELINESIZE) Log {
     using Data = std::array<uintptr_t, LOGSIZE>;
     using iterator = Data::iterator;
@@ -50,14 +48,11 @@ public:
         return s > 0 && s < NODECOUNT;
     }
 
-    inline bool may_use() {
-        return status.load() == 0;
-    }
-
     inline bool use(bufpos_t p) {
-        assert(may_use());
+        unsigned expected = 0;
+        if (!status.compare_exchange_strong(expected, NODECOUNT, std::memory_order_relaxed, std::memory_order_relaxed))
+            return false;
         //setting status first avoids race on other variables
-        status.store(NODECOUNT);
         size = 0;
         pos = p;
         return true;
@@ -68,18 +63,21 @@ public:
     }
 
     bool consume(bufpos_t expected_pos) {
-        unsigned s = status.load();
-        if (!published(s))
-            return false;
-        if (pos != expected_pos)
-            return false;
-        return status.compare_exchange_strong(s, s-1);
+        //test and test and set
+        unsigned s = status.load(std::memory_order_relaxed);
+        do {
+            if (!published(s))
+                return false;
+            if (pos != expected_pos)
+                return false;
+        } while (!status.compare_exchange_weak(s, s-1, std::memory_order_acquire, std::memory_order_relaxed));
+        return true;
     }
     
     void publish(bool is_r) {
         assert(status ==NODECOUNT);
         is_rel = is_r;
-        status--;
+        status.fetch_sub(1, std::memory_order_release);
     }
 
     const_iterator begin() const {
@@ -94,11 +92,11 @@ public:
 class alignas(CACHELINESIZE) LogBuffer {
     using Data = std::array<Log, LOGBUFSIZE>;
     using iterator = Data::iterator;
-    Data logs;
-    
+
     bufpos_t head = 0;
     std::mutex head_lock;
     bufpos_t tails[NODECOUNT] = {0};
+    Data logs;
 
     inline Log *logFromIndex(bufpos_t idx) {
         return &logs[idx % LOGBUFSIZE];
@@ -117,9 +115,8 @@ public:
     Log *takeHead() {
         std::lock_guard<std::mutex> g(head_lock);
         Log *head_log = logFromIndex(head);
-        if (!head_log->may_use()) 
+        if (!head_log->use(head))
             return NULL;
-        head_log->use(head);
         head = next_pos(head);
         return head_log;
     }

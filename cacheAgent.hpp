@@ -11,22 +11,25 @@
 #include "logger.hpp"
 #include "memLayout.hpp"
 
-// TODO: stale_dir probably needs to be concurrent. Single writer or multiple writer?
+// TODO: stale_dir needs to be concurrent
 extern thread_local unsigned node_id;
 
 class CacheAgent {
+    //user local data
     unsigned count = 0;
-    std::unordered_set<uintptr_t> stale_dir;
+    //CXL mem shared adta
     PerNodeData<LogBuffer> *bufs;
+    //node local data
     CacheInfo *cache_info;
+    CLTable* stale_dir;
     std::unique_ptr<CacheInfo::TaskQueue> local_tq; 
 
 public:
-    CacheAgent(std::array<LogBuffer, NODECOUNT> *b, CacheInfo *cinfo): bufs(b), cache_info(cinfo), local_tq(std::make_unique<CacheInfo::TaskQueue>()) {}
+    CacheAgent(std::array<LogBuffer, NODECOUNT> *b, CacheInfo *cinfo, CLTable *sdir): bufs(b), cache_info(cinfo), stale_dir(sdir), local_tq(std::make_unique<CacheInfo::TaskQueue>()) {}
 
     void process_log(Log *log) {
         for (auto invalid_cl: *log) {
-            stale_dir.insert(invalid_cl);
+            stale_dir->insert(invalid_cl);
         }
     }
 
@@ -63,13 +66,13 @@ public:
 
                 process_log(tail);
 
-                if (tail->is_release())
+                LOG_DEBUG("node " << node_id << " consume log " << count++ << " of " << i); 
+                if (tail->is_release()) {
                     cache_info->clock.mod([&](auto &self) {
                         self.tick(i);
                     });
-                LOG_DEBUG("node " << node_id << " consume log " << count++ << " of " << i); 
-
-               process_tasks();
+                    //process_tasks();
+                }
             }
         }
     }

@@ -8,7 +8,7 @@
 
 #include "config.hpp"
 
-//TODO: tree clocks could be faster
+//TODO: tree clocks could be faster for merges
 class VectorClock {
 public:
     using clock_t = unsigned;
@@ -56,6 +56,14 @@ public:
         return true;
     }
 
+    // Happens-before or concurrent comparison, skipping one index
+    bool le_skip(const VectorClock& other, sized_t skip) const {
+        for (sized_t i = 0; i < NODECOUNT; ++i) {
+            if (i != skip && vc[i] > other.vc[i]) return false;
+        }
+        return true;
+    }
+    
     clock_t& operator[](sized_t index) {
         return vc[index];
     }
