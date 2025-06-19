@@ -15,7 +15,7 @@ public:
     using sized_t = std::size_t;
 
 private:
-    std::array<clock_t, NODECOUNT> vc{};
+    std::array<clock_t, NODE_COUNT> vc{};
 
 public:
     VectorClock() = default;
@@ -26,14 +26,14 @@ public:
 
     // Increment the clock at a given index (local tick)
     void tick(sized_t index) {
-        if (index < NODECOUNT) {
+        if (index < NODE_COUNT) {
             ++vc[index];
         }
     }
 
     // Merge this vector clock with another (element-wise max)
     void merge(const VectorClock& other) {
-        for (sized_t i = 0; i < NODECOUNT; ++i) {
+        for (sized_t i = 0; i < NODE_COUNT; ++i) {
             vc[i] = std::max(vc[i], other.vc[i]);
         }
     }
@@ -41,7 +41,7 @@ public:
     // Happens-before comparison
     bool operator<(const VectorClock& other) const {
         bool strictly_less = false;
-        for (sized_t i = 0; i < NODECOUNT; ++i) {
+        for (sized_t i = 0; i < NODE_COUNT; ++i) {
             if (vc[i] > other.vc[i]) return false;
             if (vc[i] < other.vc[i]) strictly_less = true;
         }
@@ -50,7 +50,7 @@ public:
 
     // Happens-before or concurrent comparison
     bool operator<=(const VectorClock& other) const {
-        for (sized_t i = 0; i < NODECOUNT; ++i) {
+        for (sized_t i = 0; i < NODE_COUNT; ++i) {
             if (vc[i] > other.vc[i]) return false;
         }
         return true;
@@ -58,7 +58,7 @@ public:
 
     // Happens-before or concurrent comparison, skipping one index
     bool le_skip(const VectorClock& other, sized_t skip) const {
-        for (sized_t i = 0; i < NODECOUNT; ++i) {
+        for (sized_t i = 0; i < NODE_COUNT; ++i) {
             if (i != skip && vc[i] > other.vc[i]) return false;
         }
         return true;
@@ -75,16 +75,16 @@ public:
     // For debugging/printing
     friend std::ostream& operator<<(std::ostream& os, const VectorClock& v) {
         os << "[";
-        for (sized_t i = 0; i < NODECOUNT; ++i) {
+        for (sized_t i = 0; i < NODE_COUNT; ++i) {
             os << v.vc[i];
-            if (i != NODECOUNT - 1) os << ", ";
+            if (i != NODE_COUNT - 1) os << ", ";
         }
         os << "]";
         return os;
     }
 
     // Optional: Expose for debugging or testing
-    const std::array<clock_t, NODECOUNT>& get() const { return vc; }
+    const std::array<clock_t, NODE_COUNT>& get() const { return vc; }
 };
 
 #endif

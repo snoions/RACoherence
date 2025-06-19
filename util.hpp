@@ -7,7 +7,7 @@
 #include "config.hpp" 
 
 template<typename T>
-using PerNodeData = std::array<T, NODECOUNT>;
+using PerNodeData = std::array<T, NODE_COUNT>;
 
 template<typename T>
 T &lvalue(T &&t)

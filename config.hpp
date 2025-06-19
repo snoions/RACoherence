@@ -1,15 +1,20 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
-#define CACHELINESIZE_LOG 6
-#define CACHELINESIZE (1 << CACHELINESIZE_LOG)
-#define CACHELINEMASK (uintptr_t) (~(CACHELINESIZE-1))
-#define NODECOUNT 4
-#define WORKER_PER_NODE 10
-#define EPOCH 100
-#define LOGSIZE (1 << 10)
-#define LOGBUFSIZE (1 << 10)
-#define CXLMEM_RANGE (1 << 4)
-#define CXLMEM_ATOMIC_RANGE (1 << 2)
+#include <cstdint>
+
+using virt_addr_t = uint64_t;
+
+constexpr virt_addr_t PAGE_SIZE = 1ull << 12;        // 4KB
+constexpr virt_addr_t CACHE_LINE_SIZE = 64;
+constexpr virt_addr_t CACHE_LINE_MASK = ~(CACHE_LINE_SIZE-1);
+constexpr virt_addr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
+constexpr std::size_t NODE_COUNT = 4;
+constexpr std::size_t WORKER_PER_NODE = 10;
+constexpr std::size_t EPOCH = 100;
+constexpr std::size_t LOG_SIZE = 1ull << 10;
+constexpr std::size_t LOG_BUF_SIZE = 1ull << 10;
+constexpr virt_addr_t CXLMEM_RANGE = 1ull << 4;
+constexpr virt_addr_t CXLMEM_ATOMIC_RANGE = 1ull << 2;
 
 #endif

@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <queue>
 
+#include "cacheTracker.hpp"
 #include "logBuffer.hpp"
 #include "util.hpp"
     
@@ -38,15 +39,13 @@ struct CacheInfo {
 
     Monitor<VectorClock> clock;
     Monitor<std::unique_ptr<TaskQueue>> task_queue;
+    CacheLineTracker tracker;
 
     CacheInfo(): task_queue(Monitor(std::make_unique<TaskQueue>())) {}
 };
 
-using CLTable = std::unordered_set<uintptr_t>;
-
 struct NodeLocalMeta{
     CacheInfo cache_info;
-    CLTable stale_dir;
     Monitor<VectorClock> user_clock;
 };
 

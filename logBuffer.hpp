@@ -15,22 +15,23 @@
 using bufpos_t = unsigned;
 
 inline bufpos_t next_pos(bufpos_t pos) {
-    return (pos+1) % (LOGBUFSIZE * 2);
+    return (pos+1) % (LOG_BUF_SIZE * 2);
 }
 
 extern thread_local unsigned node_id;
 
-class alignas(CACHELINESIZE) Log {
-    using Data = std::array<uintptr_t, LOGSIZE>;
+class alignas(CACHE_LINE_SIZE) Log {
+    using Data = std::array<virt_addr_t, LOG_SIZE>;
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
+
     // status = 0 => may use
-    // status = n in {1 .. NODECOUNT-1} => published, yet to be consumed by n nodes
-    // status = NODECOUNT => in use
+    // status = n in {1 .. NODE_COUNT-1} => published, yet to be consumed by n nodes
+    // status = NODE_COUNT => in use
     std::atomic<unsigned> status{0};
     // saving buffer position here avoids having to check buffer head when taking tail
     bufpos_t pos = 0;
-    std::array<uintptr_t, LOGSIZE> entries;
+    std::array<uintptr_t, LOG_SIZE> entries;
     size_t size = 0;
     // represents a release write
     bool is_rel;
@@ -38,19 +39,19 @@ class alignas(CACHELINESIZE) Log {
 public:
     
     inline bool write(uintptr_t cl_addr) {
-        if (size == LOGSIZE)
+        if (size == LOG_SIZE)
             return false;
         entries[size++] = cl_addr;
         return true;
     }
 
     inline bool published(unsigned s) {
-        return s > 0 && s < NODECOUNT;
+        return s > 0 && s < NODE_COUNT;
     }
 
     inline bool use(bufpos_t p) {
         unsigned expected = 0;
-        if (!status.compare_exchange_strong(expected, NODECOUNT, std::memory_order_relaxed, std::memory_order_relaxed))
+        if (!status.compare_exchange_strong(expected, NODE_COUNT, std::memory_order_relaxed, std::memory_order_relaxed))
             return false;
         //setting status first avoids race on other variables
         size = 0;
@@ -75,7 +76,7 @@ public:
     }
     
     void publish(bool is_r) {
-        assert(status ==NODECOUNT);
+        assert(status ==NODE_COUNT);
         is_rel = is_r;
         status.fetch_sub(1, std::memory_order_release);
     }
@@ -89,17 +90,17 @@ public:
     }
 };
 
-class alignas(CACHELINESIZE) LogBuffer {
-    using Data = std::array<Log, LOGBUFSIZE>;
+class alignas(CACHE_LINE_SIZE) LogBuffer {
+    using Data = std::array<Log, LOG_BUF_SIZE>;
     using iterator = Data::iterator;
 
     bufpos_t head = 0;
     std::mutex head_lock;
-    bufpos_t tails[NODECOUNT] = {0};
+    bufpos_t tails[NODE_COUNT] = {0};
     Data logs;
 
     inline Log *logFromIndex(bufpos_t idx) {
-        return &logs[idx % LOGBUFSIZE];
+        return &logs[idx % LOG_BUF_SIZE];
     }
 
 public:

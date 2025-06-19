@@ -21,15 +21,14 @@ class CacheAgent {
     PerNodeData<LogBuffer> *bufs;
     //node local data
     CacheInfo *cache_info;
-    CLTable* stale_dir;
     std::unique_ptr<CacheInfo::TaskQueue> local_tq; 
 
 public:
-    CacheAgent(std::array<LogBuffer, NODECOUNT> *b, CacheInfo *cinfo, CLTable *sdir): bufs(b), cache_info(cinfo), stale_dir(sdir), local_tq(std::make_unique<CacheInfo::TaskQueue>()) {}
+    CacheAgent(std::array<LogBuffer, NODE_COUNT> *b, CacheInfo *cinfo): bufs(b), cache_info(cinfo), local_tq(std::make_unique<CacheInfo::TaskQueue>()) {}
 
     void process_log(Log *log) {
         for (auto invalid_cl: *log) {
-            stale_dir->insert(invalid_cl);
+            cache_info->tracker.mark_dirty(invalid_cl);
         }
     }
 
@@ -50,14 +49,14 @@ public:
                 process_log(tail);
                 if (tail->is_release())
                     cache_info->clock.mod([=](auto &self) { self.tick(idx); });
-                LOG_DEBUG("node " << node_id << " consume log " << count++ << " of " << idx);
+                LOG_INFO("node " << node_id << " consume log " << count++ << " of " << idx);
             }    
         }
     }
 
     void run() {
-        while(count < EPOCH * WORKER_PER_NODE * (NODECOUNT-1)) {
-            for (unsigned i=0; i<NODECOUNT; i++) {
+        while(count < EPOCH * WORKER_PER_NODE * (NODE_COUNT-1)) {
+            for (unsigned i=0; i<NODE_COUNT; i++) {
                 if (i == node_id)
                     continue;
                 Log* tail = (*bufs)[i].consumeTail(node_id);
@@ -66,7 +65,7 @@ public:
 
                 process_log(tail);
 
-                LOG_DEBUG("node " << node_id << " consume log " << count++ << " of " << i); 
+                LOG_INFO("node " << node_id << " consume log " << count++ << " of " << i); 
                 if (tail->is_release()) {
                     cache_info->clock.mod([&](auto &self) {
                         self.tick(i);

@@ -1,4 +1,4 @@
-1. Add user options
+1. Add have user consume logs when blocked
 2. Concurrent dirty cl map like a page table, can use LLM to generate
 3. Add flushes
 4. Eval using a CXL simulator.

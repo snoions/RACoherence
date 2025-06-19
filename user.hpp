@@ -14,9 +14,9 @@
 #include "logger.hpp"
 #include "memLayout.hpp"
 
-static intptr_t genRandPtr() {
+static virt_addr_t genRandPtr() {
     std::random_device rd;
-    std::uniform_int_distribution<uintptr_t> dist(0, CXLMEM_RANGE);
+    std::uniform_int_distribution<virt_addr_t> dist(0, CXLMEM_RANGE);
     return dist(rd);
 }
 
@@ -29,9 +29,9 @@ class User {
     };
     
     //user local data
-    std::unordered_set<uintptr_t> dirty_cls;
+    std::unordered_set<virt_addr_t> dirty_cls;
     unsigned count = 0;
-    //CXL mem shared adta
+    //CXL mem shared data
     ALocMap *alocs; 
     LogBuffer *node_buffer;
     //node local data
@@ -58,11 +58,11 @@ public:
         return curr_log;
     }
 
-    void handle_store(uintptr_t addr, bool is_release) {
-        uintptr_t cl_addr = addr & CACHELINEMASK;
+    void handle_store(virt_addr_t addr, bool is_release) {
+        virt_addr_t cl_addr = addr & CACHE_LINE_MASK;
         dirty_cls.insert(cl_addr);
         //write to log either on release store or on reaching log size limit
-        if(is_release || dirty_cls.size() == LOGSIZE) {
+        if(is_release || dirty_cls.size() == LOG_SIZE) {
             Log *curr_log = write_to_log();                    
             const auto &clock = user_clock->mod([] (auto &self) {
                 self.tick(node_id);
@@ -78,7 +78,7 @@ public:
                     self.clock.merge(clock);
                 });
             }
-            LOG_DEBUG("node " << node_id << ss.str() << "produce log " << count++);
+            LOG_INFO("node " << node_id << ss.str() << "produce log " << count++);
         }
     }
     
@@ -86,7 +86,7 @@ public:
         bool uptodate = true;
         std::vector<CacheInfo::Task> tq;
         const auto &cclk = cache_info->clock.get([](auto &self) {return self; });
-        for (unsigned i=0; i<NODECOUNT; i++)
+        for (unsigned i=0; i<NODE_COUNT; i++)
             if (i != node_id && cclk[i] < aloc_clk[i]) {
                 tq.push_back({i, aloc_clk[i]});
                 uptodate = false;
@@ -101,17 +101,17 @@ public:
     }
 
 
-    void handle_load(uintptr_t addr, bool is_acquire) {
+    void handle_load(virt_addr_t addr, bool is_acquire) {
         if (is_acquire) {
             //value should also be loaded at this point
             auto &aloc_clk = alocs->at(addr).get([&](auto &self) { return self.clock; });
-            LOG_DEBUG("node " << node_id << " acquire at " << std::hex << addr << std::dec << ", clock=" << aloc_clk);
+            LOG_INFO("node " << node_id << " acquire at " << std::hex << addr << std::dec << ", target=" << aloc_clk);
             //task queue doesn't help for now
             //might be useful with skewed
             //access patterns
             //bool uptodate = check_clock_add_tasks(aloc_clk);
-            bool uptodate = false;
             int c = 0;       
+            bool uptodate = false;
             while(!uptodate) {
                 sleep(0);
                 auto &cclk = cache_info->clock.get([](auto &self) {return self; });
@@ -128,7 +128,7 @@ public:
 
     void run() {
         while(count < EPOCH) {
-            uintptr_t addr = genRandPtr();
+            virt_addr_t addr = genRandPtr();
             Op user_op = genRandOp();
             switch (user_op) {
                 case OP_STORE: {
