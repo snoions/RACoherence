@@ -66,11 +66,7 @@ public:
 
     bool prepare_consume(bufpos_t expected_pos) {
         mtx.lock_shared();
-        if (status==0) {
-            mtx.unlock_shared();
-            return false;
-        }
-        if (pos != expected_pos) {
+        if (status==0 || pos != expected_pos) {
             mtx.unlock_shared();
             return false;
         }
@@ -80,11 +76,7 @@ public:
     bool try_prepare_consume(bufpos_t expected_pos) {
         if (!mtx.try_lock_shared())
             return false;
-        if (status==0) {
-            mtx.unlock_shared();
-            return false;
-        }
-        if (pos != expected_pos) {
+        if (status==0 || pos != expected_pos) {
             mtx.unlock_shared();
             return false;
         }

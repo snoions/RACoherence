@@ -1,12 +1,15 @@
 # CMakeLists.txt
 cmake_minimum_required(VERSION 3.10)
 project(RACoherence LANGUAGES CXX)
+
+add_compile_options(-std=c++17)
+
 add_executable(main main.cpp) 
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(main PRIVATE Threads::Threads)
-target_compile_options(main PRIVATE -g -std=c++17)
+target_compile_options(main PRIVATE -g)
 
 # Fetch GoogleTest
 include(FetchContent)

@@ -14,9 +14,9 @@
 #include "logger.hpp"
 #include "memLayout.hpp"
 
-static virt_addr_t genRandPtr() {
+static virt_addr_t genRandPtr(virt_addr_t range) {
     std::random_device rd;
-    std::uniform_int_distribution<virt_addr_t> dist(0, CXLMEM_RANGE);
+    std::uniform_int_distribution<virt_addr_t> dist(0, range-1);
     return dist(rd);
 }
 
@@ -149,17 +149,16 @@ public:
 
     void run() {
         while(count < EPOCH) {
-            virt_addr_t addr = genRandPtr();
+            bool is_atomic = (rand() % ATOMIC_PLAIN_RATIO == 0);
+            virt_addr_t addr = genRandPtr(is_atomic? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE);
             Op user_op = genRandOp();
             switch (user_op) {
                 case OP_STORE: {
-                    bool is_release = isAtomic(addr);
-                    handle_store(addr, is_release);
+                    handle_store(addr, is_atomic);
                     break;
                 } 
                 case OP_LOAD: {
-                    bool is_acquire = isAtomic(addr);
-                    handle_load(addr, is_acquire);
+                    handle_load(addr, is_atomic);
                     break;
                 }
                 default:
