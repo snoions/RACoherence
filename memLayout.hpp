@@ -34,16 +34,10 @@ struct CXLMemMeta {
 
 
 struct CacheInfo {
-    using Task = std::pair<VectorClock::sized_t, VectorClock::clock_t>;
-    using TaskQueue = std::queue<Task>;
-
     //TODO: fine-grained lock or atomics for each clock entry
     Monitor<VectorClock> clock;
-    Monitor<std::unique_ptr<TaskQueue>> task_queue;
     CacheLineTracker tracker;
     std::atomic<unsigned> consumed_count {0};
-
-    CacheInfo(): task_queue(Monitor(std::make_unique<TaskQueue>())) {}
 
     void process_log(Log *log) {
         for (auto invalid_cl: *log) {

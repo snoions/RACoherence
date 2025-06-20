@@ -81,26 +81,9 @@ public:
                 });
             }
 
-            LOG_INFO("node " << node_id << ss.str() << "produce log " << count++);
+            LOG_INFO("node " << node_id << ss.str() << "produce log " << count);
+            count++;
         }
-    }
-    
-    bool check_clock_add_tasks(const VectorClock &aloc_clk) {
-        bool uptodate = true;
-        std::vector<CacheInfo::Task> tq;
-        const auto &cclk = cache_info.clock.get([](auto &self) {return self; });
-        for (unsigned i=0; i<NODE_COUNT; i++)
-            if (i != node_id && cclk[i] < aloc_clk[i]) {
-                tq.push_back({i, aloc_clk[i]});
-                uptodate = false;
-            }
-
-        if (!tq.empty())
-            cache_info.task_queue.mod([&](auto &self) { 
-                for (auto t: tq)
-                    self->push(t); 
-            });
-        return uptodate;
     }
 
     void catch_up_cache_clock(const VectorClock &target) {
@@ -121,7 +104,8 @@ public:
                 cache_info.process_log(tail);
                 if (tail->is_release())
                     val = cache_info.update_clock(i);
-                LOG_INFO("node " << node_id << " consume log " << cache_info.consumed_count++ << " of " << i);
+                LOG_INFO("node " << node_id << " consume log " << cache_info.consumed_count << " of " << i);
+                cache_info.consumed_count++;
             }
         }
     }
