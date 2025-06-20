@@ -1,4 +1,6 @@
-1. Add have user consume logs when blocked
-2. Concurrent dirty cl map like a page table, can use LLM to generate
+1. Write perf tests, need to consider the following factors that affects concurrency/contention:
+    a. addr range, affects contention on CacheLineTracker 
+    b. buffer size, affects contention on LogBuffer concurrecny
+    c. ratio of load/store and atomic/non-atomic, affects contention on clocks
 3. Add flushes
 4. Eval using a CXL simulator.
