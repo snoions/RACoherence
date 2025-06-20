@@ -28,11 +28,11 @@ public:
                 if (i == node_id)
                     continue;
 
-                std::unique_lock<std::mutex> lk(bufs[i].getTailMutex(node_id), std::defer_lock);
+                std::unique_lock<std::mutex> lk(bufs[i].get_tail_mutex(node_id), std::defer_lock);
                 if (!lk.try_lock())
                     continue;
 
-                Log* tail = bufs[i].takeTail(node_id);
+                Log* tail = bufs[i].take_tail(node_id);
                 if (!tail)
                     continue;
 

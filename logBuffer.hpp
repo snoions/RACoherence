@@ -27,9 +27,10 @@ class alignas(CACHE_LINE_SIZE) Log {
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
 
-    // status = 0 => may use
+    // status = 0 => may write
     // status = n in {1 .. NODE_COUNT-1} => published, yet to be consumed by n nodes
-    // status = NODE_COUNT => in use
+    // status = NODE_COUNT => to be written
+    // maybe use shared_mutex instead
     std::atomic<unsigned> status{0};
     // saving buffer position here avoids having to check buffer head when taking tail
     bufpos_t pos = 0;
@@ -51,7 +52,7 @@ public:
         return s > 0 && s < NODE_COUNT;
     }
 
-    inline bool use(bufpos_t p) {
+    inline bool prepare_write(bufpos_t p) {
         unsigned expected = 0;
         if (!status.compare_exchange_strong(expected, NODE_COUNT, std::memory_order_relaxed, std::memory_order_relaxed))
             return false;
@@ -109,7 +110,7 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     std::mutex tail_mtxs[NODE_COUNT] = {};
     Data logs;
 
-    inline Log *logFromIndex(bufpos_t idx) {
+    inline Log *log_from_index(bufpos_t idx) {
         return &logs[idx % LOG_BUF_SIZE];
     }
 
@@ -123,29 +124,23 @@ public:
         return logs.end();
     }
 
-    Log *takeHead() {
+    Log *take_head() {
         std::lock_guard<std::mutex> g(head_mtx);
-        Log *head_log = logFromIndex(head);
-        if (!head_log->use(head))
+        Log *head_log = log_from_index(head);
+        if (!head_log->prepare_write(head))
             return NULL;
         head = next_pos(head);
         return head_log;
     }
 
-    std::mutex &getTailMutex(unsigned nid) {
+    std::mutex &get_tail_mutex(unsigned nid) {
         return tail_mtxs[nid];
     }
 
-    Log *takeTail(unsigned nid) {
-        Log *tail = logFromIndex(tails[nid]);
+    Log *take_tail(unsigned nid) {
+        Log *tail = log_from_index(tails[nid]);
         if (!tail->may_consume(tails[nid]))
             return NULL;
-        tails[nid] = next_pos(tails[nid]);
-        return tail;
-    }
-
-    Log *takeTailNoCheck(unsigned nid) {
-        Log *tail = logFromIndex(tails[nid]);
         tails[nid] = next_pos(tails[nid]);
         return tail;
     }

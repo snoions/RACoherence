@@ -49,7 +49,7 @@ public:
     //should support taking multiple heads for more flexibility
     Log *write_to_log() {
         Log *curr_log;
-        while(!(curr_log = bufs[node_id].takeHead()))
+        while(!(curr_log = bufs[node_id].take_head()))
             //wait for available space
             sleep(0);
         
@@ -94,13 +94,14 @@ public:
             if (val >= target[i])
                 continue;
 
-            std::unique_lock<std::mutex> l(bufs[i].getTailMutex(node_id));
+            std::unique_lock<std::mutex> l(bufs[i].get_tail_mutex(node_id));
             //check again after wake up
             val = cache_info.get_clock(i);
 
             while(val < target[i]) {
                 Log *tail;
-                tail = bufs[i].takeTailNoCheck(node_id);
+                //TODO: optimize
+                while(!(tail = bufs[i].take_tail(node_id)));
                 cache_info.process_log(tail);
                 if (tail->is_release())
                     val = cache_info.update_clock(i);
