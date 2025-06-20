@@ -50,7 +50,7 @@ public:
     Log *write_to_log() {
         Log *curr_log;
         while(!(curr_log = bufs[node_id].takeHead()))
-            //wait for copiers to finish
+            //wait for available space
             sleep(0);
         
         for(auto cl: dirty_cls)
@@ -105,7 +105,7 @@ public:
 
     void catch_up_cache_clock(const VectorClock &target) {
         for (unsigned i=0; i<NODE_COUNT; i++) {
-            if (i != node_id)
+            if (i == node_id)
                 continue;
             auto val = cache_info.clock.get([=](auto &self) {return self[i]; });
             if (val >= target[i])
@@ -121,6 +121,7 @@ public:
                 cache_info.process_log(tail);
                 if (tail->is_release())
                     val = cache_info.update_clock(i);
+                LOG_INFO("node " << node_id << " consume log " << cache_info.consumed_count++ << " of " << i);
             }
         }
     }
@@ -151,8 +152,8 @@ public:
 
             //task queue not useful for now, may be for skewed patterns?
             //bool uptodate = check_clock_add_tasks(aloc_clk);
-            wait_for_cache_clock(aloc_clk);
-            //catch_up_cache_clock(aloc_clk);
+            //wait_for_cache_clock(aloc_clk);
+            catch_up_cache_clock(aloc_clk);
 
             user_clock.mod([&](auto &self) {
                 self.merge(aloc_clk);

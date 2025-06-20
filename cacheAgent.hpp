@@ -13,6 +13,7 @@
 
 // TODO: stale_dir needs to be concurrent
 extern thread_local unsigned node_id;
+extern std::atomic<bool> users_done;
 
 class CacheAgent {
     // local data
@@ -43,20 +44,20 @@ public:
                 cache_info.process_log(tail);
                 if (tail->is_release())
                     cache_info.update_clock(idx);
-                LOG_INFO("node " << node_id << " consume log " << count++ << " of " << idx);
-            }    
+                LOG_INFO("node " << node_id << " consume log " << cache_info.consumed_count++ << " of " << idx);
+            } 
         }
     }
 
     void run() {
-        while(count < EPOCH * WORKER_PER_NODE * (NODE_COUNT-1)) {
+        while(cache_info.consumed_count < EPOCH * WORKER_PER_NODE * (NODE_COUNT-1)) {
             for (unsigned i=0; i<NODE_COUNT; i++) {
                 if (i == node_id)
                     continue;
 
-                std::unique_lock<std::mutex> lk(bufs[i].getTailMutex(node_id), std::defer_lock);
-                if (!lk.try_lock())
-                    continue;
+                //std::unique_lock<std::mutex> lk(bufs[i].getTailMutex(node_id), std::defer_lock);
+                //if (!lk.try_lock())
+                //    continue;
 
                 Log* tail = bufs[i].consumeTail(node_id);
                 if (!tail)
@@ -64,7 +65,7 @@ public:
 
                 cache_info.process_log(tail);
 
-                LOG_INFO("node " << node_id << " consume log " << count++ << " of " << i); 
+                LOG_INFO("node " << node_id << " consume log " << cache_info.consumed_count++ << " of " << i); 
                 if (tail->is_release()) {
                     cache_info.update_clock(i);
                     //process_tasks();
