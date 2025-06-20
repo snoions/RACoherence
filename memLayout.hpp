@@ -19,7 +19,7 @@ struct ALocMeta {
 };
 
 // this emulates allocated atomic locations
-using ALocMap = std::map<uintptr_t, Monitor<ALocMeta>>;
+using ALocMap = std::map<virt_addr_t, Monitor<ALocMeta>>;
 
 struct CXLMemMeta {
     PerNode<LogBuffer> buffers;
@@ -32,24 +32,27 @@ struct CXLMemMeta {
     }
 };
 
+using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;
 
 struct CacheInfo {
     //TODO: fine-grained lock or atomics for each clock entry
-    Monitor<VectorClock> clock;
+    AtomicClock clock{};
     CacheLineTracker tracker;
     std::atomic<unsigned> consumed_count {0};
 
     void process_log(Log *log) {
         for (auto invalid_cl: *log) {
-            tracker.mark_dirty(invalid_cl);
+            //causes segfault
+            //tracker.mark_dirty(invalid_cl);
         }
     }
 
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {
-        return clock.mod([&](auto &self) {
-            self.tick(i);
-            return self[i];
-        });
+        return ++clock[i];
+    }
+    
+    VectorClock::clock_t get_clock(VectorClock::sized_t i) {
+        return clock[i].load();
     }
 };
 

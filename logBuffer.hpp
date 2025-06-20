@@ -8,6 +8,8 @@
 #include <mutex>
 #include <iostream>
 
+#include "unistd.h"
+
 #include "config.hpp"
 #include "logger.hpp"
 #include "vectorClock.hpp"
@@ -63,20 +65,22 @@ public:
         return is_rel;
     }
 
-    bool consume(bufpos_t expected_pos) {
+    bool may_consume(bufpos_t expected_pos) {
         //test and test and set
-        unsigned s = status.load(std::memory_order_relaxed);
-        do {
-            if (!published(s))
-                return false;
-            if (pos != expected_pos)
-                return false;
-        } while (!status.compare_exchange_weak(s, s-1, std::memory_order_acquire, std::memory_order_relaxed));
+        unsigned s = status.load(std::memory_order_acquire);
+        if (!published(s))
+            return false;
+        if (pos != expected_pos)
+            return false;
         return true;
     }
  
-    void consume_no_check() {
-        status.fetch_sub(1, std::memory_order_acquire);
+    void consume() {
+        auto s = status.fetch_sub(1, std::memory_order_relaxed);
+        if(!published(s)) {
+            std::cout << s << std::endl;
+            assert(false);
+        }
     }
 
     void publish(bool is_r) {
@@ -132,17 +136,16 @@ public:
         return tail_mtxs[nid];
     }
 
-    Log *consumeTail(unsigned nid) {
+    Log *takeTail(unsigned nid) {
         Log *tail = logFromIndex(tails[nid]);
-        if (!tail->consume(tails[nid]))
+        if (!tail->may_consume(tails[nid]))
             return NULL;
         tails[nid] = next_pos(tails[nid]);
         return tail;
     }
 
-    Log *consumeTailNoCheck(unsigned nid) {
+    Log *takeTailNoCheck(unsigned nid) {
         Log *tail = logFromIndex(tails[nid]);
-        tail->consume_no_check();
         tails[nid] = next_pos(tails[nid]);
         return tail;
     }

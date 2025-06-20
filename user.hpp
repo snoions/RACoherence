@@ -65,12 +65,12 @@ public:
         //write to log either on release store or on reaching log size limit
         if(is_release || dirty_cls.size() == LOG_SIZE) {
             Log *curr_log = write_to_log();                    
+            curr_log->publish(is_release); 
+            dirty_cls.clear();
             const auto &clock = user_clock.mod([] (auto &self) {
                 self.tick(node_id);
                 return self;
             });
-            curr_log->publish(is_release); 
-            dirty_cls.clear();
 
             std::stringstream ss;
             if(is_release) {
@@ -90,35 +90,38 @@ public:
         for (unsigned i=0; i<NODE_COUNT; i++) {
             if (i == node_id)
                 continue;
-            auto val = cache_info.clock.get([=](auto &self) {return self[i]; });
+            auto val = cache_info.get_clock(i);
             if (val >= target[i])
                 continue;
 
             std::unique_lock<std::mutex> l(bufs[i].getTailMutex(node_id));
-            val = cache_info.clock.get([=](auto &self) {return self[i]; });
-            if (val >= target[i])
-                continue;
+            //check again after wake up
+            val = cache_info.get_clock(i);
 
             while(val < target[i]) {
-                Log *tail = bufs[i].consumeTailNoCheck(node_id);
+                Log *tail;
+                tail = bufs[i].takeTailNoCheck(node_id);
                 cache_info.process_log(tail);
                 if (tail->is_release())
                     val = cache_info.update_clock(i);
+                tail->consume();
                 LOG_INFO("node " << node_id << " consume log " << cache_info.consumed_count << " of " << i);
                 cache_info.consumed_count++;
             }
+
         }
     }
 
     void wait_for_cache_clock(const VectorClock &target) {
         int c = 0;       
         while(true) {
-            if (cache_info.clock.get([&](auto &self) {
-                for (unsigned i=0; i<NODE_COUNT; i++)
-                    if (i != node_id && self[i] < target[i])
-                        return false;
-                return true;
-            }))
+            bool uptodate = true;
+            for (unsigned i=0; i<NODE_COUNT; i++)
+                if (i != node_id && cache_info.get_clock(i) < target[i]) {
+                    uptodate = false;
+                    break;
+                }
+            if (uptodate)
                 break;
             if (c++>0)
                 LOG_DEBUG("block on acquire " << c <<" target=" << aloc_clk << ", current=" << cclk );
@@ -135,7 +138,6 @@ public:
             LOG_DEBUG("node " << node_id << " acquire at " << std::hex << addr << std::dec << ", target=" << aloc_clk);
 
             //task queue not useful for now, may be for skewed patterns?
-            //bool uptodate = check_clock_add_tasks(aloc_clk);
             //wait_for_cache_clock(aloc_clk);
             catch_up_cache_clock(aloc_clk);
 

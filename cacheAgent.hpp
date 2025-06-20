@@ -4,8 +4,6 @@
 #include <unordered_set>
 #include <iostream>
 
-#include "unistd.h"
-
 #include "config.hpp"
 #include "logBuffer.hpp"
 #include "logger.hpp"
@@ -34,7 +32,7 @@ public:
                 if (!lk.try_lock())
                     continue;
 
-                Log* tail = bufs[i].consumeTail(node_id);
+                Log* tail = bufs[i].takeTail(node_id);
                 if (!tail)
                     continue;
 
@@ -45,6 +43,7 @@ public:
                 if (tail->is_release()) {
                     cache_info.update_clock(i);
                 }
+                tail->consume();
             }
         }
     }
