@@ -6,7 +6,7 @@
 #define LOG_LEVEL_DEBUG 1
 #define LOG_LEVEL_INFO  2
 
-#define CURRENT_LOG_LEVEL 1 // Set desired log level
+#define CURRENT_LOG_LEVEL 2 // Set desired log level
 
 #if CURRENT_LOG_LEVEL <= LOG_LEVEL_DEBUG
 #define LOG_DEBUG(msg) std::cout << __FILENAME__ << ": " << msg << std::endl

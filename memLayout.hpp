@@ -22,7 +22,7 @@ struct ALocMeta {
 using ALocMap = std::map<uintptr_t, Monitor<ALocMeta>>;
 
 struct CXLMemMeta {
-    PerNodeData<LogBuffer> buffers;
+    PerNode<LogBuffer> buffers;
     //TODO: support dynamically allocated atomic locs
     ALocMap alocs;
 
@@ -37,11 +37,25 @@ struct CacheInfo {
     using Task = std::pair<VectorClock::sized_t, VectorClock::clock_t>;
     using TaskQueue = std::queue<Task>;
 
+    //TODO: fine-grained lock or atomics for each clock entry
     Monitor<VectorClock> clock;
     Monitor<std::unique_ptr<TaskQueue>> task_queue;
     CacheLineTracker tracker;
 
     CacheInfo(): task_queue(Monitor(std::make_unique<TaskQueue>())) {}
+
+    void process_log(Log *log) {
+        for (auto invalid_cl: *log) {
+            tracker.mark_dirty(invalid_cl);
+        }
+    }
+
+    VectorClock::clock_t update_clock(VectorClock::sized_t i) {
+        return clock.mod([&](auto &self) {
+            self.tick(i);
+            return self[i];
+        });
+    }
 };
 
 struct NodeLocalMeta{

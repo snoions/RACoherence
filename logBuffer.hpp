@@ -74,7 +74,11 @@ public:
         } while (!status.compare_exchange_weak(s, s-1, std::memory_order_acquire, std::memory_order_relaxed));
         return true;
     }
-    
+ 
+    void consume_no_check() {
+        status.fetch_sub(1, std::memory_order_acquire);
+    }
+
     void publish(bool is_r) {
         assert(status ==NODE_COUNT);
         is_rel = is_r;
@@ -95,8 +99,10 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     using iterator = Data::iterator;
 
     bufpos_t head = 0;
-    std::mutex head_lock;
+    //TODO: ensure locks are on separate cache lines
+    std::mutex head_mtx;
     bufpos_t tails[NODE_COUNT] = {0};
+    std::mutex tail_mtxs[NODE_COUNT] = {};
     Data logs;
 
     inline Log *logFromIndex(bufpos_t idx) {
@@ -114,7 +120,7 @@ public:
     }
 
     Log *takeHead() {
-        std::lock_guard<std::mutex> g(head_lock);
+        std::lock_guard<std::mutex> g(head_mtx);
         Log *head_log = logFromIndex(head);
         if (!head_log->use(head))
             return NULL;
@@ -122,10 +128,21 @@ public:
         return head_log;
     }
 
+    std::mutex &getTailMutex(unsigned nid) {
+        return tail_mtxs[nid];
+    }
+
     Log *consumeTail(unsigned nid) {
         Log *tail = logFromIndex(tails[nid]);
         if (!tail->consume(tails[nid]))
             return NULL;
+        tails[nid] = next_pos(tails[nid]);
+        return tail;
+    }
+
+    Log *consumeTailNoCheck(unsigned nid) {
+        Log *tail = logFromIndex(tails[nid]);
+        tail->consume_no_check();
         tails[nid] = next_pos(tails[nid]);
         return tail;
     }
