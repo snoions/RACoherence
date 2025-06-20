@@ -99,9 +99,8 @@ public:
             val = cache_info.get_clock(i);
 
             while(val < target[i]) {
-                Log *tail;
-                //TODO: optimize
-                while(!(tail = bufs[i].take_tail(node_id)));
+                //must not be NULL
+                Log *tail = bufs[i].take_tail(node_id);
                 cache_info.process_log(tail);
                 if (tail->is_release())
                     val = cache_info.update_clock(i);

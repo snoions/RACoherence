@@ -42,8 +42,8 @@ struct CacheInfo {
 
     void process_log(Log *log) {
         for (auto invalid_cl: *log) {
-            //causes segfault
-            //tracker.mark_dirty(invalid_cl);
+            //FIXME: causes segfault
+            tracker.mark_dirty(invalid_cl);
         }
     }
 

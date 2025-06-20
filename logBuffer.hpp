@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <mutex>
+#include <shared_mutex>
 #include <iostream>
 
 #include "unistd.h"
@@ -27,11 +28,11 @@ class alignas(CACHE_LINE_SIZE) Log {
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
 
+    std::shared_mutex mtx;
     // status = 0 => may write
     // status = n in {1 .. NODE_COUNT-1} => published, yet to be consumed by n nodes
-    // status = NODE_COUNT => to be written
     // maybe use shared_mutex instead
-    std::atomic<unsigned> status{0};
+    unsigned status = 0;
     // saving buffer position here avoids having to check buffer head when taking tail
     bufpos_t pos = 0;
     std::array<uintptr_t, LOG_SIZE> entries;
@@ -48,46 +49,57 @@ public:
         return true;
     }
 
-    inline bool published(unsigned s) {
-        return s > 0 && s < NODE_COUNT;
+    bool is_release() {
+        return is_rel;
     }
 
     inline bool prepare_write(bufpos_t p) {
-        unsigned expected = 0;
-        if (!status.compare_exchange_strong(expected, NODE_COUNT, std::memory_order_relaxed, std::memory_order_relaxed))
+        mtx.lock();
+        if (status !=0) {
+            mtx.unlock();
             return false;
-        //setting status first avoids race on other variables
+        }
         size = 0;
         pos = p;
         return true;
     }
 
-    bool is_release() {
-        return is_rel;
-    }
-
-    bool may_consume(bufpos_t expected_pos) {
-        //test and test and set
-        unsigned s = status.load(std::memory_order_acquire);
-        if (!published(s))
+    bool prepare_consume(bufpos_t expected_pos) {
+        mtx.lock_shared();
+        if (status==0) {
+            mtx.unlock_shared();
             return false;
-        if (pos != expected_pos)
+        }
+        if (pos != expected_pos) {
+            mtx.unlock_shared();
             return false;
+        }
         return true;
     }
  
-    void consume() {
-        auto s = status.fetch_sub(1, std::memory_order_relaxed);
-        if(!published(s)) {
-            std::cout << s << std::endl;
-            assert(false);
+    bool try_prepare_consume(bufpos_t expected_pos) {
+        if (!mtx.try_lock_shared())
+            return false;
+        if (status==0) {
+            mtx.unlock_shared();
+            return false;
         }
+        if (pos != expected_pos) {
+            mtx.unlock_shared();
+            return false;
+        }
+        return true;
+    }
+
+    void consume() {
+        status--;
+        mtx.unlock_shared();
     }
 
     void publish(bool is_r) {
-        assert(status ==NODE_COUNT);
         is_rel = is_r;
-        status.fetch_sub(1, std::memory_order_release);
+        status = NODE_COUNT-1;
+        mtx.unlock();
     }
 
     const_iterator begin() const {
@@ -103,8 +115,8 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     using Data = std::array<Log, LOG_BUF_SIZE>;
     using iterator = Data::iterator;
 
+    //TODO: ensure mutexes are on separate cache lines
     bufpos_t head = 0;
-    //TODO: ensure locks are on separate cache lines
     std::mutex head_mtx;
     bufpos_t tails[NODE_COUNT] = {0};
     std::mutex tail_mtxs[NODE_COUNT] = {};
@@ -139,7 +151,15 @@ public:
 
     Log *take_tail(unsigned nid) {
         Log *tail = log_from_index(tails[nid]);
-        if (!tail->may_consume(tails[nid]))
+        if (!tail->prepare_consume(tails[nid]))
+            return NULL;
+        tails[nid] = next_pos(tails[nid]);
+        return tail;
+    }
+
+    Log *try_take_tail(unsigned nid) {
+        Log *tail = log_from_index(tails[nid]);
+        if (!tail->try_prepare_consume(tails[nid]))
             return NULL;
         tails[nid] = next_pos(tails[nid]);
         return tail;

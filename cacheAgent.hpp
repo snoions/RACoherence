@@ -32,7 +32,7 @@ public:
                 if (!lk.try_lock())
                     continue;
 
-                Log* tail = bufs[i].take_tail(node_id);
+                Log* tail = bufs[i].try_take_tail(node_id);
                 if (!tail)
                     continue;
 
