@@ -15,7 +15,7 @@ constexpr std::size_t WORKER_PER_NODE = 10;
 constexpr std::size_t EPOCH = 100;
 
 constexpr std::size_t LOG_SIZE = 1ull << 10;
-constexpr std::size_t LOG_BUF_SIZE = 1ull << 6;
+constexpr unsigned LOG_BUF_SIZE = 1ull << 6;
 
 constexpr virt_addr_t CXLMEM_RANGE = 1ull << 10; //small size to simulate locality
 constexpr virt_addr_t CXLMEM_ATOMIC_RANGE = 1ull << 4;

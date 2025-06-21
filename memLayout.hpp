@@ -13,23 +13,26 @@ static bool isAtomic(uintptr_t addr) {
     return addr < CXLMEM_ATOMIC_RANGE;
 }
 
-struct ALocMeta {
+struct AtomicMeta {
     Log* log;
     VectorClock clock;
 };
 
 // this emulates allocated atomic locations
-using ALocMap = std::map<virt_addr_t, Monitor<ALocMeta>>;
+using AtomicMap = std::array<Monitor<AtomicMeta>, CXLMEM_ATOMIC_RANGE>;
 
 struct CXLMemMeta {
-    PerNode<LogBuffer> buffers;
+    PerNode<LogBuffer> bufs;
     //TODO: support dynamically allocated atomic locs
-    ALocMap alocs;
+    AtomicMap atmap = {};
+};
 
-    CXLMemMeta () {
-        for (int i=0; i<CXLMEM_ATOMIC_RANGE; i++)
-            alocs[i];
-    }
+constexpr size_t CXL_DATA_PADDING = CACHE_LINE_SIZE - (sizeof(CXLMemMeta) % CACHE_LINE_SIZE);
+
+struct CXLPool {
+    CXLMemMeta meta;
+    char padding[CXL_DATA_PADDING];
+    char data[CXLMEM_RANGE];
 };
 
 using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;

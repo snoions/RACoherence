@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <mutex>
 #include <iostream>
+#include <thread>
 
 #include "unistd.h"
 
@@ -21,17 +22,20 @@ inline bufpos_t next_pos(bufpos_t pos) {
 }
 
 extern thread_local unsigned node_id;
+extern thread_local unsigned user_id;
 
 class alignas(CACHE_LINE_SIZE) Log {
     using Data = std::array<virt_addr_t, LOG_SIZE>;
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
 
+    //FIXME: modify pos and status atomically
     // status = 0 => may write
     // status = n in {1 .. NODE_COUNT-1} => published, yet to be consumed by n nodes
     // status = NODE_COUNT => to be written
     // maybe use shared_mutex instead
     std::atomic<unsigned> status{0};
+    std::atomic<unsigned> ids[NODE_COUNT] = {};
     // saving buffer position here avoids having to check buffer head when taking tail
     bufpos_t pos = 0;
     std::array<uintptr_t, LOG_SIZE> entries;
@@ -59,6 +63,7 @@ public:
         //setting status first avoids race on other variables
         size = 0;
         pos = p;
+        ids[node_id] = {};
         return true;
     }
 
@@ -74,12 +79,17 @@ public:
     }
  
     void prepare_consume(bufpos_t expected_pos) {
-        while(!published(status.load(std::memory_order_acquire)) || pos != expected_pos);
+        unsigned s;
+        do {
+            s = status.load(std::memory_order_acquire);
+        }while(!published(s) || pos != expected_pos);
     }
 
     void consume() {
         auto s = status.fetch_sub(1, std::memory_order_relaxed);
+        assert(!ids[node_id]);
         assert(published(s));
+        ids[node_id] = user_id;
     }
 
     void publish(bool is_r) {
