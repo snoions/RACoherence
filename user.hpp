@@ -9,7 +9,7 @@
 
 #include <unistd.h>
 
-#include "cacheops.hpp"
+#include "flush.hpp"
 #include "config.hpp"
 #include "logBuffer.hpp"
 #include "logger.hpp"
@@ -59,7 +59,7 @@ public:
             do_flush((char *)cl); 
         }
         flush_fence();
-        curr_log->publish(is_release); 
+        curr_log->produce(is_release); 
         dirty_cls.clear();
         return curr_log;
     }

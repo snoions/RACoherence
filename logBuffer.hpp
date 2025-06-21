@@ -15,11 +15,18 @@
 #include "logger.hpp"
 #include "vectorClock.hpp"
 
-using bufpos_t = unsigned;
+// carry a parity bit along with index in the buffer to signal
+// when a tail wraps around
+struct BufPos {
+    unsigned idx = 0;
+    bool par = true;
 
-inline bufpos_t next_pos(bufpos_t pos) {
-    return (pos+1) % (LOG_BUF_SIZE * 2);
-}
+    void next() {
+        idx = (idx+1) % LOG_BUF_SIZE;
+        if (idx == 0)
+            par = !par;
+    }
+};
 
 extern thread_local unsigned node_id;
 extern thread_local unsigned user_id;
@@ -29,22 +36,26 @@ class alignas(CACHE_LINE_SIZE) Log {
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
 
-    //FIXME: modify pos and status atomically
-    // status = 0 => may write
-    // status = n in {1 .. NODE_COUNT-1} => published, yet to be consumed by n nodes
-    // status = NODE_COUNT => to be written
-    // maybe use shared_mutex instead
-    std::atomic<unsigned> status{0};
-    std::atomic<unsigned> ids[NODE_COUNT] = {};
-    // saving buffer position here avoids having to check buffer head when taking tail
-    bufpos_t pos = 0;
+    // bits 0-30 stores how many nodes still need to produce/consume the log
+    //  = NODE_COUNT => log to be produced, producer has exclusive ownership
+    //  = n in [1 .. NODE_COUNT-1] to be consumed by n nodes, consumer has shared ownership
+    // bit 31 stores parity from the buffer, in case the tail wraps around
+    std::atomic<unsigned> status {to_status({0, false})};
     std::array<uintptr_t, LOG_SIZE> entries;
     size_t size = 0;
-    // represents a release write
+    // whether is a release write
     bool is_rel;
 
+    inline constexpr std::pair<unsigned, bool> from_status(unsigned s) {
+        return {s & ~(1<<31), s & (1 <<31)};
+    }
+
+    inline constexpr unsigned to_status(std::pair<unsigned, bool> p) {
+        return p.first | ((unsigned)p.second<<31);
+    }
+
 public:
-    
+
     inline bool write(uintptr_t cl_addr) {
         if (size == LOG_SIZE)
             return false;
@@ -52,18 +63,16 @@ public:
         return true;
     }
 
-    inline bool published(unsigned s) {
+    inline bool produced(unsigned s) {
         return s > 0 && s < NODE_COUNT;
     }
 
-    inline bool prepare_write(bufpos_t p) {
-        unsigned expected = 0;
-        if (!status.compare_exchange_strong(expected, NODE_COUNT, std::memory_order_relaxed, std::memory_order_relaxed))
+    inline bool prepare_produce(bool par) {
+        unsigned s = to_status({0, !par});
+        if (!status.compare_exchange_strong(s, to_status({NODE_COUNT, par}), std::memory_order_relaxed, std::memory_order_relaxed))
             return false;
-        //setting status first avoids race on other variables
+        // no data race as thread now has exclusive ownership
         size = 0;
-        pos = p;
-        ids[node_id] = {};
         return true;
     }
 
@@ -71,31 +80,29 @@ public:
         return is_rel;
     }
 
-    bool try_prepare_consume(bufpos_t expected_pos) {
-        unsigned s = status.load(std::memory_order_acquire);
-        if (!published(s) || pos != expected_pos)
+    bool try_prepare_consume(bool par) {
+        auto [c, p] = from_status(status.load(std::memory_order_acquire));
+        if (!produced(c) || p != par)
             return false;
         return true;
     }
- 
-    void prepare_consume(bufpos_t expected_pos) {
-        unsigned s;
+
+    void prepare_consume(bool par) { 
+        std::pair<unsigned, bool> cp;
         do {
-            s = status.load(std::memory_order_acquire);
-        }while(!published(s) || pos != expected_pos);
+            cp = from_status(status.load(std::memory_order_acquire));
+        } while (!produced(cp.first) || cp.second != par);
     }
 
     void consume() {
-        auto s = status.fetch_sub(1, std::memory_order_relaxed);
-        assert(!ids[node_id]);
-        assert(published(s));
-        ids[node_id] = user_id;
+        auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_relaxed));
+        assert(produced(c));
     }
 
-    void publish(bool is_r) {
+    void produce(bool is_r) {
         is_rel = is_r;
-        auto s = status.fetch_sub(1, std::memory_order_release);
-        assert(s==NODE_COUNT);
+        auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_release));
+        assert(c==NODE_COUNT);
     }
 
     const_iterator begin() const {
@@ -111,15 +118,15 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     using Data = std::array<Log, LOG_BUF_SIZE>;
     using iterator = Data::iterator;
 
-    bufpos_t head = 0;
+    BufPos head;
     //TODO: ensure locks are on separate cache lines
     std::mutex head_mtx;
-    bufpos_t tails[NODE_COUNT] = {0};
+    BufPos tails[NODE_COUNT];
     std::mutex tail_mtxs[NODE_COUNT] = {};
     Data logs;
 
-    inline Log *log_from_index(bufpos_t idx) {
-        return &logs[idx % LOG_BUF_SIZE];
+    inline Log *log_from_index(unsigned idx) {
+        return &logs[idx];
     }
 
 public:
@@ -134,10 +141,10 @@ public:
 
     Log *take_head() {
         std::lock_guard<std::mutex> g(head_mtx);
-        Log *head_log = log_from_index(head);
-        if (!head_log->prepare_write(head))
+        Log *head_log = log_from_index(head.idx);
+        if (!head_log->prepare_produce(head.par))
             return NULL;
-        head = next_pos(head);
+        head.next();
         return head_log;
     }
 
@@ -146,17 +153,17 @@ public:
     }
 
     Log *take_tail(unsigned nid) {
-        Log *tail = log_from_index(tails[nid]);
-        tail->prepare_consume(tails[nid]);
-        tails[nid] = next_pos(tails[nid]);
+        Log *tail = log_from_index(tails[nid].idx);
+        tail->prepare_consume(tails[nid].par);
+        tails[nid].next();
         return tail;
     }
 
     Log *try_take_tail(unsigned nid) {
-        Log *tail = log_from_index(tails[nid]);
-        if (!tail->try_prepare_consume(tails[nid]))
+        Log *tail = log_from_index(tails[nid].idx);
+        if (!tail->try_prepare_consume(tails[nid].par))
             return NULL;
-        tails[nid] = next_pos(tails[nid]);
+        tails[nid].next();
         return tail;
     }
 };

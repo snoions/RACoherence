@@ -17,7 +17,6 @@ static inline void do_flush(char *addr)
 #if FLUSH_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*ptr));
 #elif FLUSH_INST == CLFLUSHOPT
-    std::cout << "here " << addr << std::endl;
     __asm__ volatile(".byte 0x66; clflush %0" : "+m" (*ptr));
 #elif FLUSH_INST == CLWB
     __asm__ volatile(".byte 0x66; xsaveopt %0" : "+m" (*ptr));
