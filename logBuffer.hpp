@@ -15,6 +15,9 @@
 #include "logger.hpp"
 #include "vectorClock.hpp"
 
+extern thread_local unsigned node_id;
+extern thread_local unsigned user_id;
+
 // carry a parity bit along with index in the buffer to signal
 // when a tail wraps around
 struct BufPos {
@@ -28,9 +31,6 @@ struct BufPos {
     }
 };
 
-extern thread_local unsigned node_id;
-extern thread_local unsigned user_id;
-
 class alignas(CACHE_LINE_SIZE) Log {
     using Data = std::array<virt_addr_t, LOG_SIZE>;
     using iterator = Data::iterator;
@@ -38,8 +38,8 @@ class alignas(CACHE_LINE_SIZE) Log {
 
     // bits 0-30 stores how many nodes still need to produce/consume the log
     //  = NODE_COUNT => log to be produced, producer has exclusive ownership
-    //  = n in [1 .. NODE_COUNT-1] to be consumed by n nodes, consumer has shared ownership
-    // bit 31 stores parity from the buffer, in case the tail wraps around
+    //  = n in [1 .. NODE_COUNT-1] => log to be consumed by n nodes, consumer has shared ownership
+    // bit 31 stores parity bit from the buffer, in case the tail wraps around
     std::atomic<unsigned> status {to_status({0, false})};
     std::array<uintptr_t, LOG_SIZE> entries;
     size_t size = 0;
@@ -54,6 +54,10 @@ class alignas(CACHE_LINE_SIZE) Log {
         return p.first | ((unsigned)p.second<<31);
     }
 
+    inline bool produced(unsigned s) {
+        return s > 0 && s < NODE_COUNT;
+    }
+
 public:
 
     inline bool write(uintptr_t cl_addr) {
@@ -61,10 +65,6 @@ public:
             return false;
         entries[size++] = cl_addr;
         return true;
-    }
-
-    inline bool produced(unsigned s) {
-        return s > 0 && s < NODE_COUNT;
     }
 
     inline bool prepare_produce(bool par) {
@@ -105,6 +105,10 @@ public:
         assert(c==NODE_COUNT);
     }
 
+    inline bool produced() {
+        return produced(status.load());
+    }
+
     const_iterator begin() const {
         return entries.begin();
     }
@@ -139,6 +143,7 @@ public:
         return logs.end();
     }
 
+    //Alternative without head lock: could perform prepare_produce first. If it successes or fails because the head loghas been taken by other producers, then move head, otherwise if it fails to due to head log not being consumed, do not move head
     Log *take_head() {
         std::lock_guard<std::mutex> g(head_mtx);
         Log *head_log = log_from_index(head.idx);

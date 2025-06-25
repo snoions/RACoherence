@@ -14,7 +14,6 @@ static bool isAtomic(uintptr_t addr) {
 }
 
 struct AtomicMeta {
-    Log* log;
     VectorClock clock;
 };
 
@@ -38,16 +37,23 @@ struct CXLPool {
 using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;
 
 struct CacheInfo {
-    //TODO: fine-grained lock or atomics for each clock entry
     AtomicClock clock{};
-    CacheLineTracker tracker;
+    Monitor<CacheLineTracker> tracker;
+    // per-node stats
     std::atomic<unsigned> consumed_count {0};
+    std::atomic<unsigned> produced_count {0};
 
     void process_log(Log *log) {
-        for (auto invalid_cl: *log) {
-            //FIXME: causes segfault
-            tracker.mark_dirty(invalid_cl);
-        }
+        tracker.mod([=] (auto &self) {
+            for (auto invalid_cl: *log) {
+                //TODO: support batch update
+                self.mark_dirty(invalid_cl);
+            }
+        });
+    }
+
+    bool is_dirty(char *addr) {
+        return tracker.get([=](auto &self) { return self.is_dirty((virt_addr_t)addr);}); 
     }
 
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {
@@ -61,6 +67,7 @@ struct CacheInfo {
 
 struct NodeLocalMeta{
     CacheInfo cache_info;
+    // user_clock currently shared by all user threads on the same node, could also have smaller groups of user threads share clocks
     Monitor<VectorClock> user_clock;
 };
 
