@@ -33,8 +33,6 @@ class User {
     //user local data
     //TODO: change to a cache indexed by last few bytes of address, and flush upon eviction, like in Atlas
     std::unordered_set<virt_addr_t> dirty_cls;
-    virt_addr_t dirty_cl_table[DIRTY_CL_TABLE_SIZE] = {};
-    Log *curr_log = nullptr;
     //CXL mem shared data
     CXLMemMeta &cxl_meta;
     char *cxl_data;
@@ -51,44 +49,8 @@ class User {
         return num > 50? OP_STORE: OP_LOAD;
     };
 
-    void next_log() {
-       while(!(curr_log = cxl_meta.bufs[node_id].take_head())) {
-           //wait for available space
-           sleep(0);
-       }
-    }
-
-    void write_entry(virt_addr_t cl) {
-        if (!curr_log->write(cl)) {
-            curr_log->produce(false); 
-            next_log();
-            assert(curr_log->write(cl));
-            LOG_INFO("node " << node_id << " produce log " << ++cache_info.produced_count);
-        }
-        do_flush((char *)cl);
-    }
-
-    void write_to_log(virt_addr_t cl) {
-        auto idx = (cl >> CACHE_LINE_SHIFT) & (DIRTY_CL_TABLE_SIZE-1);
-        if(dirty_cl_table[idx])
-            write_entry(cl);
-        dirty_cl_table[idx] = cl;
-    }
-
-    void release_to_log() {
-        for (int i = 0; i < DIRTY_CL_TABLE_SIZE; i++)
-            if (dirty_cl_table[i])
-                write_entry(dirty_cl_table[i]);
-        flush_fence();
-        curr_log->produce(true); 
-        next_log();
-        LOG_INFO("node " << node_id << " produce log " << ++cache_info.produced_count);
-    }
-
 public:
-    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {
-        next_log();
-    }
+    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
 
     //should support taking multiple heads for more flexibility
     Log *write_to_log(bool is_release) {
@@ -115,44 +77,25 @@ public:
 
         virt_addr_t cl_addr = (virt_addr_t)addr & CACHE_LINE_MASK;
         
-        if (is_release) {
-            const auto &clock = user_clock.mod([] (auto &self) {
-                self.tick(node_id);
-                return self;
-            }); 
-            // no need to flush and write log entry as atomic locations 
-            // are in hardware cache-coherent memory
-            release_to_log();
-            LOG_INFO("node " << node_id << " release " << (void*)addr << ", clock=" << clock);
-            size_t off = addr - cxl_data;
-            cxl_meta.atmap[off].mod([&](auto &self) {
-                self.clock.merge(clock);
-            });
-        } else 
-            write_to_log(cl_addr);
+        dirty_cls.insert(cl_addr);
+        //write to log either on release store or on reaching log size limit
+        if(is_release || dirty_cls.size() == LOG_SIZE) {
+            Log *curr_log = write_to_log(is_release);                    
+            std::stringstream ss;
+            if(is_release) {
+                const auto &clock = user_clock.mod([] (auto &self) {
+                    self.tick(node_id);
+                    return self;
+                });
+                ss << " release at " << (void *)addr << ", clock=" << clock << " ";
+                size_t off = addr - cxl_data;
+                cxl_meta.atmap[off].mod([&](auto &self) {
+                    self.clock.merge(clock);
+                });
+            }
 
-
-        //dirty_cls.insert(cl_addr);
-        ////write to log either on release store or on reaching log size limit
-        //if(is_release || dirty_cls.size() == LOG_SIZE) {
-        //    Log *curr_log = write_to_log(is_release);                    
-        //    std::stringstream ss;
-        //    if(is_release) {
-        //        const auto &clock = user_clock.mod([] (auto &self) {
-        //            self.tick(node_id);
-        //            return self;
-        //        });
-        //        ss << " release at " << (void *)addr << ", clock=" << clock << " ";
-        //        size_t off = addr - cxl_data;
-        //        cxl_meta.atmap[off].mod([&](auto &self) {
-        //            self.clock.merge(clock);
-        //        });
-        //    }
-
-        //    LOG_INFO("node " << node_id << ss.str() << "produce log " << cache_info.produced_count++);
-        //}
-        
-
+            LOG_INFO("node " << node_id << ss.str() << "produce log " << cache_info.produced_count++);
+        }
     }
 
     void catch_up_cache_clock(const VectorClock &target) {
