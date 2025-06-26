@@ -5,15 +5,10 @@
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
+#include <optional>
 #include <mutex>
-#include <iostream>
-#include <thread>
-
-#include "unistd.h"
 
 #include "config.hpp"
-#include "logger.hpp"
-#include "vectorClock.hpp"
 
 // carry a parity bit along with index in the buffer to signal
 // when a tail wraps around
@@ -127,8 +122,8 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     std::mutex tail_mtxs[NODE_COUNT] = {};
     Data logs;
 
-    inline Log *log_from_index(unsigned idx) {
-        return &logs[idx];
+    inline Log &log_from_index(unsigned idx) {
+        return logs[idx];
     }
 
 public:
@@ -141,33 +136,33 @@ public:
         return logs.end();
     }
 
-    //Alternative without head lock: could perform prepare_produce first. If it successes or fails because the head loghas been taken by other producers, then move head, otherwise if it fails to due to head log not being consumed, do not move head
+    //Alternative without head lock: could perform prepare_produce first. If it successes or fails because the head log has been taken by other producers, then move head, otherwise if it fails to due to head log not being consumed, do not move head
     Log *take_head() {
         std::lock_guard<std::mutex> g(head_mtx);
-        Log *head_log = log_from_index(head.idx);
-        if (!head_log->prepare_produce(head.par))
+        Log &head_log = log_from_index(head.idx);
+        if (!head_log.prepare_produce(head.par))
             return NULL;
         head.next();
-        return head_log;
+        return &head_log;
     }
 
     std::mutex &get_tail_mutex(unsigned nid) {
         return tail_mtxs[nid];
     }
 
-    Log *take_tail(unsigned nid) {
-        Log *tail = log_from_index(tails[nid].idx);
-        tail->prepare_consume(tails[nid].par);
+    Log &take_tail(unsigned nid) {
+        Log &tail = log_from_index(tails[nid].idx);
+        tail.prepare_consume(tails[nid].par);
         tails[nid].next();
         return tail;
     }
 
     Log *try_take_tail(unsigned nid) {
-        Log *tail = log_from_index(tails[nid].idx);
-        if (!tail->try_prepare_consume(tails[nid].par))
+        Log &tail = log_from_index(tails[nid].idx);
+        if (!tail.try_prepare_consume(tails[nid].par))
             return NULL;
         tails[nid].next();
-        return tail;
+        return &tail;
     }
 };
 

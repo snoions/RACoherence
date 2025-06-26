@@ -37,7 +37,7 @@ public:
                 if (!tail)
                     continue;
 
-                cache_info.process_log(tail);
+                cache_info.process_log(*tail);
 
                 LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i);
                 if (tail->is_release()) {

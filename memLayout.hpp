@@ -8,6 +8,7 @@
 #include "cacheTracker.hpp"
 #include "logBuffer.hpp"
 #include "util.hpp"
+#include "vectorClock.hpp"
     
 static bool isAtomic(uintptr_t addr) {
     return addr < CXLMEM_ATOMIC_RANGE;
@@ -43,9 +44,9 @@ struct CacheInfo {
     std::atomic<unsigned> consumed_count {0};
     std::atomic<unsigned> produced_count {0};
 
-    void process_log(Log *log) {
-        tracker.mod([=] (auto &self) {
-            for (auto invalid_cl: *log) {
+    void process_log(Log &log) {
+        tracker.mod([&] (auto &self) {
+            for (auto invalid_cl: log) {
                 //TODO: support batch update
                 self.mark_dirty(invalid_cl);
             }

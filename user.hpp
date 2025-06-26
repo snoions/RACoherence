@@ -127,11 +127,11 @@ public:
 
             while(val < target[i]) {
                 //must not be NULL
-                Log *tail = cxl_meta.bufs[i].take_tail(node_id);
+                Log &tail = cxl_meta.bufs[i].take_tail(node_id);
                 cache_info.process_log(tail);
-                if (tail->is_release())
+                if (tail.is_release())
                     val = cache_info.update_clock(i);
-                tail->consume();
+                tail.consume();
                 LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i);
             }
 
