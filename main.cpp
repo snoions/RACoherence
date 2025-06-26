@@ -7,8 +7,6 @@
 #include "memLayout.hpp"
 #include "user.hpp"
 
-thread_local unsigned node_id;
-thread_local unsigned user_id;
 std::atomic<bool> complete {false};
 CXLPool cxl_pool;
 PerNode<NodeLocalMeta> node_local_meta;
@@ -20,9 +18,7 @@ int main() {
 #endif
     for (unsigned i=0; i<NODE_COUNT; i++) {
         auto run_user = [=](unsigned uid) {
-            node_id = i;
-            user_id = uid;
-            User user(cxl_pool, node_local_meta[node_id]);
+            User user(i, uid, cxl_pool, node_local_meta[i]);
             user.run();
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
@@ -31,9 +27,7 @@ int main() {
 #ifndef PROTOCOL_OFF
     for (unsigned i=0; i<NODE_COUNT; i++) {
         auto run_cacheAgent = [=](){
-            node_id = i;
-            user_id = WORKER_PER_NODE;
-            CacheAgent cacheAgent(cxl_pool, node_local_meta[node_id]);
+            CacheAgent cacheAgent(i, cxl_pool, node_local_meta[i]);
             cacheAgent.run();
         };
         cacheAgent_group.push_back(std::thread{run_cacheAgent});

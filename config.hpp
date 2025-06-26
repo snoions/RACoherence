@@ -20,13 +20,15 @@ constexpr unsigned TOTAL_WRITES = 1000 * (1ull << 6);
 
 constexpr virt_addr_t CXLMEM_RANGE = 1ull << 10; // 1KB, small size to simulate locality
 constexpr virt_addr_t CXLMEM_ATOMIC_RANGE = 1ull << 4;
-constexpr virt_addr_t ATOMIC_PLAIN_RATIO = 1ull << 8;
+constexpr virt_addr_t ATOMIC_PLAIN_RATIO = 1ull << 6;
 
 // whether user threads may consume logs to unblock itself, at the expense of contention with cache agent
-//#define USER_CONSUME_LOGS
-
+#define USER_CONSUME_LOGS
 
 // turn off RACoherence protocol, use raw stores and loads
 //#define PROTOCOL_OFF
+
+// whether to use sequential workload
+#define SEQ_WORKLOAD
 
 #endif

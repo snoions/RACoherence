@@ -14,15 +14,28 @@
 #include "logger.hpp"
 #include "memLayout.hpp"
 
-constexpr unsigned DIRTY_CL_TABLE_SIZE = LOG_SIZE;
+extern thread_local unsigned node_id;
 
-static size_t genRandOffset(size_t range) {
+static size_t genRandOffset(size_t range, size_t align) {
     std::random_device rd;
     std::uniform_int_distribution<size_t> dist(0, range-1);
-    return (dist(rd)/8) * 8;
+    return (dist(rd)/align) * align;
 }
 
-extern thread_local unsigned node_id;
+struct SeqOffsetGen {
+    size_t range;
+    size_t stride;
+    size_t curr;
+
+    SeqOffsetGen(size_t r, size_t s): range(r), stride(s), curr(0) {};
+
+    size_t gen() {
+        auto old = curr;
+        curr = (curr+1)%range;
+        return curr;
+    }
+};
+
 class User {
     enum Op {
         OP_STORE, 
@@ -32,6 +45,8 @@ class User {
     
     //user local data
     //TODO: change to a cache indexed by last few bytes of address, and flush upon eviction, like in Atlas
+    unsigned node_id;
+    unsigned user_id;
     std::unordered_set<virt_addr_t> dirty_cls;
     //CXL mem shared data
     CXLMemMeta &cxl_meta;
@@ -50,7 +65,7 @@ class User {
     };
 
 public:
-    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
+    User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), node_id(nid), user_id(uid), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
 
     //should support taking multiple heads for more flexibility
     Log *write_to_log(bool is_release) {
@@ -83,7 +98,7 @@ public:
             Log *curr_log = write_to_log(is_release);                    
             std::stringstream ss;
             if(is_release) {
-                const auto &clock = user_clock.mod([] (auto &self) {
+                const auto &clock = user_clock.mod([=] (auto &self) {
                     self.tick(node_id);
                     return self;
                 });
@@ -172,22 +187,17 @@ public:
         return ret;
     }
 
-    void handle_store_raw(char *addr, bool is_release) {
+    inline void handle_store_raw(char *addr, bool is_release) {
         if (is_release) {
             ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
-            do_flush((char *)addr); 
             flush_fence();
-            cache_info.produced_count++;
         } else {
             *((volatile char *)addr) = 0;
             do_flush((char *)addr);
-            if (write_count % LOG_SIZE==0) {
-                cache_info.produced_count++;
-            }
         }
     };
 
-    char handle_load_raw(char *addr, bool is_acquire) {
+    inline char handle_load_raw(char *addr, bool is_acquire) {
         char ret;
         do_invalidate(addr);
         invalidate_fence();
@@ -201,9 +211,16 @@ public:
     };
 
     void run() {
+        SeqOffsetGen plain_gen(CXLMEM_RANGE, 8);
+        SeqOffsetGen atomic_gen(CXLMEM_ATOMIC_RANGE, 8);
+
         while(write_count < TOTAL_WRITES) {
             bool is_atomic = (rand() % ATOMIC_PLAIN_RATIO == 0);
-            size_t off = genRandOffset(is_atomic? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE);
+#ifdef SEQ_WORKLOAD
+            size_t off = is_atomic? atomic_gen.gen(): plain_gen.gen();
+#else
+            size_t off = genRandOffset(is_atomic? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE, 8);
+#endif
             Op user_op = genRandOp();
             switch (user_op) {
                 case OP_STORE: {

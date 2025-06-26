@@ -21,7 +21,7 @@ struct AtomicMeta {
 using AtomicMap = std::array<Monitor<AtomicMeta>, CXLMEM_ATOMIC_RANGE>;
 
 struct CXLMemMeta {
-    PerNode<LogBuffer> bufs;
+    PerNode<LogBuffer> bufs = {};
     //TODO: support dynamically allocated atomic locs
     AtomicMap atmap = {};
 };

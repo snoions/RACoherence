@@ -15,9 +15,6 @@
 #include "logger.hpp"
 #include "vectorClock.hpp"
 
-extern thread_local unsigned node_id;
-extern thread_local unsigned user_id;
-
 // carry a parity bit along with index in the buffer to signal
 // when a tail wraps around
 struct BufPos {
@@ -32,7 +29,8 @@ struct BufPos {
 };
 
 class alignas(CACHE_LINE_SIZE) Log {
-    using Data = std::array<virt_addr_t, LOG_SIZE>;
+    using Entry = virt_addr_t;
+    using Data = std::array<Entry, LOG_SIZE>;
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
 

@@ -1,6 +1,0 @@
-
-1. Write perf tests, need to consider the following factors that affects concurrency/contention:
-    a. addr range, affects contention on CacheLineTracker 
-    b. buffer size, affects contention on LogBuffer concurrecny
-    c. ratio of load/store and atomic/non-atomic, affects contention on clocks
-2. Eval using a CXL simulator.
