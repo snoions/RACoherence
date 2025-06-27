@@ -14,34 +14,32 @@
 #include "logger.hpp"
 #include "memLayout.hpp"
 
-extern thread_local unsigned node_id;
+enum UserOp {
+    OP_STORE,
+    OP_LOAD,
+    OP_END
+};
 
-static size_t genRandOffset(size_t range, size_t align) {
+static inline size_t genRandOffset(size_t range, size_t align) {
     std::random_device rd;
     std::uniform_int_distribution<size_t> dist(0, range-1);
     return (dist(rd)/align) * align;
 }
 
-struct SeqOffsetGen {
-    size_t range;
-    size_t stride;
-    size_t curr;
+static inline UserOp genRandOp() {
+    int num = rand() % 100;
+    return num > 50? OP_STORE: OP_LOAD;
+}
 
-    SeqOffsetGen(size_t r, size_t s): range(r), stride(s), curr(0) {};
+static inline size_t genSeqOffset(size_t range, size_t align, size_t index) {
+    return (align * index) %range;
+}
 
-    size_t gen() {
-        auto old = curr;
-        curr = (curr+1)%range;
-        return curr;
-    }
-};
+static inline UserOp genSeqOp(size_t total, size_t index) {
+    return index > total/2? OP_STORE: OP_LOAD;
+}
 
 class User {
-    enum Op {
-        OP_STORE, 
-        OP_LOAD,
-        OP_END
-    };
     
     //user local data
     //TODO: change to a cache indexed by last few bytes of address, and flush upon eviction, like in Atlas
@@ -58,11 +56,6 @@ class User {
     unsigned write_count = 0;
     unsigned read_count = 0;
     unsigned invalidate_count = 0;
-
-    static Op genRandOp() {
-        int num = rand() % 100;
-        return num > 50? OP_STORE: OP_LOAD;
-    };
 
 public:
     User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), node_id(nid), user_id(uid), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
@@ -211,17 +204,16 @@ public:
     };
 
     void run() {
-        SeqOffsetGen plain_gen(CXLMEM_RANGE, 8);
-        SeqOffsetGen atomic_gen(CXLMEM_ATOMIC_RANGE, 8);
-
-        while(write_count < TOTAL_WRITES) {
-            bool is_atomic = (rand() % ATOMIC_PLAIN_RATIO == 0);
+        for (int i =0; i < TOTAL_OPS; i++) {
 #ifdef SEQ_WORKLOAD
-            size_t off = is_atomic? atomic_gen.gen(): plain_gen.gen();
+            bool is_atomic = (i % ATOMIC_PLAIN_RATIO == 0);
+            UserOp user_op = genSeqOp(TOTAL_OPS, i);
+            size_t off = genSeqOffset(is_atomic ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE, 8, i);
 #else
+            bool is_atomic = (rand() % ATOMIC_PLAIN_RATIO == 0);
+            UserOp user_op = genRandOp();
             size_t off = genRandOffset(is_atomic? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE, 8);
 #endif
-            Op user_op = genRandOp();
             switch (user_op) {
                 case OP_STORE: {
                     write_count++;

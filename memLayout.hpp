@@ -9,10 +9,6 @@
 #include "logBuffer.hpp"
 #include "util.hpp"
 #include "vectorClock.hpp"
-    
-static bool isAtomic(uintptr_t addr) {
-    return addr < CXLMEM_ATOMIC_RANGE;
-}
 
 struct AtomicMeta {
     VectorClock clock;
@@ -39,6 +35,9 @@ using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;
 
 struct CacheInfo {
     AtomicClock clock{};
+    // data-race on cach line tracker entries should be ruled out
+    // by cache line race freedom. Should be able to reduce or
+    // eliminate locking based on this assumption
     Monitor<CacheLineTracker> tracker;
     // per-node stats
     std::atomic<unsigned> consumed_count {0};

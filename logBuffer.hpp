@@ -33,6 +33,7 @@ class alignas(CACHE_LINE_SIZE) Log {
     //  = NODE_COUNT => log to be produced, producer has exclusive ownership
     //  = n in [1 .. NODE_COUNT-1] => log to be consumed by n nodes, consumer has shared ownership
     // bit 31 stores parity bit from the buffer, in case the tail wraps around
+    // default parity must be opposite of BufPos's default parity
     std::atomic<unsigned> status {to_status({0, false})};
     std::array<uintptr_t, LOG_SIZE> entries;
     size_t size = 0;
@@ -115,9 +116,8 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     using Data = std::array<Log, LOG_BUF_SIZE>;
     using iterator = Data::iterator;
 
-    BufPos tail;
-    //TODO: ensure locks are on separate cache lines
-    std::mutex tail_mtx;
+    std::atomic<BufPos> tail;
+    //TODO: put locks are on separate cache lines
     BufPos heads[NODE_COUNT];
     std::mutex head_mtxs[NODE_COUNT] = {};
     Data logs;
@@ -136,13 +136,14 @@ public:
         return logs.end();
     }
 
-    //Alternative without tail lock: could perform prepare_produce first. If it successes or fails because the head log has been taken by other producers, then move head, otherwise if it fails to due to head log not being consumed, do not move head
+    //could also use a lock, performance seems similar
     Log *take_tail() {
-        std::lock_guard<std::mutex> g(tail_mtx);
-        Log &log = log_from_index(tail.idx);
-        if (!log.prepare_produce(tail.par))
+        auto t = tail.load(std::memory_order_acquire);
+        Log &log = log_from_index(t.idx);
+        if (!log.prepare_produce(t.par))
             return NULL;
-        tail.next();
+        t.next();
+        tail.store(t,std::memory_order_release);
         return &log;
     }
 
