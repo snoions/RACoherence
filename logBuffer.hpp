@@ -115,11 +115,11 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     using Data = std::array<Log, LOG_BUF_SIZE>;
     using iterator = Data::iterator;
 
-    BufPos head;
+    BufPos tail;
     //TODO: ensure locks are on separate cache lines
-    std::mutex head_mtx;
-    BufPos tails[NODE_COUNT];
-    std::mutex tail_mtxs[NODE_COUNT] = {};
+    std::mutex tail_mtx;
+    BufPos heads[NODE_COUNT];
+    std::mutex head_mtxs[NODE_COUNT] = {};
     Data logs;
 
     inline Log &log_from_index(unsigned idx) {
@@ -136,33 +136,33 @@ public:
         return logs.end();
     }
 
-    //Alternative without head lock: could perform prepare_produce first. If it successes or fails because the head log has been taken by other producers, then move head, otherwise if it fails to due to head log not being consumed, do not move head
-    Log *take_head() {
-        std::lock_guard<std::mutex> g(head_mtx);
-        Log &head_log = log_from_index(head.idx);
-        if (!head_log.prepare_produce(head.par))
+    //Alternative without tail lock: could perform prepare_produce first. If it successes or fails because the head log has been taken by other producers, then move head, otherwise if it fails to due to head log not being consumed, do not move head
+    Log *take_tail() {
+        std::lock_guard<std::mutex> g(tail_mtx);
+        Log &log = log_from_index(tail.idx);
+        if (!log.prepare_produce(tail.par))
             return NULL;
-        head.next();
-        return &head_log;
+        tail.next();
+        return &log;
     }
 
-    std::mutex &get_tail_mutex(unsigned nid) {
-        return tail_mtxs[nid];
+    std::mutex &get_head_mutex(unsigned nid) {
+        return head_mtxs[nid];
     }
 
-    Log &take_tail(unsigned nid) {
-        Log &tail = log_from_index(tails[nid].idx);
-        tail.prepare_consume(tails[nid].par);
-        tails[nid].next();
-        return tail;
+    Log &take_head(unsigned nid) {
+        Log &log = log_from_index(heads[nid].idx);
+        log.prepare_consume(heads[nid].par);
+        heads[nid].next();
+        return log;
     }
 
-    Log *try_take_tail(unsigned nid) {
-        Log &tail = log_from_index(tails[nid].idx);
-        if (!tail.try_prepare_consume(tails[nid].par))
+    Log *try_take_head(unsigned nid) {
+        Log &log = log_from_index(heads[nid].idx);
+        if (!log.try_prepare_consume(heads[nid].par))
             return NULL;
-        tails[nid].next();
-        return &tail;
+        heads[nid].next();
+        return &log;
     }
 };
 

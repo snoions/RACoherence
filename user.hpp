@@ -70,7 +70,7 @@ public:
     //should support taking multiple heads for more flexibility
     Log *write_to_log(bool is_release) {
         Log *curr_log;
-        while(!(curr_log = cxl_meta.bufs[node_id].take_head()))
+        while(!(curr_log = cxl_meta.bufs[node_id].take_tail()))
             //wait for available space
             sleep(0);
         
@@ -85,11 +85,6 @@ public:
     }
 
     void handle_store(char *addr, bool is_release) {
-        if (is_release)
-            ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
-        else
-            *((volatile char *)addr) = 0;
-
         virt_addr_t cl_addr = (virt_addr_t)addr & CACHE_LINE_MASK;
         
         dirty_cls.insert(cl_addr);
@@ -111,6 +106,11 @@ public:
 
             LOG_INFO("node " << node_id << ss.str() << "produce log " << cache_info.produced_count++);
         }
+
+        if (is_release)
+            ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
+        else
+            *((volatile char *)addr) = 0;
     }
 
     void catch_up_cache_clock(const VectorClock &target) {
@@ -121,17 +121,17 @@ public:
             if (val >= target[i])
                 continue;
 
-            std::unique_lock<std::mutex> l(cxl_meta.bufs[i].get_tail_mutex(node_id));
+            std::unique_lock<std::mutex> l(cxl_meta.bufs[i].get_head_mutex(node_id));
             //check again after wake up
             val = cache_info.get_clock(i);
 
             while(val < target[i]) {
                 //must not be NULL
-                Log &tail = cxl_meta.bufs[i].take_tail(node_id);
-                cache_info.process_log(tail);
-                if (tail.is_release())
+                Log &log = cxl_meta.bufs[i].take_head(node_id);
+                cache_info.process_log(log);
+                if (log.is_release())
                     val = cache_info.update_clock(i);
-                tail.consume();
+                log.consume();
                 LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i);
             }
 
