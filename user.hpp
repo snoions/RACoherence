@@ -35,8 +35,8 @@ static inline size_t genSeqOffset(size_t range, size_t align, size_t index) {
     return (align * index) %range;
 }
 
-static inline UserOp genSeqOp(size_t total, size_t index) {
-    return index > total/2? OP_STORE: OP_LOAD;
+static inline UserOp genSeqOp(size_t index) {
+    return index%2 == 0? OP_STORE: OP_LOAD;
 }
 
 class User {
@@ -207,13 +207,15 @@ public:
         for (int i =0; i < TOTAL_OPS; i++) {
 #ifdef SEQ_WORKLOAD
             bool is_atomic = (i % ATOMIC_PLAIN_RATIO == 0);
-            UserOp user_op = genSeqOp(TOTAL_OPS, i);
+            UserOp user_op = genSeqOp(i);
             size_t off = genSeqOffset(is_atomic ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE, 8, i);
 #else
+            // random version is not data-race free
             bool is_atomic = (rand() % ATOMIC_PLAIN_RATIO == 0);
             UserOp user_op = genRandOp();
             size_t off = genRandOffset(is_atomic? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE, 8);
 #endif
+            //TODO: data-race-free workload based on synchronization (locked region?)
             switch (user_op) {
                 case OP_STORE: {
                     write_count++;

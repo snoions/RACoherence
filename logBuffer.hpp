@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
-#include <optional>
 #include <mutex>
 
 #include "config.hpp"
