@@ -62,8 +62,9 @@ public:
 
     //should support taking multiple heads for more flexibility
     Log *write_to_log(bool is_release) {
+        auto &my_buf = cxl_meta.bufs[node_id];
         Log *curr_log;
-        while(!(curr_log = cxl_meta.bufs[node_id].take_tail()))
+        while(!(curr_log = my_buf.get_new_log()))
             //wait for available space
             sleep(0);
         
@@ -72,7 +73,7 @@ public:
             do_flush((char *)cl); 
         }
         flush_fence();
-        curr_log->produce(is_release); 
+        my_buf.produce_tail(curr_log, is_release); 
         dirty_cls.clear();
         return curr_log;
     }
@@ -114,17 +115,18 @@ public:
             if (val >= target[i])
                 continue;
 
-            std::unique_lock<std::mutex> l(cxl_meta.bufs[i].get_head_mutex(node_id));
+            auto &curr_buf = cxl_meta.bufs[i];
+            std::unique_lock<std::mutex> l(curr_buf.get_head_mutex(node_id));
             //check again after wake up
             val = cache_info.get_clock(i);
 
             while(val < target[i]) {
-                //must not be NULL
-                Log &log = cxl_meta.bufs[i].take_head(node_id);
-                cache_info.process_log(log);
-                if (log.is_release())
+                Log *log = curr_buf.take_head(node_id);
+                assert(log);
+                cache_info.process_log(*log);
+                if (log->is_release())
                     val = cache_info.update_clock(i);
-                log.consume();
+                curr_buf.consume_head(log);
                 LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i);
             }
 

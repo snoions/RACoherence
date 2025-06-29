@@ -33,7 +33,7 @@ public:
                     continue;
 #endif
 
-                Log* log = bufs[i].try_take_head(node_id);
+                Log* log = bufs[i].take_head(node_id);
                 if (!log)
                     continue;
 
@@ -43,7 +43,7 @@ public:
                 if (log->is_release()) {
                     cache_info.update_clock(i);
                 }
-                log->consume();
+                bufs[i].consume_head(log);
             }
         }
     }

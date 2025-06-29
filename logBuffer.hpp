@@ -5,55 +5,43 @@
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
-#include <optional>
+#include <iostream>
 #include <mutex>
 
 #include "config.hpp"
 
-// carry a parity bit along with index in the buffer to signal
-// when a tail wraps around
-struct BufPos {
-    unsigned idx = 0;
-    bool par = true;
-
-    void next() {
-        idx = (idx+1) % LOG_BUF_SIZE;
-        if (idx == 0)
-            par = !par;
-    }
-};
+class LogBuffer;
 
 class alignas(CACHE_LINE_SIZE) Log {
+    friend LogBuffer;
+
     using Entry = virt_addr_t;
     using Data = std::array<Entry, LOG_SIZE>;
     using iterator = Data::iterator;
     using const_iterator = Data::const_iterator;
 
-    // bits 0-30 stores how many nodes still need to produce/consume the log
-    //  = NODE_COUNT => log to be produced, producer has exclusive ownership
-    //  = n in [1 .. NODE_COUNT-1] => log to be consumed by n nodes, consumer has shared ownership
-    // bit 31 stores parity bit from the buffer, in case the tail wraps around
-    // default parity must be opposite of BufPos's default parity
-    std::atomic<unsigned> status {to_status({0, false})};
-    std::array<uintptr_t, LOG_SIZE> entries;
+    std::atomic<unsigned> ref_cn {0};
+    std::array<uintptr_t, LOG_SIZE> entries = {};
     size_t size = 0;
-    // whether is a release write
-    bool is_rel;
+    std::atomic<Log *> next {nullptr};
+    bool is_rel = false;
 
-    inline constexpr std::pair<unsigned, bool> from_status(unsigned s) {
-        return {s & ~(1<<31), s & (1 <<31)};
+    unsigned is_produced() {
+        return ref_cn > 0;
     }
 
-    inline constexpr unsigned to_status(std::pair<unsigned, bool> p) {
-        return p.first | ((unsigned)p.second<<31);
+    void produce(bool r) {
+        is_rel = r;
+        ref_cn = 2*NODE_COUNT-1; //tail + heads + user refs
     }
 
-    inline bool produced(unsigned s) {
-        return s > 0 && s < NODE_COUNT;
+    unsigned consume() {
+        assert(is_produced());
+        auto prev = ref_cn.fetch_sub(1, std::memory_order_relaxed);
+        return prev-1 == 0;
     }
 
 public:
-
     inline bool write(uintptr_t cl_addr) {
         if (size == LOG_SIZE)
             return false;
@@ -61,46 +49,8 @@ public:
         return true;
     }
 
-    inline bool prepare_produce(bool par) {
-        unsigned s = to_status({0, !par});
-        if (!status.compare_exchange_strong(s, to_status({NODE_COUNT, par}), std::memory_order_relaxed, std::memory_order_relaxed))
-            return false;
-        // no data race as thread now has exclusive ownership
-        size = 0;
-        return true;
-    }
-
     bool is_release() {
         return is_rel;
-    }
-
-    bool try_prepare_consume(bool par) {
-        auto [c, p] = from_status(status.load(std::memory_order_acquire));
-        if (!produced(c) || p != par)
-            return false;
-        return true;
-    }
-
-    void prepare_consume(bool par) { 
-        std::pair<unsigned, bool> cp;
-        do {
-            cp = from_status(status.load(std::memory_order_acquire));
-        } while (!produced(cp.first) || cp.second != par);
-    }
-
-    void consume() {
-        auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_relaxed));
-        assert(produced(c));
-    }
-
-    void produce(bool is_r) {
-        is_rel = is_r;
-        auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_release));
-        assert(c==NODE_COUNT);
-    }
-
-    inline bool produced() {
-        return produced(status.load());
     }
 
     const_iterator begin() const {
@@ -113,57 +63,58 @@ public:
 };
 
 class alignas(CACHE_LINE_SIZE) LogBuffer {
-    using Data = std::array<Log, LOG_BUF_SIZE>;
-    using iterator = Data::iterator;
 
-    std::atomic<BufPos> tail;
-    //TODO: put locks are on separate cache lines
-    BufPos heads[NODE_COUNT];
+    Log *sentinel;
+    std::mutex tail_mtx;
+    Log* tail;
+    Log *heads[NODE_COUNT];
+    //TODO: put locks on separate cache lines
     std::mutex head_mtxs[NODE_COUNT] = {};
-    Data logs;
-
-    inline Log &log_from_index(unsigned idx) {
-        return logs[idx];
-    }
 
 public:
 
-    inline iterator begin() {
-        return logs.begin();
+    LogBuffer() {
+        sentinel = get_new_log();
+        sentinel->produce(false);
+        tail = sentinel;
+        for (int i=0; i < NODE_COUNT; i++)
+            heads[i] = sentinel;
     }
 
-    inline iterator end() {
-        return logs.end();
+    //only correct if NODE_COUNT > 1
+    ~LogBuffer() { delete sentinel; }
+
+    Log *get_new_log() {
+        //TODO: allocate from a dedicated buffer from CXL hardware coherent region
+        return new Log(); 
     }
 
-    //could also use a lock, performance seems similar
-    Log *take_tail() {
-        auto t = tail.load(std::memory_order_acquire);
-        Log &log = log_from_index(t.idx);
-        if (!log.prepare_produce(t.par))
-            return NULL;
-        t.next();
-        tail.store(t,std::memory_order_release);
-        return &log;
+    void produce_tail(Log *l, bool r) {
+        std::unique_lock<std::mutex> lk(tail_mtx);
+        l->produce(r);
+        tail->next.store(l, std::memory_order_release);
+        if (tail->consume())
+            delete tail;
+        tail = l;
     }
 
     std::mutex &get_head_mutex(unsigned nid) {
         return head_mtxs[nid];
     }
 
-    Log &take_head(unsigned nid) {
-        Log &log = log_from_index(heads[nid].idx);
-        log.prepare_consume(heads[nid].par);
-        heads[nid].next();
-        return log;
+    Log *take_head(unsigned nid) {
+        auto next = heads[nid]->next.load(std::memory_order_acquire);
+        if (!next)
+            return nullptr;
+        if (heads[nid]->consume())
+            delete heads[nid];
+        heads[nid] = next;
+        return next;
     }
 
-    Log *try_take_head(unsigned nid) {
-        Log &log = log_from_index(heads[nid].idx);
-        if (!log.try_prepare_consume(heads[nid].par))
-            return NULL;
-        heads[nid].next();
-        return &log;
+    void consume_head(Log *l) {
+        if (l->consume())
+            delete l;
     }
 };
 
