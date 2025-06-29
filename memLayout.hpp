@@ -36,24 +36,21 @@ using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;
 struct CacheInfo {
     AtomicClock clock{};
     // data-race on cach line tracker entries should be ruled out
-    // by cache line race freedom. Should be able to reduce or
-    // eliminate locking based on this assumption
-    Monitor<CacheLineTracker> tracker;
+    // by cache line race freedom.
+    CacheLineTracker tracker;
     // per-node stats
     std::atomic<unsigned> consumed_count {0};
     std::atomic<unsigned> produced_count {0};
 
     void process_log(Log &log) {
-        tracker.mod([&] (auto &self) {
-            for (auto invalid_cl: log) {
-                //TODO: support batch update
-                self.mark_dirty(invalid_cl);
-            }
-        });
+        for (auto invalid_cl: log) {
+            //TODO: support batch update
+            tracker.mark_dirty(invalid_cl);
+        }
     }
 
     bool is_dirty(char *addr) {
-        return tracker.get([=](auto &self) { return self.is_dirty((virt_addr_t)addr);}); 
+        return tracker.is_dirty((virt_addr_t)addr); 
     }
 
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {
