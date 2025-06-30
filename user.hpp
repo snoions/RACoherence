@@ -4,7 +4,6 @@
 #include <iostream>
 #include <sstream>
 #include <random>
-#include <unordered_set>
 
 #include <unistd.h>
 
@@ -13,6 +12,8 @@
 #include "logBuffer.hpp"
 #include "logger.hpp"
 #include "memLayout.hpp"
+
+constexpr unsigned DIRTY_CL_TABLE_SIZE = LOG_SIZE/2;
 
 enum UserOp {
     OP_STORE,
@@ -42,10 +43,10 @@ static inline UserOp genSeqOp(size_t index) {
 class User {
     
     //user local data
-    //TODO: change to a cache indexed by last few bytes of address, and flush upon eviction, like in Atlas
     unsigned node_id;
     unsigned user_id;
-    std::unordered_set<virt_addr_t> dirty_cls;
+    virt_addr_t dirty_cl_table[DIRTY_CL_TABLE_SIZE] = {};
+    Log *curr_log = nullptr;
     //CXL mem shared data
     CXLMemMeta &cxl_meta;
     char *cxl_data;
@@ -57,54 +58,62 @@ class User {
     unsigned read_count = 0;
     unsigned invalidate_count = 0;
 
-public:
-    User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), node_id(nid), user_id(uid), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
-
-    //should support taking multiple heads for more flexibility
-    Log *write_to_log(bool is_release) {
-        auto &my_buf = cxl_meta.bufs[node_id];
-        Log *curr_log;
-        while(!(curr_log = my_buf.get_new_log()))
+    void wait_for_next_log() {
+        while(!(curr_log = cxl_meta.bufs[node_id].get_new_log())) {
             //wait for available space
             sleep(0);
-        
-        for(auto cl: dirty_cls) {
-            curr_log->write(cl);
-            do_flush((char *)cl); 
         }
+     
+    }
+    void write_entry(virt_addr_t cl) {
+        if (!curr_log->write(cl)) {
+            cxl_meta.bufs[node_id].produce_tail(curr_log, false); 
+            wait_for_next_log();
+            assert(curr_log->write(cl));
+            LOG_INFO("node " << node_id << " produce log " << ++cache_info.produced_count);
+        }
+        do_flush((char *)cl);
+    }
+
+    void write_to_log(virt_addr_t cl) {
+        auto idx = (cl >> CACHE_LINE_SHIFT) & (DIRTY_CL_TABLE_SIZE-1);
+        if(dirty_cl_table[idx])
+            write_entry(cl);
+        dirty_cl_table[idx] = cl;
+    }
+
+    void release_to_log() {
+        for (int i = 0; i < DIRTY_CL_TABLE_SIZE; i++)
+            if (dirty_cl_table[i])
+                write_entry(dirty_cl_table[i]);
         flush_fence();
-        my_buf.produce_tail(curr_log, is_release); 
-        dirty_cls.clear();
-        return curr_log;
+        cxl_meta.bufs[node_id].produce_tail(curr_log, true); 
+        wait_for_next_log();
+        LOG_INFO("node " << node_id << " produce log " << ++cache_info.produced_count);
+    }
+
+public:
+    User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), node_id(nid), user_id(uid), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {
+        wait_for_next_log();
     }
 
     void handle_store(char *addr, bool is_release) {
         virt_addr_t cl_addr = (virt_addr_t)addr & CACHE_LINE_MASK;
-        
-        dirty_cls.insert(cl_addr);
-        //write to log either on release store or on reaching log size limit
-        if(is_release || dirty_cls.size() == LOG_SIZE) {
-            Log *curr_log = write_to_log(is_release);                    
-            std::stringstream ss;
-            if(is_release) {
-                const auto &clock = user_clock.mod([=] (auto &self) {
-                    self.tick(node_id);
-                    return self;
-                });
-                ss << " release at " << (void *)addr << ", clock=" << clock << " ";
-                size_t off = addr - cxl_data;
-                cxl_meta.atmap[off].mod([&](auto &self) {
-                    self.clock.merge(clock);
-                });
-            }
-
-            LOG_INFO("node " << node_id << ss.str() << "produce log " << cache_info.produced_count++);
-        }
-
-        if (is_release)
-            ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
-        else
-            *((volatile char *)addr) = 0;
+        if (is_release) {
+            const auto &clock = user_clock.mod([=] (auto &self) {
+                self.tick(node_id);
+                return self;
+            }); 
+            // writes to atomic locations do not need to be flushed 
+            // as they are hardware cache-coherent
+            release_to_log();
+            LOG_INFO("node " << node_id << " release " << (void*)addr << std::dec << ", clock=" << clock);
+            size_t off = addr - cxl_data;
+            cxl_meta.atmap[off].mod([&](auto &self) {
+                self.clock.merge(clock);
+            });
+        } else 
+            write_to_log(cl_addr);
     }
 
     void catch_up_cache_clock(const VectorClock &target) {
@@ -165,7 +174,7 @@ public:
                 return self.clock; 
             });
 
-            LOG_INFO("node " << node_id << " acquire " << (void*) addr << ", clock=" << at_clk);
+            LOG_INFO("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk);
 
 #ifdef USER_CONSUME_LOGS
             catch_up_cache_clock(at_clk);

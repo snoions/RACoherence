@@ -32,7 +32,7 @@ class alignas(CACHE_LINE_SIZE) Log {
 
     void produce(bool r) {
         is_rel = r;
-        ref_cn = 2*NODE_COUNT-1; //tail + heads + user refs
+        ref_cn = 2*NODE_COUNT-1; //tail + (NODE_COUNT-1) heads + (NODE_COUNT-1) user refs
     }
 
     unsigned consume() {
@@ -81,8 +81,7 @@ public:
             heads[i] = sentinel;
     }
 
-    //only correct if NODE_COUNT > 1
-    ~LogBuffer() { delete sentinel; }
+    ~LogBuffer() { if (NODE_COUNT > 1) delete sentinel; }
 
     Log *get_new_log() {
         //TODO: allocate from a dedicated buffer from CXL hardware coherent region
