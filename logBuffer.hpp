@@ -8,7 +8,11 @@
 #include <iostream>
 #include <mutex>
 
+#include "blockAllocator.hpp"
 #include "config.hpp"
+
+constexpr size_t LOG_SIZE = 1ull << 6;
+constexpr size_t LOG_BUF_SIZE = 1ull << 10;
 
 class LogBuffer;
 
@@ -26,15 +30,12 @@ class alignas(CACHE_LINE_SIZE) Log {
     std::atomic<Log *> next {nullptr};
     bool is_rel = false;
 
-    unsigned is_produced() {
-        return ref_cn > 0;
-    }
-
     void produce(bool r) {
         is_rel = r;
         ref_cn = 2*NODE_COUNT-1; //tail + (NODE_COUNT-1) heads + (NODE_COUNT-1) user refs
     }
 
+    // returns whether the log may be deleted
     unsigned consume() {
         assert(is_produced());
         auto prev = ref_cn.fetch_sub(1, std::memory_order_relaxed);
@@ -42,6 +43,10 @@ class alignas(CACHE_LINE_SIZE) Log {
     }
 
 public:
+    inline unsigned is_produced() {
+        return ref_cn > 0;
+    }
+
     inline bool write(uintptr_t cl_addr) {
         if (size == LOG_SIZE)
             return false;
@@ -63,12 +68,14 @@ public:
 };
 
 class alignas(CACHE_LINE_SIZE) LogBuffer {
-
+    // node-local allocator to reduce coherence messages between nodes
+    BlockAllocator<Log, LOG_BUF_SIZE> alloc;
     Log *sentinel;
+    alignas(CACHE_LINE_SIZE)
     std::mutex tail_mtx;
     Log* tail;
     Log *heads[NODE_COUNT];
-    //TODO: put locks on separate cache lines
+    alignas(CACHE_LINE_SIZE)
     std::mutex head_mtxs[NODE_COUNT] = {};
 
 public:
@@ -81,19 +88,40 @@ public:
             heads[i] = sentinel;
     }
 
-    ~LogBuffer() { if (NODE_COUNT > 1) delete sentinel; }
+    ~LogBuffer() { 
+        if (NODE_COUNT > 1) 
+#ifdef BLOCK_ALLOCATOR
+            alloc.deallocate(sentinel); 
+#else
+            delete sentinel;
+#endif
+    }
 
     Log *get_new_log() {
-        //TODO: allocate from a dedicated buffer from CXL hardware coherent region
-        return new Log(); 
+#ifdef BLOCK_ALLOCATOR
+        Log *alloced = alloc.allocate(); 
+        if (!alloced)
+            return alloced;
+        return new (alloced) Log(); 
+#else
+        return new Log();
+#endif
+    }
+
+    void consume_log(Log *l) {
+        if (l->consume())
+#ifdef BLOCK_ALLOCATOR
+            alloc.deallocate(l);
+#else
+            delete l;
+#endif
     }
 
     void produce_tail(Log *l, bool r) {
         std::unique_lock<std::mutex> lk(tail_mtx);
         l->produce(r);
         tail->next.store(l, std::memory_order_release);
-        if (tail->consume())
-            delete tail;
+        consume_log(tail);
         tail = l;
     }
 
@@ -105,15 +133,9 @@ public:
         auto next = heads[nid]->next.load(std::memory_order_acquire);
         if (!next)
             return nullptr;
-        if (heads[nid]->consume())
-            delete heads[nid];
+        consume_log(heads[nid]);
         heads[nid] = next;
         return next;
-    }
-
-    void consume_head(Log *l) {
-        if (l->consume())
-            delete l;
     }
 };
 

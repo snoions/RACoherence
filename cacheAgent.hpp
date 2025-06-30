@@ -11,7 +11,6 @@ extern std::atomic<bool> complete;
 
 class CacheAgent {
     // local data
-    unsigned count = 0;
     unsigned node_id;
     //CXL mem shared adta
     PerNode<LogBuffer> &bufs;
@@ -43,7 +42,7 @@ public:
                 if (log->is_release()) {
                     cache_info.update_clock(i);
                 }
-                bufs[i].consume_head(log);
+                bufs[i].consume_log(log);
             }
         }
     }

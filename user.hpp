@@ -13,7 +13,7 @@
 #include "logger.hpp"
 #include "memLayout.hpp"
 
-constexpr unsigned DIRTY_CL_TABLE_SIZE = LOG_SIZE/2;
+constexpr size_t DIRTY_CL_TABLE_SIZE = LOG_SIZE/2;
 
 enum UserOp {
     OP_STORE,
@@ -57,19 +57,31 @@ class User {
     unsigned write_count = 0;
     unsigned read_count = 0;
     unsigned invalidate_count = 0;
+    unsigned blocked_count = 0;
+
+    LogBuffer &my_buf() {
+        return cxl_meta.bufs[node_id];
+    }
 
     void wait_for_next_log() {
-        while(!(curr_log = cxl_meta.bufs[node_id].get_new_log())) {
+        while(!(curr_log = my_buf().get_new_log())) {
             //wait for available space
+#ifdef STATS
+            blocked_count++;
+#endif
             sleep(0);
         }
-     
     }
+
     void write_entry(virt_addr_t cl) {
-        if (!curr_log->write(cl)) {
-            cxl_meta.bufs[node_id].produce_tail(curr_log, false); 
+        // there is less contention on shared buffer if logs are taken as late as possible
+        // just keeping this as an alternative implementation
+        if (!curr_log->write(cl))
+            my_buf().produce_tail(curr_log, false);
+        if (curr_log->is_produced()) {
             wait_for_next_log();
-            assert(curr_log->write(cl));
+            bool ok = curr_log->write(cl);
+            assert(ok);
             LOG_INFO("node " << node_id << " produce log " << ++cache_info.produced_count);
         }
         do_flush((char *)cl);
@@ -84,11 +96,14 @@ class User {
 
     void release_to_log() {
         for (int i = 0; i < DIRTY_CL_TABLE_SIZE; i++)
-            if (dirty_cl_table[i])
+            if (dirty_cl_table[i]) {
                 write_entry(dirty_cl_table[i]);
+                dirty_cl_table[i] = 0;
+            }
         flush_fence();
-        cxl_meta.bufs[node_id].produce_tail(curr_log, true); 
-        wait_for_next_log();
+        if (curr_log->is_produced())
+            wait_for_next_log();
+        my_buf().produce_tail(curr_log, true);
         LOG_INFO("node " << node_id << " produce log " << ++cache_info.produced_count);
     }
 
@@ -103,8 +118,8 @@ public:
             const auto &clock = user_clock.mod([=] (auto &self) {
                 self.tick(node_id);
                 return self;
-            }); 
-            // writes to atomic locations do not need to be flushed 
+            });
+            // writes to atomic locations do not need to be flushed
             // as they are hardware cache-coherent
             release_to_log();
             LOG_INFO("node " << node_id << " release " << (void*)addr << std::dec << ", clock=" << clock);
@@ -112,7 +127,7 @@ public:
             cxl_meta.atmap[off].mod([&](auto &self) {
                 self.clock.merge(clock);
             });
-        } else 
+        } else
             write_to_log(cl_addr);
     }
 
@@ -135,10 +150,9 @@ public:
                 cache_info.process_log(*log);
                 if (log->is_release())
                     val = cache_info.update_clock(i);
-                curr_buf.consume_head(log);
+                curr_buf.consume_log(log);
                 LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i);
             }
-
         }
     }
 
@@ -163,7 +177,9 @@ public:
         if (cache_info.is_dirty(addr)) {
             do_invalidate(addr);
             invalidate_fence();
+#ifdef STATS
             invalidate_count++;
+#endif
         }
 
         char ret;
@@ -205,7 +221,9 @@ public:
         char ret;
         do_invalidate(addr);
         invalidate_fence();
+#ifdef STATS
         invalidate_count++;
+#endif
         if (is_acquire)
             ret = ((volatile std::atomic<char> *)addr)->load(std::memory_order_acquire);
         else
@@ -229,7 +247,9 @@ public:
             //TODO: data-race-free workload based on synchronization (locked region?)
             switch (user_op) {
                 case OP_STORE: {
+#ifdef STATS
                     write_count++;
+#endif
 #ifndef PROTOCOL_OFF
                     handle_store(&cxl_data[off], is_atomic);
 #else
@@ -238,7 +258,9 @@ public:
                     break;
                 } 
                 case OP_LOAD: {
+#ifdef STATS
                     read_count++;
+#endif
 #ifndef PROTOCOL_OFF
                     handle_load(&cxl_data[off], is_atomic);
 #else
@@ -250,7 +272,7 @@ public:
                     assert("unreachable");
             }
         }
-    }
+   }
 };
 
 
