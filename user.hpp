@@ -2,7 +2,6 @@
 #define _USER_H_
 
 #include <iostream>
-#include <sstream>
 #include <random>
 #include <unordered_set>
 
@@ -40,12 +39,11 @@ static inline UserOp genSeqOp(size_t index) {
 }
 
 class User {
-    
     //user local data
-    //TODO: change to a cache indexed by last few bytes of address, and flush upon eviction, like in Atlas
     unsigned node_id;
     unsigned user_id;
     std::unordered_set<virt_addr_t> dirty_cls;
+    Log *curr_log;
     //CXL mem shared data
     CXLMemMeta &cxl_meta;
     char *cxl_data;
@@ -56,48 +54,55 @@ class User {
     unsigned write_count = 0;
     unsigned read_count = 0;
     unsigned invalidate_count = 0;
+    unsigned blocked_count = 0;
+
+    inline LogBuffer &my_buf() {
+        return cxl_meta.bufs[node_id];
+    }
 
 public:
-    User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), node_id(nid), user_id(uid), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
+    User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): node_id(nid), user_id(uid),  cxl_meta(pool.meta), dirty_cls(LOG_SIZE), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
 
     //should support taking multiple heads for more flexibility
-    Log *write_to_log(bool is_release) {
+    void write_to_log(bool is_release) {
         Log *curr_log;
-        while(!(curr_log = cxl_meta.bufs[node_id].take_tail()))
+        while(!(curr_log = my_buf().take_tail())) {
+#ifdef STATS
+            blocked_count++;
+#endif
             //wait for available space
             sleep(0);
-        
+        }
+
         for(auto cl: dirty_cls) {
             curr_log->write(cl);
-            do_flush((char *)cl); 
+            do_flush((char *)(cl));
         }
         flush_fence();
         curr_log->produce(is_release); 
         dirty_cls.clear();
-        return curr_log;
     }
 
     void handle_store(char *addr, bool is_release) {
         virt_addr_t cl_addr = (virt_addr_t)addr & CACHE_LINE_MASK;
-        
+
         dirty_cls.insert(cl_addr);
         //write to log either on release store or on reaching log size limit
         if(is_release || dirty_cls.size() == LOG_SIZE) {
-            Log *curr_log = write_to_log(is_release);                    
-            std::stringstream ss;
-            if(is_release) {
-                const auto &clock = user_clock.mod([=] (auto &self) {
-                    self.tick(node_id);
-                    return self;
-                });
-                ss << " release at " << (void *)addr << ", clock=" << clock << " ";
-                size_t off = addr - cxl_data;
-                cxl_meta.atmap[off].mod([&](auto &self) {
-                    self.clock.merge(clock);
-                });
-            }
+            write_to_log(is_release);
+            LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++);
+        }
 
-            LOG_INFO("node " << node_id << ss.str() << "produce log " << cache_info.produced_count++);
+        if(is_release) {
+           const auto &clock = user_clock.mod([=] (auto &self) {
+               self.tick(node_id);
+               return self;
+           });
+           LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", clock=" << clock);
+           size_t off = addr - cxl_data;
+           cxl_meta.atmap[off].mod([&](auto &self) {
+               self.clock.merge(clock);
+           });
         }
 
         if (is_release)
@@ -152,7 +157,9 @@ public:
         if (cache_info.is_dirty(addr)) {
             do_invalidate(addr);
             invalidate_fence();
+#ifdef STATS
             invalidate_count++;
+#endif
         }
 
         char ret;
@@ -163,7 +170,7 @@ public:
                 return self.clock; 
             });
 
-            LOG_INFO("node " << node_id << " acquire " << (void*) addr << ", clock=" << at_clk);
+            LOG_INFO("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk);
 
 #ifdef USER_CONSUME_LOGS
             catch_up_cache_clock(at_clk);
@@ -194,7 +201,9 @@ public:
         char ret;
         do_invalidate(addr);
         invalidate_fence();
+#ifdef STATS
         invalidate_count++;
+#endif
         if (is_acquire)
             ret = ((volatile std::atomic<char> *)addr)->load(std::memory_order_acquire);
         else
@@ -218,7 +227,9 @@ public:
             //TODO: data-race-free workload based on synchronization (locked region?)
             switch (user_op) {
                 case OP_STORE: {
+#ifdef STATS
                     write_count++;
+#endif
 #ifndef PROTOCOL_OFF
                     handle_store(&cxl_data[off], is_atomic);
 #else
@@ -227,7 +238,9 @@ public:
                     break;
                 } 
                 case OP_LOAD: {
+#ifdef STATS
                     read_count++;
+#endif
 #ifndef PROTOCOL_OFF
                     handle_load(&cxl_data[off], is_atomic);
 #else

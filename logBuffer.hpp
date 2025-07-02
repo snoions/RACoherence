@@ -9,6 +9,9 @@
 
 #include "config.hpp"
 
+constexpr unsigned LOG_SIZE = 1ull << 6;
+constexpr unsigned LOG_BUF_SIZE = 1ull << 10;
+
 // carry a parity bit along with index in the buffer to signal
 // when a tail wraps around
 struct BufPos {
@@ -115,9 +118,10 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     using Data = std::array<Log, LOG_BUF_SIZE>;
     using iterator = Data::iterator;
 
+    alignas(CACHE_LINE_SIZE)
     std::atomic<BufPos> tail;
-    //TODO: put locks are on separate cache lines
     BufPos heads[NODE_COUNT];
+    alignas(CACHE_LINE_SIZE)
     std::mutex head_mtxs[NODE_COUNT] = {};
     Data logs;
 

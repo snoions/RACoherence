@@ -16,6 +16,7 @@ int main() {
 #ifndef PROTOCOL_OFF
     std::vector<std::thread> cacheAgent_group;
 #endif
+    //TODO: thread affinity
     for (unsigned i=0; i<NODE_COUNT; i++) {
         auto run_user = [=](unsigned uid) {
             User user(i, uid, cxl_pool, node_local_meta[i]);
