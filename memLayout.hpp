@@ -50,7 +50,7 @@ struct CacheInfo {
     }
 
     bool is_dirty(char *addr) {
-        return tracker.is_dirty((virt_addr_t)addr); 
+        return tracker.is_dirty((virt_addr_t)addr);
     }
 
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {

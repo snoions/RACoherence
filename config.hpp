@@ -27,9 +27,11 @@ constexpr virt_addr_t PLAIN_ACQ_REL_RATIO = 1ull << 8;
 #define USER_CONSUME_LOGS
 
 // turn off RACoherence protocol, use raw stores and loads
-//#define PROTOCOL_OFF
+#define PROTOCOL_OFF
 
 // whether to use sequential workload
-#define SEQ_WORKLOAD
+//#define SEQ_WORKLOAD
+// a constant that is co-prime with PLAIN_ACQ_REL_RATIO to decouple choice of acq/rel with load/store
+#define SEQ_OP_FACTOR 3
 
 #endif
