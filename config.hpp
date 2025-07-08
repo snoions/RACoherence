@@ -17,7 +17,8 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
 constexpr virt_addr_t CXLMEM_RANGE = 1ull << 10; // 1KB, small size to simulate locality
 constexpr virt_addr_t CXLMEM_ATOMIC_RANGE = 1ull << 4;
-constexpr virt_addr_t ATOMIC_PLAIN_RATIO = 1ull << 8;
+// ratio of plain operations to acq/rel operations
+constexpr virt_addr_t PLAIN_ACQ_REL_RATIO = 1ull << 8;
 
 // whether to collect statistics
 #define STATS

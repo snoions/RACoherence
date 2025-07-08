@@ -2,6 +2,7 @@
 #define _LOG_BUFFER_H_
 
 #include <atomic>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstddef>

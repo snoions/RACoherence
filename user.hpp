@@ -12,37 +12,20 @@
 #include "logBuffer.hpp"
 #include "logger.hpp"
 #include "memLayout.hpp"
+#include "workload.hpp"
 
-enum UserOp {
-    OP_STORE,
-    OP_LOAD,
-    OP_END
+struct DirtyCLHash {
+    inline std::size_t operator()(const virt_addr_t& a) const
+    {
+        return (a >> CACHE_LINE_SHIFT) & (LOG_SIZE-1);
+    }
 };
-
-static inline size_t genRandOffset(size_t range, size_t align) {
-    std::random_device rd;
-    std::uniform_int_distribution<size_t> dist(0, range-1);
-    return (dist(rd)/align) * align;
-}
-
-static inline UserOp genRandOp() {
-    int num = rand() % 100;
-    return num > 50? OP_STORE: OP_LOAD;
-}
-
-static inline size_t genSeqOffset(size_t range, size_t align, size_t index) {
-    return (align * index) %range;
-}
-
-static inline UserOp genSeqOp(size_t index) {
-    return index%2 == 0? OP_STORE: OP_LOAD;
-}
 
 class User {
     //user local data
     unsigned node_id;
     unsigned user_id;
-    std::unordered_set<virt_addr_t> dirty_cls;
+    std::unordered_set<virt_addr_t, DirtyCLHash> dirty_cls;
     Log *curr_log;
     //CXL mem shared data
     CXLMemMeta &cxl_meta;
@@ -83,7 +66,7 @@ public:
         dirty_cls.clear();
     }
 
-    void handle_store(char *addr, bool is_release) {
+    void handle_store(char *addr, bool is_release = false) {
         virt_addr_t cl_addr = (virt_addr_t)addr & CACHE_LINE_MASK;
 
         dirty_cls.insert(cl_addr);
@@ -103,11 +86,9 @@ public:
            cxl_meta.atmap[off].mod([&](auto &self) {
                self.clock.merge(clock);
            });
-        }
 
-        if (is_release)
-            ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
-        else
+           ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
+        } else
             *((volatile char *)addr) = 0;
     }
 
@@ -153,7 +134,7 @@ public:
         }
     }
 
-    char handle_load(char *addr, bool is_acquire) {
+    char handle_load(char *addr, bool is_acquire = false) {
         if (cache_info.is_dirty(addr)) {
             do_invalidate(addr);
             invalidate_fence();
@@ -187,7 +168,7 @@ public:
         return ret;
     }
 
-    inline void handle_store_raw(char *addr, bool is_release) {
+    inline void handle_store_raw(char *addr, bool is_release = false) {
         if (is_release) {
             ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
             flush_fence();
@@ -197,7 +178,7 @@ public:
         }
     };
 
-    inline char handle_load_raw(char *addr, bool is_acquire) {
+    inline char handle_load_raw(char *addr, bool is_acquire = false) {
         char ret;
         do_invalidate(addr);
         invalidate_fence();
@@ -213,45 +194,80 @@ public:
     };
 
     void run() {
-        for (int i =0; i < TOTAL_OPS; i++) {
 #ifdef SEQ_WORKLOAD
-            bool is_atomic = (i % ATOMIC_PLAIN_RATIO == 0);
-            UserOp user_op = genSeqOp(i);
-            size_t off = genSeqOffset(is_atomic ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE, 8, i);
+        SeqWorkLoad workload(CXLMEM_RANGE, 8, CXLMEM_ATOMIC_RANGE, 8, PLAIN_ACQ_REL_RATIO);
 #else
-            // random version is not data-race free
-            bool is_atomic = (rand() % ATOMIC_PLAIN_RATIO == 0);
-            UserOp user_op = genRandOp();
-            size_t off = genRandOffset(is_atomic? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE, 8);
+        RandWorkLoad workload(CXLMEM_RANGE, 8, CXLMEM_ATOMIC_RANGE, 8, PLAIN_ACQ_REL_RATIO);
 #endif
+        for (int i =0; i < TOTAL_OPS; i++) {
+            UserOp op =  workload.getNextOp(i);
             //TODO: data-race-free workload based on synchronization (locked region?)
-            switch (user_op) {
+            //
+#ifdef PROTOCOL_OFF
+            switch (op.op) {
+                case OP_STORE_REL:
+#ifdef STATS
+                    write_count++;
+#endif
+                    handle_store_raw(&cxl_data[op.offset], true);
                 case OP_STORE: {
 #ifdef STATS
                     write_count++;
 #endif
-#ifndef PROTOCOL_OFF
-                    handle_store(&cxl_data[off], is_atomic);
-#else
-                    handle_store_raw(&cxl_data[off], is_atomic);
-#endif
+                    handle_store_raw(&cxl_data[op.offset]);
                     break;
                 } 
+                case OP_LOAD_ACQ: {
+#ifdef STATS
+                    read_count++;
+#endif
+                    handle_load_raw(&cxl_data[op.offset], true);
+                    break;
+                }
                 case OP_LOAD: {
 #ifdef STATS
                     read_count++;
 #endif
-#ifndef PROTOCOL_OFF
-                    handle_load(&cxl_data[off], is_atomic);
-#else
-                    handle_load_raw(&cxl_data[off], is_atomic);
-#endif
+                    handle_load_raw(&cxl_data[op.offset]);
                     break;
                 }
                 default:
                     assert("unreachable");
             }
         }
+#else
+            switch (op.op) {
+                case OP_STORE_REL:
+#ifdef STATS
+                    write_count++;
+#endif
+                    handle_store(&cxl_data[op.offset], true);
+                case OP_STORE: {
+#ifdef STATS
+                    write_count++;
+#endif
+                    handle_store(&cxl_data[op.offset]);
+                    break;
+                } 
+                case OP_LOAD_ACQ: {
+#ifdef STATS
+                    read_count++;
+#endif
+                    handle_load(&cxl_data[op.offset], true);
+                    break;
+                }
+                case OP_LOAD: {
+#ifdef STATS
+                    read_count++;
+#endif
+                    handle_load(&cxl_data[op.offset]);
+                    break;
+                }
+                default:
+                    assert("unreachable");
+            }
+        }
+#endif
     }
 };
 
