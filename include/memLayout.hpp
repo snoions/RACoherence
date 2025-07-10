@@ -37,7 +37,7 @@ struct CacheInfo {
     AtomicClock clock{};
     // data-race on cach line tracker entries should be ruled out
     // by cache line race freedom.
-    CacheLineTracker tracker;
+    CacheLineTracker inv_cls;
     // per-node stats
     std::atomic<unsigned> consumed_count {0};
     std::atomic<unsigned> produced_count {0};
@@ -45,12 +45,12 @@ struct CacheInfo {
     void process_log(Log &log) {
         for (auto invalid_cl: log) {
             //TODO: support batch update
-            tracker.mark_dirty(invalid_cl);
+            inv_cls.mark_dirty(invalid_cl);
         }
     }
 
     bool is_dirty(char *addr) {
-        return tracker.is_dirty((virt_addr_t)addr);
+        return inv_cls.is_dirty((virt_addr_t)addr);
     }
 
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {

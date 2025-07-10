@@ -62,12 +62,14 @@ public:
     }
 
     void mark_dirty(virt_addr_t va) {
-        auto [l1_idx, l2_idx, line] = split_va(va);
+        uint64_t l1_idx, l2_idx, line;
+        split_va(va, l1_idx, l2_idx, line);
         get_or_create_leaf(l1_idx, l2_idx)->mark_dirty(line);
     }
 
     bool is_dirty(virt_addr_t va) const {
-        auto [l1_idx, l2_idx, line] = split_va(va);
+        uint64_t l1_idx, l2_idx, line;
+        split_va(va, l1_idx, l2_idx, line);
         auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
         if (!l2) return false;
 
@@ -76,7 +78,8 @@ public:
     }
 
     void clear_dirty(virt_addr_t va) {
-        auto [l1_idx, l2_idx, line] = split_va(va);
+        uint64_t l1_idx, l2_idx, line;
+        split_va(va, l1_idx, l2_idx, line);
         auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
         if (!l2) return;
 
@@ -110,11 +113,10 @@ private:
         return leaf;
     }
 
-    static std::tuple<uint64_t, uint64_t, uint64_t> split_va(virt_addr_t va) {
-        uint64_t line = (va >> 6) & (CACHE_LINES_PER_PAGE - 1);
-        uint64_t l2   = (va >> 12) & (L2_ENTRIES - 1);
-        uint64_t l1   = (va >> 20) & (L1_ENTRIES - 1);
-        return {l1, l2, line};
+    static inline void split_va(virt_addr_t va, uint64_t &l1, uint64_t &l2, uint64_t &line) {
+        line = (va >> 6) & (CACHE_LINES_PER_PAGE - 1);          // 6 bits
+        l2   = (va >> 12) & (L2_ENTRIES - 1);                   // 8 bits
+        l1   = (va >> 20) & (L1_ENTRIES - 1);                   // 19 bits
     }
 };
 

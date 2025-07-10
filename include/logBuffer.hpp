@@ -19,7 +19,7 @@ struct BufPos {
     unsigned idx = 0;
     bool par = true;
 
-    void next() {
+    inline void next() {
         idx = (idx+1) % LOG_BUF_SIZE;
         if (idx == 0)
             par = !par;
@@ -73,46 +73,29 @@ public:
         return true;
     }
 
-    bool is_release() {
-        return is_rel;
-    }
+    bool is_release() { return is_rel; }
 
-    bool try_prepare_consume(bool par) {
+    inline bool try_prepare_consume(bool par) {
         auto [c, p] = from_status(status.load(std::memory_order_acquire));
         if (!produced(c) || p != par)
             return false;
         return true;
     }
 
-    void prepare_consume(bool par) { 
+    inline void prepare_consume(bool par) { 
         std::pair<unsigned, bool> cp;
         do {
             cp = from_status(status.load(std::memory_order_acquire));
         } while (!produced(cp.first) || cp.second != par);
     }
 
-    void consume() {
-        auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_relaxed));
-        assert(produced(c));
-    }
+    void consume();
 
-    void produce(bool is_r) {
-        is_rel = is_r;
-        auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_release));
-        assert(c==NODE_COUNT);
-    }
+    void produce(bool is_r);
 
-    inline bool produced() {
-        return produced(status.load());
-    }
+    const_iterator begin() const { return entries.begin(); }
 
-    const_iterator begin() const {
-        return entries.begin();
-    }
-
-    const_iterator end() const {
-        return entries.end();
-    }
+    const_iterator end() const { return entries.end(); }
 };
 
 class alignas(CACHE_LINE_SIZE) LogBuffer {
@@ -126,49 +109,21 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     std::mutex head_mtxs[NODE_COUNT] = {};
     Data logs;
 
-    inline Log &log_from_index(unsigned idx) {
-        return logs[idx];
-    }
+    inline Log &log_from_index(unsigned idx) { return logs[idx]; }
 
 public:
 
-    inline iterator begin() {
-        return logs.begin();
-    }
+    iterator begin() { return logs.begin(); }
 
-    inline iterator end() {
-        return logs.end();
-    }
+    iterator end() { return logs.end(); }
 
-    //could also use a lock, performance seems similar
-    Log *take_tail() {
-        auto t = tail.load(std::memory_order_acquire);
-        Log &log = log_from_index(t.idx);
-        if (!log.prepare_produce(t.par))
-            return NULL;
-        t.next();
-        tail.store(t,std::memory_order_release);
-        return &log;
-    }
+    Log *take_tail();
 
-    std::mutex &get_head_mutex(unsigned nid) {
-        return head_mtxs[nid];
-    }
+    std::mutex &get_head_mutex(unsigned nid) { return head_mtxs[nid]; }
 
-    Log &take_head(unsigned nid) {
-        Log &log = log_from_index(heads[nid].idx);
-        log.prepare_consume(heads[nid].par);
-        heads[nid].next();
-        return log;
-    }
+    Log &take_head(unsigned nid);
 
-    Log *try_take_head(unsigned nid) {
-        Log &log = log_from_index(heads[nid].idx);
-        if (!log.try_prepare_consume(heads[nid].par))
-            return NULL;
-        heads[nid].next();
-        return &log;
-    }
+    Log *try_take_head(unsigned nid);
 };
 
 #endif

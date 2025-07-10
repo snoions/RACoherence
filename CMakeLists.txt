@@ -2,14 +2,30 @@
 cmake_minimum_required(VERSION 3.10)
 project(RACoherence LANGUAGES CXX)
 
-add_compile_options(-std=c++17)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(main main.cpp) 
+set(INDEX_FILES
+      src/main.cpp
+      src/logBuffer.cpp
+      src/user.cpp
+      src/cacheAgent.cpp
+    )
 
+
+add_executable(main ${INDEX_FILES})
+
+target_include_directories(main PUBLIC include)
+target_compile_options(main PRIVATE -g)
+
+# Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(main PRIVATE Threads::Threads)
-target_compile_options(main PRIVATE -g)
+
+# Google Abseil library
+add_subdirectory(lib/abseil-cpp)
+target_link_libraries(main PRIVATE  absl::flat_hash_set)
 
 # Fetch GoogleTest
 include(FetchContent)
@@ -22,7 +38,7 @@ FetchContent_MakeAvailable(googletest)
 
 # Add the header-only library
 add_library(cache_tracker INTERFACE)
-target_include_directories(cache_tracker INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(cache_tracker INTERFACE include)
 
 # Add test
 enable_testing()
