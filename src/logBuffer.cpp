@@ -1,14 +1,14 @@
 #include "logBuffer.hpp"
 
 void Log::consume() {
-    auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_relaxed));
-    assert(produced(c)); 
+    auto cp = SPair(status.fetch_sub(1, std::memory_order_relaxed));
+    assert(produced(cp.c)); 
 }
 
 void Log::produce(bool is_r) {
     is_rel = is_r;
-    auto [c, _] = from_status(status.fetch_sub(1, std::memory_order_release));
-    assert(c==NODE_COUNT);
+    auto cp = SPair(status.fetch_sub(1, std::memory_order_release));
+    assert(cp.c==NODE_COUNT);
 }
 
 //could also use a tail lock instead, performance seems similar

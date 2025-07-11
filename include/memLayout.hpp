@@ -1,14 +1,14 @@
 #ifndef _MEM_LAYOUT_H_
 #define _MEM_LAYOUT_H_
 
-#include <map>
-#include <unordered_set>
-#include <queue>
-
-#include "cacheTracker.hpp"
+#include "CLTracker.hpp"
 #include "logBuffer.hpp"
 #include "util.hpp"
 #include "vectorClock.hpp"
+
+// Should be power of two
+constexpr uintptr_t CXLMEM_RANGE = 1ull << 20; // 1KB, small size to simulate locality
+constexpr uintptr_t CXLMEM_ATOMIC_RANGE = 1ull << 4;
 
 struct AtomicMeta {
     VectorClock clock;
@@ -44,13 +44,12 @@ struct CacheInfo {
 
     void process_log(Log &log) {
         for (auto invalid_cl: log) {
-            //TODO: support batch update
-            inv_cls.mark_dirty(invalid_cl);
+            inv_cls.mark_range_dirty(get_ptr(invalid_cl), get_mask64(invalid_cl));
         }
     }
 
     bool is_dirty(char *addr) {
-        return inv_cls.is_dirty((virt_addr_t)addr);
+        return inv_cls.is_dirty((uintptr_t)addr);
     }
 
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {

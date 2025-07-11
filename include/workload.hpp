@@ -2,6 +2,12 @@
 #define _WORKLOAD_H_
 
 #include "config.hpp"
+#include "memLayout.hpp"
+
+// Should be power of 2
+constexpr uintptr_t OP_ALIGN = 1ull << 3;
+// ratio of plain operations to acq/rel operations, needs to be power of two
+constexpr uintptr_t PLAIN_ACQ_REL_RATIO = 1ull << 8;
 
 enum OpType {
     OP_STORE,
@@ -17,26 +23,17 @@ struct UserOp {
 };
 
 class SeqWorkLoad {
-    virt_addr_t range;
-    unsigned align;
-    virt_addr_t atomic_range;
-    unsigned atomic_align;
-    unsigned plain_acq_rel_ratio;
-
 public:
-    SeqWorkLoad(virt_addr_t rg, unsigned al, virt_addr_t atomic_rg, unsigned atomic_al, unsigned par_ratio): range(rg), align(al), atomic_range(atomic_rg), atomic_align(atomic_al), plain_acq_rel_ratio(par_ratio) {}
-    
     inline UserOp getNextOp(unsigned index) {
         //assume all atomic is acquire release for now
-        bool is_acq_rel = (index % plain_acq_rel_ratio) == 0;
+        bool is_acq_rel = (index & (PLAIN_ACQ_REL_RATIO-1)) == 0;
         OpType op;
         if ((index % SEQ_OP_FACTOR) % 2 == 0)
             op = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
         else
             op = is_acq_rel ? OP_STORE_REL: OP_STORE;
-        size_t offset = is_acq_rel ? 
-            (atomic_align * index ) % atomic_range:
-            (align * index) % range;
+        size_t range = is_acq_rel ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE;
+        size_t offset = (OP_ALIGN * index) & (range-1);
         return {op, offset};
     }
 };
@@ -60,26 +57,17 @@ inline unsigned long fast_rand() {          //period 2^96-1
 
 
 // May not be data-race free
-class RandWorkLoad {
-    virt_addr_t range;
-    unsigned align;
-    virt_addr_t atomic_range;
-    unsigned atomic_align;
-    unsigned plain_acq_rel_ratio;
-
+class RandWorkLoad { 
 public:
-    RandWorkLoad(virt_addr_t rg, unsigned al, virt_addr_t atomic_rg, unsigned atomic_al, unsigned par_ratio): range(rg), align(al), atomic_range(atomic_rg), atomic_align(atomic_al), plain_acq_rel_ratio(par_ratio) {}
-    
     inline UserOp getNextOp(unsigned index) {
-        bool is_acq_rel = (fast_rand() % plain_acq_rel_ratio) == 0;
+        bool is_acq_rel = (fast_rand() & (PLAIN_ACQ_REL_RATIO-1)) == 0;
         OpType op;
         if ((fast_rand() % 2) == 0)
             op = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
         else
             op = is_acq_rel ? OP_STORE_REL: OP_STORE;
-        size_t offset = is_acq_rel ? 
-            (fast_rand() % atomic_range)/ atomic_align * atomic_align:
-            (fast_rand() % range)/align * align;
+        size_t range = is_acq_rel ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE;
+        size_t offset = (fast_rand() & (range-1)) & ~(OP_ALIGN-1);
         return {op, offset};
     }
 };

@@ -23,6 +23,10 @@ public:
     // the extra space could be used for other purposes
     std::atomic<uint64_t> dirty_mask{0};
 
+    void mark_range_dirty(uint64_t mask) {
+        dirty_mask.fetch_or(mask, std::memory_order_relaxed);
+    }
+
     void mark_dirty(uint64_t line) {
         uint64_t mask = 1ull << line;
         dirty_mask.fetch_or(mask, std::memory_order_relaxed);
@@ -61,13 +65,19 @@ public:
         }
     }
 
-    void mark_dirty(virt_addr_t va) {
+    void mark_dirty(uintptr_t va) {
         uint64_t l1_idx, l2_idx, line;
         split_va(va, l1_idx, l2_idx, line);
         get_or_create_leaf(l1_idx, l2_idx)->mark_dirty(line);
     }
 
-    bool is_dirty(virt_addr_t va) const {
+    void mark_range_dirty(uintptr_t va, uint64_t mask) {
+        uint64_t l1_idx, l2_idx, line;
+        split_va(va, l1_idx, l2_idx, line);
+        get_or_create_leaf(l1_idx, l2_idx)->mark_range_dirty(mask);
+    }
+
+    bool is_dirty(uintptr_t va) const {
         uint64_t l1_idx, l2_idx, line;
         split_va(va, l1_idx, l2_idx, line);
         auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
@@ -77,7 +87,7 @@ public:
         return leaf ? leaf->is_dirty(line) : false;
     }
 
-    void clear_dirty(virt_addr_t va) {
+    void clear_dirty(uintptr_t va) {
         uint64_t l1_idx, l2_idx, line;
         split_va(va, l1_idx, l2_idx, line);
         auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
@@ -113,7 +123,7 @@ private:
         return leaf;
     }
 
-    static inline void split_va(virt_addr_t va, uint64_t &l1, uint64_t &l2, uint64_t &line) {
+    static inline void split_va(uintptr_t va, uint64_t &l1, uint64_t &l2, uint64_t &line) {
         line = (va >> 6) & (CACHE_LINES_PER_PAGE - 1);          // 6 bits
         l2   = (va >> 12) & (L2_ENTRIES - 1);                   // 8 bits
         l1   = (va >> 20) & (L1_ENTRIES - 1);                   // 19 bits

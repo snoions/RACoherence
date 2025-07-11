@@ -12,7 +12,6 @@ set(INDEX_FILES
       src/cacheAgent.cpp
     )
 
-
 add_executable(main ${INDEX_FILES})
 
 target_include_directories(main PUBLIC include)
@@ -22,10 +21,6 @@ target_compile_options(main PRIVATE -g)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(main PRIVATE Threads::Threads)
-
-# Google Abseil library
-add_subdirectory(lib/abseil-cpp)
-target_link_libraries(main PRIVATE  absl::flat_hash_set)
 
 # Fetch GoogleTest
 include(FetchContent)

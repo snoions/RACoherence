@@ -1,4 +1,6 @@
 #include "user.hpp"
+#include "workload.hpp"
+#include "logger.hpp"
 
 //should support taking multiple heads for more flexibility
 void User::write_to_log(bool is_release) {
@@ -12,8 +14,11 @@ void User::write_to_log(bool is_release) {
     }
 
     for(auto cl: dirty_cls) {
-        curr_log->write(cl);
-        do_flush((char *)(cl));
+        if (cl) {
+            curr_log->write(cl);
+            for(auto addr : MaskedPtrRange(cl))
+                do_flush((char *)addr);
+        }
     }
     flush_fence();
     curr_log->produce(is_release); 
@@ -63,11 +68,12 @@ void User::wait_for_cache_clock(const VectorClock &target) {
 }
 
 void User::handle_store(char *addr, bool is_release) {
-    virt_addr_t cl_addr = (virt_addr_t)addr & CACHE_LINE_MASK;
+    uintptr_t cl_addr = (uintptr_t)addr & CACHE_LINE_MASK;
 
-    dirty_cls.insert(cl_addr);
+    bool full = dirty_cls.insert(cl_addr);
     //write to log either on release store or on reaching log size limit
-    if(is_release || dirty_cls.size() == LOG_SIZE) {
+    //if(is_release || dirty_cls.size() == LOG_SIZE) {
+    if(is_release || full) {
         write_to_log(is_release);
         LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++);
     }
@@ -124,9 +130,9 @@ char User::handle_load(char *addr, bool is_acquire) {
 
 void User::run() {
 #ifdef SEQ_WORKLOAD
-    SeqWorkLoad workload(CXLMEM_RANGE, 8, CXLMEM_ATOMIC_RANGE, 8, PLAIN_ACQ_REL_RATIO);
+    SeqWorkLoad workload;
 #else
-    RandWorkLoad workload(CXLMEM_RANGE, 8, CXLMEM_ATOMIC_RANGE, 8, PLAIN_ACQ_REL_RATIO);
+    RandWorkLoad workload;
 #endif
     for (int i =0; i < TOTAL_OPS; i++) {
         UserOp op =  workload.getNextOp(i);

@@ -13,7 +13,7 @@
 
 static inline void do_flush(char *addr)
 {
-    volatile char *ptr = (char *)((virt_addr_t)addr & CACHE_LINE_MASK);
+    volatile char *ptr = (char *)((uintptr_t)addr & CACHE_LINE_MASK);
 #if FLUSH_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
 #elif FLUSH_INST == CLFLUSHOPT
@@ -25,7 +25,7 @@ static inline void do_flush(char *addr)
 
 static inline void do_invalidate(char *addr)
 {
-    volatile char *ptr = (char *)((virt_addr_t)addr & CACHE_LINE_MASK);
+    volatile char *ptr = (char *)((uintptr_t)addr & CACHE_LINE_MASK);
 #if INVALIDATE_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
 #elif INVALIDATE_INST == CLFLUSHOPT

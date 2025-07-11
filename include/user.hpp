@@ -9,17 +9,16 @@
 
 #include "flush.hpp"
 #include "config.hpp"
-#include "localCLTracker.hpp"
 #include "logBuffer.hpp"
-#include "logger.hpp"
 #include "memLayout.hpp"
-#include "workload.hpp"
+#include "localCLTable.hpp"
 
 class User {
     //user local data
     unsigned node_id;
     unsigned user_id;
-    LocalCLTracker dirty_cls;
+    //LocalCLTracker dirty_cls;
+    LocalCLTable dirty_cls;
     Log *curr_log;
     //CXL mem shared data
     CXLMemMeta &cxl_meta;
