@@ -90,8 +90,13 @@ void User::handle_store(char *addr, bool is_release) {
        });
 
        ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
-    } else
+    } else {
+        if (cache_info.is_dirty(addr)) {
+            do_invalidate(addr);
+            invalidate_fence();
+        }
         *((volatile char *)addr) = 0;
+    }
 }
 
 char User::handle_load(char *addr, bool is_acquire) {

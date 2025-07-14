@@ -49,6 +49,9 @@ public:
     char handle_load(char *addr, bool is_acquire = false);
 
     inline void handle_store_raw(char *addr, bool is_release = false) {
+        //assuming we don't know which writes overwrite entire cache lines
+        do_invalidate(addr);
+        invalidate_fence();
         if (is_release) {
             ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
             flush_fence();

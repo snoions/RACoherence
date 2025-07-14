@@ -25,7 +25,7 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define PROTOCOL_OFF
 
 // whether to use sequential workload
-//#define SEQ_WORKLOAD
+#define SEQ_WORKLOAD
 // a constant that is co-prime with PLAIN_ACQ_REL_RATIO to decouple choice of acq/rel with load/store
 #define SEQ_OP_FACTOR 3
 
