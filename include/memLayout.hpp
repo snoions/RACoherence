@@ -7,28 +7,38 @@
 #include "vectorClock.hpp"
 
 // Should be power of two
-constexpr uintptr_t CXLMEM_RANGE = 1ull << 20; // 1KB, small size to simulate locality
+constexpr uintptr_t CXLMEM_RANGE = 1ull << 20; 
 constexpr uintptr_t CXLMEM_ATOMIC_RANGE = 1ull << 4;
 
 struct AtomicMeta {
     VectorClock clock;
 };
 
-// this emulates allocated atomic locations
-using AtomicMap = std::array<Monitor<AtomicMeta>, CXLMEM_ATOMIC_RANGE>;
-
 struct CXLMemMeta {
     PerNode<LogBuffer> bufs = {};
+
     //TODO: support dynamically allocated atomic locs
-    AtomicMap atmap = {};
+    Monitor<AtomicMeta> *atmap;
+
+    CXLMemMeta() {
+        atmap = new Monitor<AtomicMeta>[CXLMEM_ATOMIC_RANGE];
+    }
+
+    ~CXLMemMeta() {
+        delete []atmap;
+    }
 };
 
-constexpr size_t CXL_DATA_PADDING = CACHE_LINE_SIZE - (sizeof(CXLMemMeta) % CACHE_LINE_SIZE);
 
 struct CXLPool {
     CXLMemMeta meta;
-    char padding[CXL_DATA_PADDING];
-    char data[CXLMEM_RANGE];
+    char* data;
+    CXLPool() {
+        data = new char[CXLMEM_RANGE];
+    }
+    ~CXLPool() {
+        delete[] data;
+    }
 };
 
 using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;
@@ -48,8 +58,8 @@ struct CacheInfo {
         }
     }
 
-    bool is_dirty(char *addr) {
-        return inv_cls.is_dirty((uintptr_t)addr);
+    bool invalidate_if_dirty(char *addr) {
+        return inv_cls.invalidate_if_dirty((uintptr_t)addr);
     }
 
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {
@@ -63,7 +73,7 @@ struct CacheInfo {
 
 struct NodeLocalMeta{
     CacheInfo cache_info;
-    // user_clock currently shared by all user threads on the same node, could also have smaller groups of user threads share clocks
+    // user_clock currently shared by all user threads on the same node, could have smaller groups of user threads share clocks
     Monitor<VectorClock> user_clock;
 };
 

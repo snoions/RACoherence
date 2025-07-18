@@ -18,7 +18,7 @@ enum OpType {
 };
 
 struct UserOp {
-    OpType op;
+    OpType type;
     size_t offset;
 };
 
@@ -27,14 +27,14 @@ public:
     inline UserOp getNextOp(unsigned index) {
         //assume all atomic is acquire release for now
         bool is_acq_rel = (index & (PLAIN_ACQ_REL_RATIO-1)) == 0;
-        OpType op;
+        OpType t;
         if ((index % SEQ_OP_FACTOR) % 2 == 0)
-            op = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
+            t = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
         else
-            op = is_acq_rel ? OP_STORE_REL: OP_STORE;
+            t = is_acq_rel ? OP_STORE_REL: OP_STORE;
         size_t range = is_acq_rel ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE;
         size_t offset = (OP_ALIGN * index) & (range-1);
-        return {op, offset};
+        return {t, offset};
     }
 };
 
@@ -56,19 +56,34 @@ inline unsigned long fast_rand() {          //period 2^96-1
 }
 
 
-// May not be data-race free
-class RandWorkLoad { 
-public:
-    inline UserOp getNextOp(unsigned index) {
+// RandWorkLoad does not guarantee data-race freedom
+// Data are pre-generated to overhead during user execution
+class RandWorkLoad {
+    static constexpr size_t OP_BUFFER_MAX = 1 << 15;
+    UserOp op_buffer[OP_BUFFER_MAX] = {};
+
+    inline void setRandOp(UserOp &op) {
         bool is_acq_rel = (fast_rand() & (PLAIN_ACQ_REL_RATIO-1)) == 0;
-        OpType op;
+        OpType t;
         if ((fast_rand() % 2) == 0)
-            op = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
+            t = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
         else
-            op = is_acq_rel ? OP_STORE_REL: OP_STORE;
+            t = is_acq_rel ? OP_STORE_REL: OP_STORE;
         size_t range = is_acq_rel ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE;
         size_t offset = (fast_rand() & (range-1)) & ~(OP_ALIGN-1);
-        return {op, offset};
+        op.type = t;
+        op.offset = offset;
+    }
+
+public:
+    RandWorkLoad() {
+        for (int i = 0; i < OP_BUFFER_MAX; i++)
+            setRandOp(op_buffer[i]);
+    }
+
+    inline UserOp getNextOp(unsigned index) {
+        assert(index < TOTAL_OPS);
+        return op_buffer[index & (OP_BUFFER_MAX-1)];
     }
 };
 #endif

@@ -16,9 +16,9 @@ constexpr unsigned LOG_BUF_SIZE = 1ull << 10;
 
 class alignas(CACHE_LINE_SIZE) Log {
     using Entry = masked_ptr_t;
-    using Data = std::array<Entry, LOG_SIZE>;
-    using iterator = Data::iterator;
-    using const_iterator = Data::const_iterator;
+    using Data = Entry[LOG_SIZE];
+    using iterator = Entry *;
+    using const_iterator = const Entry *;
 
     struct SPair {
         unsigned c;
@@ -103,8 +103,8 @@ struct BufPos {
 };
 
 class alignas(CACHE_LINE_SIZE) LogBuffer {
-    using Data = std::array<Log, LOG_BUF_SIZE>;
-    using iterator = Data::iterator;
+    using iterator = Log *;
+    using const_iterator = Log *;
 
 
     alignas(CACHE_LINE_SIZE)
@@ -112,15 +112,23 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     BufPos heads[NODE_COUNT];
     alignas(CACHE_LINE_SIZE)
     std::mutex head_mtxs[NODE_COUNT] = {};
-    Data logs;
+    Log *logs;
 
     inline Log &log_from_index(unsigned idx) { return logs[idx]; }
 
 public:
 
-    iterator begin() { return logs.begin(); }
+    LogBuffer() { 
+        logs = new Log[LOG_BUF_SIZE];
+    }
 
-    iterator end() { return logs.end(); }
+    ~LogBuffer() {
+        delete[] logs;
+    }
+
+    iterator begin() { return &logs[0]; }
+
+    iterator end() { return &logs[LOG_BUF_SIZE]; }
 
     Log *take_tail();
 

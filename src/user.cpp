@@ -25,7 +25,7 @@ void User::write_to_log(bool is_release) {
     dirty_cls.clear();
 }
 
-void User::catch_up_cache_clock(const VectorClock &target) {
+void User::user_help_consume(const VectorClock &target) {
     for (unsigned i=0; i<NODE_COUNT; i++) {
         if (i == node_id)
             continue;
@@ -38,7 +38,6 @@ void User::catch_up_cache_clock(const VectorClock &target) {
         val = cache_info.get_clock(i);
 
         while(val < target[i]) {
-            //must not be NULL
             Log &log = cxl_meta.bufs[i].take_head(node_id);
             cache_info.process_log(log);
             if (log.is_release())
@@ -50,7 +49,7 @@ void User::catch_up_cache_clock(const VectorClock &target) {
     }
 }
 
-void User::wait_for_cache_clock(const VectorClock &target) {
+void User::wait_for_consume(const VectorClock &target) {
     while(true) {
         bool uptodate = true;
         for (unsigned i=0; i<NODE_COUNT; i++) {
@@ -91,22 +90,21 @@ void User::handle_store(char *addr, bool is_release) {
 
        ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
     } else {
-        if (cache_info.is_dirty(addr)) {
-            do_invalidate(addr);
-            invalidate_fence();
+        if (cache_info.invalidate_if_dirty(addr)) {
+#ifdef STATS
+            invalidate_count++;
+#endif
         }
         *((volatile char *)addr) = 0;
     }
 }
 
 char User::handle_load(char *addr, bool is_acquire) {
-    if (cache_info.is_dirty(addr)) {
-        do_invalidate(addr);
-        invalidate_fence();
+        if (cache_info.invalidate_if_dirty(addr)) {
 #ifdef STATS
-        invalidate_count++;
+            invalidate_count++;
 #endif
-    }
+        }
 
     char ret;
     if (is_acquire) {
@@ -118,10 +116,10 @@ char User::handle_load(char *addr, bool is_acquire) {
 
         LOG_INFO("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk);
 
-#ifdef USER_CONSUME_LOGS
-        catch_up_cache_clock(at_clk);
+#ifdef USER_HELP_CONSUME
+        user_help_consume(at_clk);
 #else
-        wait_for_cache_clock(at_clk);
+        wait_for_consume(at_clk);
 #endif
 
         user_clock.mod([&](auto &self) {
@@ -133,17 +131,12 @@ char User::handle_load(char *addr, bool is_acquire) {
     return ret;
 }
 
-void User::run() {
-#ifdef SEQ_WORKLOAD
-    SeqWorkLoad workload;
-#else
-    RandWorkLoad workload;
-#endif
+template <typename W>
+void User::run(W &workload) {
     for (int i =0; i < TOTAL_OPS; i++) {
-        UserOp op =  workload.getNextOp(i);
+        UserOp op = workload.getNextOp(i);
         //TODO: data-race-free workload based on synchronization (locked region?)
-        //
-        switch (op.op) {
+        switch (op.type) {
             case OP_STORE_REL:
 #ifdef STATS
                 write_count++;
@@ -191,4 +184,7 @@ void User::run() {
         }
     }
 }
+
+template void User::run<RandWorkLoad>(RandWorkLoad &workload);
+template void User::run<SeqWorkLoad>(SeqWorkLoad &workload);
 

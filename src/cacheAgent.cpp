@@ -6,7 +6,7 @@ void CacheAgent::run() {
             if (i == node_id)
                 continue;
 
-#ifdef USER_CONSUME_LOGS
+#ifdef USER_HELP_CONSUME
             std::unique_lock<std::mutex> lk(bufs[i].get_head_mutex(node_id), std::defer_lock);
             if (!lk.try_lock())
                 continue;

@@ -12,6 +12,7 @@
 #include "logBuffer.hpp"
 #include "memLayout.hpp"
 #include "localCLTable.hpp"
+#include "workload.hpp"
 
 class User {
     //user local data
@@ -36,9 +37,9 @@ class User {
 
     void write_to_log(bool is_release);
 
-    void catch_up_cache_clock(const VectorClock &target);
+    void user_help_consume(const VectorClock &target);
 
-    void wait_for_cache_clock(const VectorClock &target);
+    void wait_for_consume(const VectorClock &target);
 
 public:
     User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): node_id(nid), user_id(uid),  cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
@@ -76,7 +77,8 @@ public:
 
     };
 
-    void run();
+    template <typename W>
+    void run(W &workload);
 };
 
 #endif

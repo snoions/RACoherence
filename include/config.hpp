@@ -19,13 +19,13 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 #define STATS
 
 // whether user threads may consume logs to unblock itself, at the expense of contention with cache agent
-#define USER_CONSUME_LOGS
+#define USER_HELP_CONSUME
 
 // turn off RACoherence protocol, use raw stores and loads
 //#define PROTOCOL_OFF
 
 // whether to use sequential workload
-#define SEQ_WORKLOAD
+//#define SEQ_WORKLOAD
 // a constant that is co-prime with PLAIN_ACQ_REL_RATIO to decouple choice of acq/rel with load/store
 #define SEQ_OP_FACTOR 3
 

@@ -10,17 +10,41 @@
 #include <array>
 
 #include "config.hpp"
+#include "flush.hpp"
 
 constexpr uint64_t L1_BITS = 19;                      // [38:20]
 constexpr uint64_t L2_BITS = 8;                       // [19:12]
 constexpr uint64_t L1_ENTRIES = 1ull << L1_BITS;
 constexpr uint64_t L2_ENTRIES = 1ull << L2_BITS;
 
+//class CacheLineTableLeaf {
+//public:
+//    uint8_t dirty[CACHE_LINES_PER_PAGE];
+//
+//    void mark_range_dirty(uint64_t mask) {
+//        while(mask) {
+//            unsigned p = __builtin_ctzl(mask);
+//            dirty[p] = 1;
+//            mask ^= mask &-mask;
+//        }
+//    }
+//
+//    void mark_dirty(uint64_t line) {
+//        dirty[line] = 1;
+//    }
+//
+//    bool is_dirty(uint64_t line) const {
+//        return dirty[line] == 0;
+//    }
+//
+//    void clear_dirty(uint64_t line) {
+//        dirty[line] = 0;
+//    }
+//};
+
 class CacheLineTableLeaf {
 public:
-    // our model allows no concurrent access to same cache line
-    // alternatively could use uint8_t dirty[CACHE_LINES_PER_PAGE]; to trade space for non-atomic access
-    // the extra space could be used for other purposes
+    //non-atomic is safe assuming no race on cache line, so uint8_t dirty[CACHE_LINES_PER_PAGE] is another option
     std::atomic<uint64_t> dirty_mask{0};
 
     void mark_range_dirty(uint64_t mask) {
@@ -87,6 +111,22 @@ public:
         return leaf ? leaf->is_dirty(line) : false;
     }
 
+    bool invalidate_if_dirty(uintptr_t va) {
+        uint64_t l1_idx, l2_idx, line;
+        split_va(va, l1_idx, l2_idx, line);
+        auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
+        if (!l2) return false;
+
+        auto* leaf = l2->leaves[l2_idx].load(std::memory_order_acquire);
+        if (leaf && leaf->is_dirty(line)) {
+            do_invalidate((char *)va);
+            invalidate_fence();
+            leaf->clear_dirty(line);
+            return true;
+        }
+        return false;
+    }
+
     void clear_dirty(uintptr_t va) {
         uint64_t l1_idx, l2_idx, line;
         split_va(va, l1_idx, l2_idx, line);
@@ -98,7 +138,8 @@ public:
     }
 
 private:
-    CacheLineTableLeaf* get_or_create_leaf(uint64_t l1_idx, uint64_t l2_idx) {
+    __attribute__((always_inline))
+    inline CacheLineTableLeaf* get_or_create_leaf(uint64_t l1_idx, uint64_t l2_idx) {
         auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
         if (!l2) {
             auto* new_l2 = new CacheLineTableL2();
@@ -123,6 +164,7 @@ private:
         return leaf;
     }
 
+    __attribute__((always_inline))
     static inline void split_va(uintptr_t va, uint64_t &l1, uint64_t &l2, uint64_t &line) {
         line = (va >> 6) & (CACHE_LINES_PER_PAGE - 1);          // 6 bits
         l2   = (va >> 12) & (L2_ENTRIES - 1);                   // 8 bits
