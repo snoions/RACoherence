@@ -7,7 +7,7 @@
 
 #include <unistd.h>
 
-#include "flush.hpp"
+#include "flush_util.hpp"
 #include "config.hpp"
 #include "logBuffer.hpp"
 #include "memLayout.hpp"

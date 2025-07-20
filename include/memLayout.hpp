@@ -18,27 +18,13 @@ struct CXLMemMeta {
     PerNode<LogBuffer> bufs = {};
 
     //TODO: support dynamically allocated atomic locs
-    Monitor<AtomicMeta> *atmap;
-
-    CXLMemMeta() {
-        atmap = new Monitor<AtomicMeta>[CXLMEM_ATOMIC_RANGE];
-    }
-
-    ~CXLMemMeta() {
-        delete []atmap;
-    }
+    Monitor<AtomicMeta> atmap[CXLMEM_ATOMIC_RANGE];
 };
 
 
 struct CXLPool {
     CXLMemMeta meta;
-    char* data;
-    CXLPool() {
-        data = new char[CXLMEM_RANGE];
-    }
-    ~CXLPool() {
-        delete[] data;
-    }
+    alignas(CACHE_LINE_SIZE) char data[CXLMEM_RANGE];
 };
 
 using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;

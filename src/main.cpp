@@ -5,27 +5,38 @@
 #include "cacheAgent.hpp"
 #include "logBuffer.hpp"
 #include "memLayout.hpp"
+#include "numa_util.hpp"
 #include "user.hpp"
 #include "workload.hpp"
 
 std::atomic<bool> complete {false};
-CXLPool cxl_pool;
-PerNode<NodeLocalMeta> node_local_meta;
+
+int main() {
+#ifdef USE_NUMA
+    run_on_local_numa();
+    char *cxl_pool_buf = (char *)remote_numa_alloc(sizeof(CXLPool));
+#else 
+    char *cxl_pool_buf = new char[sizeof(CXLPool)];
+#endif
+
+    CXLPool *cxl_pool = new (cxl_pool_buf) CXLPool();
+
+    char *node_local_meta_buf = new char[sizeof(NodeLocalMeta) * NODE_COUNT];
+    NodeLocalMeta *node_local_meta = new (node_local_meta_buf) NodeLocalMeta[NODE_COUNT];
+
 #ifdef SEQ_WORKLOAD
     SeqWorkLoad workload;
 #else
     RandWorkLoad workload;
 #endif
 
-int main() {
-
     std::vector<std::thread> user_group;
 #ifndef PROTOCOL_OFF
     std::vector<std::thread> cacheAgent_group;
 #endif
     for (unsigned i=0; i<NODE_COUNT; i++) {
-        auto run_user = [=] (unsigned uid) {
-            User user(i, uid, cxl_pool, node_local_meta[i]);
+        auto run_user = [=, &workload] (unsigned uid) {
+            User user(i, uid, *cxl_pool, node_local_meta[i]);
             user.run<decltype(workload)>(workload);
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
@@ -36,7 +47,7 @@ int main() {
     for (unsigned i=0; i<NODE_COUNT; i++) {
         //TODO: thread affinity
         auto run_cacheAgent = [=](){
-            CacheAgent cacheAgent(i, cxl_pool, node_local_meta[i]);
+            CacheAgent cacheAgent(i, *cxl_pool, node_local_meta[i]);
             cacheAgent.run();
         };
         cacheAgent_group.push_back(std::thread{run_cacheAgent});
@@ -51,6 +62,11 @@ int main() {
     for (unsigned i=0; i<cacheAgent_group.size(); i++)
         cacheAgent_group[i].join();
 #endif
+
+#ifndef NUMA_SIMULATE
+    delete[] cxl_pool_buf;
+#endif
+    delete[] node_local_meta_buf;
     return 0;
 }
 

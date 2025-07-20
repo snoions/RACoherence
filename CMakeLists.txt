@@ -15,12 +15,26 @@ set(INDEX_FILES
 add_executable(main ${INDEX_FILES})
 
 target_include_directories(main PUBLIC include)
-target_compile_options(main PRIVATE -g)
+
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -fno-omit-frame-pointer -fPIC")
+
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer -fPIC")
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(main PRIVATE Threads::Threads)
+
+# NUMA library
+find_library(NUMA_LIB NAMES numa)
+if(NUMA_LIB)
+    message(STATUS "Found libnuma at: ${NUMA_LIB}")
+    target_link_libraries(main PRIVATE ${NUMA_LIB})
+else()
+    message(FATAL_ERROR "libnuma not found!")
+endif()
 
 # Fetch GoogleTest
 include(FetchContent)

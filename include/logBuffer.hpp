@@ -112,19 +112,11 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
     BufPos heads[NODE_COUNT];
     alignas(CACHE_LINE_SIZE)
     std::mutex head_mtxs[NODE_COUNT] = {};
-    Log *logs;
+    Log logs[LOG_BUF_SIZE];
 
     inline Log &log_from_index(unsigned idx) { return logs[idx]; }
 
 public:
-
-    LogBuffer() { 
-        logs = new Log[LOG_BUF_SIZE];
-    }
-
-    ~LogBuffer() {
-        delete[] logs;
-    }
 
     iterator begin() { return &logs[0]; }
 

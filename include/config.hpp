@@ -24,6 +24,9 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 // turn off RACoherence protocol, use raw stores and loads
 //#define PROTOCOL_OFF
 
+// simulate CXL memory with remote NUMA nodes
+//#define USE_NUMA
+
 // whether to use sequential workload
 //#define SEQ_WORKLOAD
 // a constant that is co-prime with PLAIN_ACQ_REL_RATIO to decouple choice of acq/rel with load/store
