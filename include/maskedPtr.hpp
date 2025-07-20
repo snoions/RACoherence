@@ -36,20 +36,20 @@ public:
         uintptr_t ptr;
         uint64_t mask;
     public:
-        iterator(uintptr_t p, uint64_t m): ptr(p), mask(m) {}
-        const uintptr_t operator*() const {
+        inline iterator(uintptr_t p, uint64_t m): ptr(p), mask(m) {}
+        inline const uintptr_t operator*() const {
             int p = __builtin_ctzl(mask);
             return ptr + (p << CACHE_LINE_SHIFT);
         }
 
-        iterator operator++() { 
-            uint64_t m = mask & -mask; 
+        inline iterator operator++() {
+            uint64_t m = mask & -mask;
             mask ^= m;
             return *this; 
         }
 
-        bool operator!=(const iterator & other) const { 
-            return ptr != other.ptr || mask != other.mask;  
+        inline bool operator!=(const iterator & other) const {
+            return ptr != other.ptr || mask != other.mask;
         }
     };
 

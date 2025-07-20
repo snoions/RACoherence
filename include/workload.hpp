@@ -5,6 +5,7 @@
 #include "memLayout.hpp"
 
 // Should be power of 2
+constexpr unsigned SEQ_OP_FACTOR = 3;
 constexpr uintptr_t OP_ALIGN = 1ull << 3;
 // ratio of plain operations to acq/rel operations, needs to be power of two
 constexpr uintptr_t PLAIN_ACQ_REL_RATIO = 1ull << 8;

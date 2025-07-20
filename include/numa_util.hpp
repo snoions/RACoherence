@@ -6,8 +6,22 @@
 #include <numaif.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <sched.h>
+#include <pthread.h>
+
 constexpr int LOCAL_NUMA_ID=0;
 constexpr int REMOTE_NUMA_ID=1;
+
+static void set_thread_affinity(int core_id) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core_id, &cpuset);
+    int result = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    if (result != 0) {
+        printf("Error setting thread affinity: %d", result);
+        exit(1);
+    }
+}
 
 static void *remote_numa_alloc(size_t length) {
     void *map = mmap(NULL, length, PROT_READ|PROT_WRITE,

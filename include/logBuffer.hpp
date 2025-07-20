@@ -35,7 +35,7 @@ class alignas(CACHE_LINE_SIZE) Log {
     //  = n in [1 .. NODE_COUNT-1] => log to be consumed by n nodes, consumer has shared ownership
     // bit 31 stores parity bit from the buffer, in case the tail wraps around
     // default parity must be opposite of BufPos's default parity
-    std::atomic<unsigned> status {to_status(SPair{0, false})};
+    std::atomic<unsigned> status {to_status({0, false})};
     std::array<uintptr_t, LOG_SIZE> entries;
     size_t size = 0;
     // whether is a release write

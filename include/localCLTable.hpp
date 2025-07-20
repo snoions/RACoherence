@@ -15,7 +15,6 @@ struct LocalCLTable {
    * The insert function returns true if the table was full and
    * insertion was not possible.
    */
-  __attribute__((always_inline))
   inline bool insert(uintptr_t address) {
     uintptr_t ptr = address >> CACHE_LINE_SHIFT;
     uint32_t val = ptr & INDEX_MASK;

@@ -45,8 +45,11 @@ int main() {
 
 #ifndef PROTOCOL_OFF
     for (unsigned i=0; i<NODE_COUNT; i++) {
-        //TODO: thread affinity
         auto run_cacheAgent = [=](){
+            //TODO: make sure these cores are on local NUMA
+#ifdef CACHE_AGENT_AFFINITY
+            set_thread_affinity(i);
+#endif
             CacheAgent cacheAgent(i, *cxl_pool, node_local_meta[i]);
             cacheAgent.run();
         };
@@ -63,7 +66,7 @@ int main() {
         cacheAgent_group[i].join();
 #endif
 
-#ifndef NUMA_SIMULATE
+#ifndef USE_NUMA
     delete[] cxl_pool_buf;
 #endif
     delete[] node_local_meta_buf;

@@ -2,6 +2,7 @@
 #define _MEM_LAYOUT_H_
 
 #include "CLTracker.hpp"
+#include "flush_util.hpp"
 #include "logBuffer.hpp"
 #include "util.hpp"
 #include "vectorClock.hpp"
@@ -39,9 +40,18 @@ struct CacheInfo {
     std::atomic<unsigned> produced_count {0};
 
     void process_log(Log &log) {
+        int count = 0;
         for (auto invalid_cl: log) {
+#ifdef EAGER_INVALIDATE
+            for (auto cl_addr: MaskedPtrRange(invalid_cl))
+                do_invalidate((char *)cl_addr);
+#else
             inv_cls.mark_range_dirty(get_ptr(invalid_cl), get_mask64(invalid_cl));
+#endif
         }
+#ifdef EAGER_INVALIDATE
+        invalidate_fence();
+#endif
     }
 
     bool invalidate_if_dirty(char *addr) {

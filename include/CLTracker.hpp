@@ -67,6 +67,7 @@ public:
     }
 };
 
+//TODO: try pre-initialize all tables
 class CacheLineTableL2 {
 public:
     std::atomic<CacheLineTableLeaf*> leaves[L2_ENTRIES]{};
@@ -138,7 +139,6 @@ public:
     }
 
 private:
-    __attribute__((always_inline))
     inline CacheLineTableLeaf* get_or_create_leaf(uint64_t l1_idx, uint64_t l2_idx) {
         auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
         if (!l2) {
@@ -164,7 +164,6 @@ private:
         return leaf;
     }
 
-    __attribute__((always_inline))
     static inline void split_va(uintptr_t va, uint64_t &l1, uint64_t &l2, uint64_t &line) {
         line = (va >> 6) & (CACHE_LINES_PER_PAGE - 1);          // 6 bits
         l2   = (va >> 12) & (L2_ENTRIES - 1);                   // 8 bits
