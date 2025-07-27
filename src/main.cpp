@@ -3,13 +3,14 @@
 
 #include "config.hpp"
 #include "cacheAgent.hpp"
-#include "logBuffer.hpp"
 #include "memLayout.hpp"
-#include "numa_util.hpp"
+#include "numaUtils.hpp"
 #include "user.hpp"
 #include "workload.hpp"
 
 std::atomic<bool> complete {false};
+thread_local unsigned node_id;
+thread_local unsigned user_id;
 
 int main() {
 #ifdef USE_NUMA
@@ -36,7 +37,9 @@ int main() {
 #endif
     for (unsigned i=0; i<NODE_COUNT; i++) {
         auto run_user = [=, &workload] (unsigned uid) {
-            User user(i, uid, *cxl_pool, node_local_meta[i]);
+            node_id = i;
+            user_id = uid;
+            User user(*cxl_pool, node_local_meta[i]);
             user.run<decltype(workload)>(workload);
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
@@ -50,7 +53,8 @@ int main() {
 #ifdef CACHE_AGENT_AFFINITY
             set_thread_affinity(i);
 #endif
-            CacheAgent cacheAgent(i, *cxl_pool, node_local_meta[i]);
+            node_id = i;
+            CacheAgent cacheAgent(*cxl_pool, node_local_meta[i]);
             cacheAgent.run();
         };
         cacheAgent_group.push_back(std::thread{run_cacheAgent});

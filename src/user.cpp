@@ -5,7 +5,7 @@
 //should support taking multiple heads for more flexibility
 void User::write_to_log(bool is_release) {
     Log *curr_log;
-    while(!(curr_log = my_buf().take_tail())) {
+    while(!(curr_log = my_buf().get_new_log())) {
 #ifdef STATS
         blocked_count++;
 #endif
@@ -21,7 +21,7 @@ void User::write_to_log(bool is_release) {
         }
     }
     flush_fence();
-    curr_log->produce(is_release); 
+    my_buf().produce_tail(curr_log, is_release);
     dirty_cls.clear();
 }
 
@@ -38,12 +38,13 @@ void User::user_help_consume(const VectorClock &target) {
         val = cache_info.get_clock(i);
 
         while(val < target[i]) {
-            Log &log = cxl_meta.bufs[i].take_head(node_id);
-            cache_info.process_log(log);
-            if (log.is_release())
+            Log *log = cxl_meta.bufs[i].take_head(node_id);
+            assert(log);
+            cache_info.process_log(*log);
+            if (log->is_release())
                 val = cache_info.update_clock(i);
-            log.consume();
-            LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i);
+            cxl_meta.bufs[i].consume_head(node_id);
+            LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i)
         }
 
     }
@@ -56,7 +57,7 @@ void User::wait_for_consume(const VectorClock &target) {
             auto curr = cache_info.get_clock(i);
             if (i != node_id && curr < target[i]) {
                 uptodate = false;
-                LOG_DEBUG("block on acquire, index=" << i << ", target=" << target[i] << ", current=" << curr);
+                LOG_DEBUG("block on acquire, index=" << i << ", target=" << target[i] << ", current=" << curr)
                 break;
             }
         }
@@ -74,7 +75,7 @@ void User::handle_store(char *addr, bool is_release) {
     //if(is_release || dirty_cls.size() == LOG_SIZE) {
     if(is_release || full) {
         write_to_log(is_release);
-        LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++);
+        LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++)
     }
 
     if(is_release) {
@@ -82,7 +83,7 @@ void User::handle_store(char *addr, bool is_release) {
            self.tick(node_id);
            return self;
        });
-       LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", clock=" << clock);
+       LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", clock=" << clock)
        size_t off = addr - cxl_data;
        cxl_meta.atmap[off].mod([&](auto &self) {
            self.clock.merge(clock);
@@ -114,7 +115,7 @@ char User::handle_load(char *addr, bool is_acquire) {
             return self.clock; 
         });
 
-        LOG_INFO("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk);
+        LOG_INFO("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk)
 
 #ifdef USER_HELP_CONSUME
         user_help_consume(at_clk);

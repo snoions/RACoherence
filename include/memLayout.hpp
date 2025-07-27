@@ -2,8 +2,9 @@
 #define _MEM_LAYOUT_H_
 
 #include "CLTracker.hpp"
-#include "flush_util.hpp"
-#include "logBuffer.hpp"
+#include "flushUtils.hpp"
+#include "logManager.hpp"
+#include "maskedPtr.hpp"
 #include "util.hpp"
 #include "vectorClock.hpp"
 
@@ -16,7 +17,7 @@ struct AtomicMeta {
 };
 
 struct CXLMemMeta {
-    PerNode<LogBuffer> bufs = {};
+    PerNode<LogManager> bufs = {};
 
     //TODO: support dynamically allocated atomic locs
     Monitor<AtomicMeta> atmap[CXLMEM_ATOMIC_RANGE];

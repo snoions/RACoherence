@@ -12,17 +12,17 @@ void CacheAgent::run() {
                 continue;
 #endif
 
-            Log* log = bufs[i].try_take_head(node_id);
+            Log* log = bufs[i].take_head(node_id);
             if (!log)
                 continue;
 
             cache_info.process_log(*log);
 
-            LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i);
+            LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i)
             if (log->is_release()) {
                 cache_info.update_clock(i);
             }
-            log->consume();
+            bufs[i].consume_head(node_id);
         }
     }
 }

@@ -12,7 +12,6 @@ endif()
 
 set(INDEX_FILES
       src/main.cpp
-      src/logBuffer.cpp
       src/user.cpp
       src/cacheAgent.cpp
     )

@@ -23,17 +23,21 @@ Log *LogBuffer::take_tail() {
 }
 
 Log &LogBuffer::take_head(unsigned nid) {
-    Log &log = log_from_index(heads[nid].idx);
-    log.prepare_consume(heads[nid].par);
-    heads[nid].next();
+    auto h = heads[nid].load(std::memory_order_acquire);
+    Log &log = log_from_index(h.idx);
+    log.prepare_consume(h.par);
+    h.next();
+    heads[nid].store(h, std::memory_order_release);
     return log;
 }
 
 
 Log *LogBuffer::try_take_head(unsigned nid) {
-    Log &log = log_from_index(heads[nid].idx);
-    if (!log.try_prepare_consume(heads[nid].par))
+    auto h = heads[nid].load(std::memory_order_acquire);
+    Log &log = log_from_index(h.idx);
+    if (!log.try_prepare_consume(h.par))
         return NULL;
-    heads[nid].next();
+    h.next();
+    heads[nid].store(h, std::memory_order_release);
     return &log;
 }

@@ -99,7 +99,7 @@ struct BufPos {
         idx = (idx+1) % LOG_BUF_SIZE;
         if (idx == 0)
             par = !par;
-    }
+    }   
 };
 
 class alignas(CACHE_LINE_SIZE) LogBuffer {
@@ -109,7 +109,8 @@ class alignas(CACHE_LINE_SIZE) LogBuffer {
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<BufPos> tail;
-    BufPos heads[NODE_COUNT];
+    alignas(CACHE_LINE_SIZE)
+    std::atomic<BufPos> heads[NODE_COUNT];
     alignas(CACHE_LINE_SIZE)
     std::mutex head_mtxs[NODE_COUNT] = {};
     Log logs[LOG_BUF_SIZE];

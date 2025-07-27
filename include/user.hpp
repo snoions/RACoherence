@@ -7,17 +7,17 @@
 
 #include <unistd.h>
 
-#include "flush_util.hpp"
+#include "flushUtils.hpp"
 #include "config.hpp"
-#include "logBuffer.hpp"
+#include "logManager.hpp"
 #include "memLayout.hpp"
 #include "localCLTable.hpp"
 #include "workload.hpp"
 
+extern thread_local unsigned node_id;
+extern thread_local unsigned user_id;
+
 class User {
-    //user local data
-    unsigned node_id;
-    unsigned user_id;
     //LocalCLTracker dirty_cls;
     LocalCLTable dirty_cls;
     Log *curr_log;
@@ -33,7 +33,7 @@ class User {
     unsigned invalidate_count = 0;
     unsigned blocked_count = 0;
 
-    inline LogBuffer &my_buf() { return cxl_meta.bufs[node_id]; }
+    inline LogManager &my_buf() { return cxl_meta.bufs[node_id]; }
 
     void write_to_log(bool is_release);
 
@@ -42,7 +42,7 @@ class User {
     void wait_for_consume(const VectorClock &target);
 
 public:
-    User(unsigned nid, unsigned uid, CXLPool &pool, NodeLocalMeta &local_meta): node_id(nid), user_id(uid),  cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
+    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
 
 
     void handle_store(char *addr, bool is_release = false);

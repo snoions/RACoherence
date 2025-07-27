@@ -10,7 +10,7 @@
 #include <array>
 
 #include "config.hpp"
-#include "flush_util.hpp"
+#include "flushUtils.hpp"
 
 constexpr uint64_t L1_BITS = 19;                      // [38:20]
 constexpr uint64_t L2_BITS = 8;                       // [19:12]
