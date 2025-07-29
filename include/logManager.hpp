@@ -28,9 +28,10 @@ class alignas(CACHE_LINE_SIZE) Log {
     using iterator = Entry *;
     using const_iterator = const Entry *;
 
-    std::array<uintptr_t, LOG_SIZE> entries = {};
+    std::array<uintptr_t, LOG_SIZE> entries;
     size_t size = 0;
     bool is_rel = false;
+    std::atomic<bool> produced {false};
 
 public:
 
@@ -54,14 +55,11 @@ public:
     }
 };
 
-//try a one-layer version without freelist and pub
 class alignas(CACHE_LINE_SIZE) LogManager {
     // node-local allocator to reduce coherence messages between nodes
     using idx_t = size_t;
     alignas(CACHE_LINE_SIZE)
     Log buf[LOG_BUF_SIZE];
-    MPMCRingBuffer<idx_t, LOG_BUF_SIZE> freelist;
-    idx_t pub[LOG_BUF_SIZE] = {};
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> tail {0};
@@ -85,8 +83,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         return p - &buf[0];
     }
 
-    inline void perform_gc() {
-        auto t = tail.load(std::memory_order_acquire);
+    inline bool perform_gc(idx_t t) {
         idx_t last = LOG_BUF_SIZE*2;
         for (int i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
@@ -100,48 +97,41 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         //TODO: differentiate between marked and unmarked index types
         idx_t target = last ^ LOG_BUF_SIZE;
         LOG_ERROR("perform gc: target " << target << " t " << t)
+        if (t == target)
+            return false;
         for (idx_t i = t; i != target ; i = next(i)) {
-            bool ok = freelist.enqueue(pub[i & (LOG_BUF_SIZE-1)]);
-            assert(ok);
+            buf[i & (LOG_BUF_SIZE-1)].produced.store(false, std::memory_order_relaxed);
         }
+        return true;
     }
 
 public:
 
-    LogManager() {
-        for (idx_t i = 0; i < LOG_BUF_SIZE; ++i) {
-            bool ok = freelist.enqueue(i);
-            assert(ok && "Initialization failed to enqueue block");
-        }
-    }
-
     Log *get_new_log() {
-        idx_t idx;
-        bool ok = freelist.dequeue(idx); 
-        if (!ok) {
-            if (gc_mtx.try_lock()) {
-                perform_gc();
-                gc_mtx.unlock();
-            } else
-                return NULL;
-
-            bool ok = freelist.dequeue(idx); 
-            if (!ok) {
-                LOG_ERROR("get new log blocked, nid " << node_id)
-                return NULL;
+        auto t = tail.load(std::memory_order_acquire);
+        Log *log;
+        do {
+            log = &buf[t & (LOG_BUF_SIZE-1)];
+            if (log->produced.load()) {
+                if (gc_mtx.try_lock()) {
+                    bool ok = perform_gc(t);
+                    gc_mtx.unlock();
+                    if (!ok) {
+                        LOG_ERROR("get new log blocked, nid " << node_id)
+                        return NULL;
+                    }
+                } else {
+                    return NULL;
+                }
             }
-        }
-        return new (&buf[idx]) Log(); 
+        } while(!tail.compare_exchange_weak(t, next(t), std::memory_order_release, std::memory_order_relaxed));
+        return log;
     }
 
     void produce_tail(Log *l, bool r) {
         //add tail to pub
-        idx_t idx = get_idx(l);
-        auto t = tail.load(std::memory_order_relaxed);
-        while(!tail.compare_exchange_weak(t, next(t), std::memory_order_release, std::memory_order_relaxed)) {};
-        //thread now owns pub[t] 
         l->is_rel = r;
-        pub[t & (LOG_BUF_SIZE-1)] = idx;
+        l->produced.store(true, std::memory_order_release);
     }
 
     std::mutex &get_head_mutex(unsigned nid) {
@@ -151,13 +141,18 @@ public:
     //only allows exclusive access 
     Log *take_head(unsigned nid) {
         //return head, check if overlaps with tail
-        auto h = heads[nid].load(std::memory_order_acquire);
+        auto h = heads[nid].load(std::memory_order_relaxed);
         auto t = tail.load(std::memory_order_relaxed);
         if (h == t) {
             LOG_ERROR("take head blocked, h " << h << " curr node " << nid)
             return NULL;
         }
-        return &buf[pub[h & (LOG_BUF_SIZE-1)]];
+        auto log = &buf[h & (LOG_BUF_SIZE-1)];
+        if (!log->produced.load(std::memory_order_acquire)) {
+            LOG_ERROR("take head blocked 2, h " << h << " curr node " << nid)
+            return NULL;
+        }
+        return log;
     }
 
     //only allows exclusive access 
