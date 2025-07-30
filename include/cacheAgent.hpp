@@ -8,6 +8,7 @@
 
 extern std::atomic<bool> complete;
 extern thread_local unsigned node_id;
+constexpr size_t LOG_MAX_BATCH = 100;
 
 class CacheAgent {
     // local data

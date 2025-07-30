@@ -3,7 +3,7 @@
 
 #include <mutex>
 
-static std::mutex LoggerMutex; 
+extern std::mutex LoggerMutex; 
 
 #define __FILENAME__ (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
 
@@ -11,7 +11,7 @@ static std::mutex LoggerMutex;
 #define LOG_LEVEL_INFO  2
 #define LOG_LEVEL_ERROR 3
 
-#define CURRENT_LOG_LEVEL 3 // Set desired log level
+#define CURRENT_LOG_LEVEL 1 // Set desired log level
 
 #if CURRENT_LOG_LEVEL <= LOG_LEVEL_DEBUG
 #define LOG_DEBUG(msg) LoggerMutex.lock(); std::cout << __FILENAME__ << ": " << msg << std::endl << std::flush; LoggerMutex.unlock();

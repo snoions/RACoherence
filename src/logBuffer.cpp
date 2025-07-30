@@ -7,8 +7,9 @@ void Log::consume() {
 
 void Log::produce(bool is_r) {
     is_rel = is_r;
-    auto cp = SPair(status.fetch_sub(1, std::memory_order_release));
-    assert(cp.c==NODE_COUNT);
+    //no contention, no need for rmw
+    auto s = status.load(std::memory_order_relaxed);
+    status.store(SPair(s-1), std::memory_order_release);
 }
 
 //could also use a tail lock instead, performance seems similar

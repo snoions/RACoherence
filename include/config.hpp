@@ -11,8 +11,8 @@ constexpr uintptr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
 // assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 
-constexpr unsigned NODE_COUNT = 3;
-constexpr unsigned WORKER_PER_NODE = 2;
+constexpr unsigned NODE_COUNT = 4;
+constexpr unsigned WORKER_PER_NODE = 4;
 constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
 // whether to collect statistics

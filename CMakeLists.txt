@@ -14,6 +14,7 @@ set(INDEX_FILES
       src/main.cpp
       src/user.cpp
       src/cacheAgent.cpp
+      src/logger.cpp
     )
 
 add_executable(main ${INDEX_FILES})

@@ -38,13 +38,14 @@ void User::user_help_consume(const VectorClock &target) {
         val = cache_info.get_clock(i);
 
         while(val < target[i]) {
-            Log *log = cxl_meta.bufs[i].take_head(node_id);
+            Log *log = cxl_meta.bufs[i].take_head(i, node_id, true);
             assert(log);
             cache_info.process_log(*log);
-            if (log->is_release())
+            if (log->is_release()) {
                 val = cache_info.update_clock(i);
+            }
             cxl_meta.bufs[i].consume_head(node_id);
-            LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count << " from " << i)
+            LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i)
         }
 
     }
@@ -57,7 +58,7 @@ void User::wait_for_consume(const VectorClock &target) {
             auto curr = cache_info.get_clock(i);
             if (i != node_id && curr < target[i]) {
                 uptodate = false;
-                LOG_DEBUG("block on acquire, index=" << i << ", target=" << target[i] << ", current=" << curr)
+                LOG_DEBUG("node " << node_id << " block on acquire, index=" << i << ", target=" << target[i] << ", current=" << curr)
                 break;
             }
         }
@@ -72,7 +73,7 @@ void User::handle_store(char *addr, bool is_release) {
 
     bool full = dirty_cls.insert(cl_addr);
     //write to log either on release store or on reaching log size limit
-    //if(is_release || dirty_cls.size() == LOG_SIZE) {
+    //TODO: ensure atomicity of log publisha and clock value
     if(is_release || full) {
         write_to_log(is_release);
         LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++)

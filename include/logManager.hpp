@@ -58,6 +58,23 @@ public:
 class alignas(CACHE_LINE_SIZE) LogManager {
     // node-local allocator to reduce coherence messages between nodes
     using idx_t = size_t;
+
+    //TODO: use
+    class MarkedIndex {
+        size_t idx = 0;
+    public:
+        MarkedIndex(size_t i): idx(i) {};
+        inline MarkedIndex next() {
+            return {(idx+1) & ((LOG_BUF_SIZE << 1)-1)};
+        }
+        inline MarkedIndex flip() {
+            return {idx ^ LOG_BUF_SIZE};
+        }
+        inline idx_t get_idx(){
+            return idx & (LOG_BUF_SIZE -1);
+        }
+    };
+
     alignas(CACHE_LINE_SIZE)
     Log buf[LOG_BUF_SIZE];
 
@@ -75,7 +92,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     inline idx_t next(idx_t i) {
         //LOG_BUF_SIZE must be power of 2
-        return (i+1) & ((LOG_BUF_SIZE * 2)-1);
+        return (i+1) & ((LOG_BUF_SIZE << 1)-1);
     }
 
     inline idx_t get_idx(Log *p) {
@@ -83,53 +100,96 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         return p - &buf[0];
     }
 
-    inline bool perform_gc(idx_t t) {
+    //TODO: check memory order
+    inline void perform_gc(idx_t t) {
         idx_t last = LOG_BUF_SIZE*2;
         for (int i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
-               continue; 
-            auto h = heads[i].load(std::memory_order_relaxed);
+               continue;
+            auto h = heads[i].load(std::memory_order_relaxed) ^ LOG_BUF_SIZE;
+            LOG_ERROR("node " << node_id << " perform gc head " << i << " = " << h)
             if (last == LOG_BUF_SIZE*2)
                 last = h;
-            else if (h < last && (h > t || last < t))
+            else if (t <= h && h < last)
+                last = h;
+            else if (h < last && last < t)
+                last = h;
+            else if (last < t && t <= h)
                 last = h;
         }
-        //TODO: differentiate between marked and unmarked index types
-        idx_t target = last ^ LOG_BUF_SIZE;
-        LOG_ERROR("perform gc: target " << target << " t " << t)
-        if (t == target)
-            return false;
-        for (idx_t i = t; i != target ; i = next(i)) {
-            buf[i & (LOG_BUF_SIZE-1)].produced.store(false, std::memory_order_relaxed);
+        LOG_ERROR("node " << node_id << " perform gc last " << last << " t " << t)
+        for (idx_t i = t; i != last ; i = next(i)) {
+            buf[i & (LOG_BUF_SIZE-1)].produced.store(false, std::memory_order_release);
         }
-        return true;
     }
 
 public:
 
+    //Log *get_new_log() {
+    //    std::unique_lock<std::mutex> lk(gc_mtx);
+    //    auto t = tail.load();
+    //    auto log = &buf[t & (LOG_BUF_SIZE-1)];
+    //    if (log->produced.load(std::memory_order_acquire)) {
+    //        perform_gc(t);
+    //        if (log->produced.load(std::memory_order_acquire))
+    //            return NULL;
+    //        //idx_t last = LOG_BUF_SIZE*2;
+    //        //bool test = false;
+    //        //idx_t copy[NODE_COUNT];
+    //        //for (int i = 0; i < NODE_COUNT; i++) {
+    //        //    if (i == node_id)
+    //        //       continue;
+    //        //    auto h = heads[i].load(std::memory_order_relaxed) ^ LOG_BUF_SIZE;
+    //        //    copy[i] = h;
+    //        //    LOG_ERROR("node " << node_id << " perform gc head " << i << " = " << h)
+    //        //    if (last == LOG_BUF_SIZE*2)
+    //        //        last = h;
+    //        //    else if (t <= h && h < last)
+    //        //        last = h;
+    //        //    else if (h < last && last < t)
+    //        //        last = h;
+    //        //    else if (last < t && t <= h)
+    //        //        last = h;
+    //        //    if (h == t)
+    //        //        test = true;
+    //        //}
+    //        //LOG_ERROR("node " << node_id << " perform gc last " << last << " t " << t)
+    //        //assert((last== t) == test);
+    //        //if (last == t)
+    //        //    return NULL;
+    //        //for (int i = 0; i < NODE_COUNT; i++) {
+    //        //    if (i == node_id)
+    //        //        continue;
+    //        //    auto h = heads[i].load(std::memory_order_relaxed);
+    //        //    if ((h ^ LOG_BUF_SIZE) == t)
+    //        //        return NULL;
+    //        //}
+    //    }
+    //    log->produced.store(false, std::memory_order_release);
+    //    tail = next(t);
+    //    return log;
+    //}
+
     Log *get_new_log() {
-        auto t = tail.load(std::memory_order_acquire);
+        auto t = tail.load(std::memory_order_relaxed);
         Log *log;
         do {
             log = &buf[t & (LOG_BUF_SIZE-1)];
-            if (log->produced.load()) {
+            if (log->produced.load(std::memory_order_acquire)) {
                 if (gc_mtx.try_lock()) {
-                    bool ok = perform_gc(t);
+                    perform_gc(t);
                     gc_mtx.unlock();
-                    if (!ok) {
-                        LOG_ERROR("get new log blocked, nid " << node_id)
+                    if (log->produced.load(std::memory_order_acquire))
                         return NULL;
-                    }
                 } else {
                     return NULL;
                 }
             }
-        } while(!tail.compare_exchange_weak(t, next(t), std::memory_order_release, std::memory_order_relaxed));
+        } while(!tail.compare_exchange_weak(t, next(t), std::memory_order_relaxed, std::memory_order_relaxed));
         return log;
     }
 
     void produce_tail(Log *l, bool r) {
-        //add tail to pub
         l->is_rel = r;
         l->produced.store(true, std::memory_order_release);
     }
@@ -139,17 +199,19 @@ public:
     }
 
     //only allows exclusive access 
-    Log *take_head(unsigned nid) {
+    Log *take_head(unsigned bnid, unsigned nid, bool must_succeed=false) {
         //return head, check if overlaps with tail
         auto h = heads[nid].load(std::memory_order_relaxed);
         auto t = tail.load(std::memory_order_relaxed);
         if (h == t) {
-            LOG_ERROR("take head blocked, h " << h << " curr node " << nid)
+            assert(!must_succeed);
+            LOG_INFO("node " << nid << " take head from " << bnid << " blocked, h=t " << h)
             return NULL;
         }
         auto log = &buf[h & (LOG_BUF_SIZE-1)];
         if (!log->produced.load(std::memory_order_acquire)) {
-            LOG_ERROR("take head blocked 2, h " << h << " curr node " << nid)
+            assert(!must_succeed);
+            LOG_INFO("node " << nid << " take head from " << bnid << " blocked 2, h=t " << h)
             return NULL;
         }
         return log;
@@ -159,7 +221,7 @@ public:
     void consume_head(unsigned nid) {
         //move head
         auto h = heads[nid].load(std::memory_order_relaxed);
-        heads[nid].store(next(h), std::memory_order_release);
+        heads[nid].store(next(h), std::memory_order_relaxed);
     }
 };
 

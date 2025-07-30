@@ -37,7 +37,7 @@ struct CacheInfo {
     // by cache line race freedom.
     CacheLineTracker inv_cls;
     // per-node stats
-    std::atomic<unsigned> consumed_count {0};
+    std::atomic<unsigned> consumed_count[NODE_COUNT];
     std::atomic<unsigned> produced_count {0};
 
     void process_log(Log &log) {
