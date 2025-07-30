@@ -118,76 +118,53 @@ class alignas(CACHE_LINE_SIZE) LogManager {
                 last = h;
         }
         LOG_ERROR("node " << node_id << " perform gc last " << last << " t " << t)
+        assert((((long) last - (long)t) & ((LOG_BUF_SIZE)<<1)-1) <= LOG_BUF_SIZE);
         for (idx_t i = t; i != last ; i = next(i)) {
+            //assert(buf[i & (LOG_BUF_SIZE-1)].produced);
             buf[i & (LOG_BUF_SIZE-1)].produced.store(false, std::memory_order_release);
         }
     }
 
 public:
 
+    Log *get_new_log() {
+         std::unique_lock<std::mutex> lk(gc_mtx);
+         auto t = tail.load(std::memory_order_acquire);
+         auto log = &buf[t & (LOG_BUF_SIZE-1)];
+         if (log->produced.load(std::memory_order_acquire)) {
+             perform_gc(t);
+             if (log->produced.load(std::memory_order_acquire))
+                 return NULL;
+          }
+         tail.store(next(t), std::memory_order_release);
+         return log;
+    }
+
     //Log *get_new_log() {
-    //    std::unique_lock<std::mutex> lk(gc_mtx);
-    //    auto t = tail.load();
-    //    auto log = &buf[t & (LOG_BUF_SIZE-1)];
-    //    if (log->produced.load(std::memory_order_acquire)) {
-    //        perform_gc(t);
-    //        if (log->produced.load(std::memory_order_acquire))
-    //            return NULL;
-    //        //idx_t last = LOG_BUF_SIZE*2;
-    //        //bool test = false;
-    //        //idx_t copy[NODE_COUNT];
-    //        //for (int i = 0; i < NODE_COUNT; i++) {
-    //        //    if (i == node_id)
-    //        //       continue;
-    //        //    auto h = heads[i].load(std::memory_order_relaxed) ^ LOG_BUF_SIZE;
-    //        //    copy[i] = h;
-    //        //    LOG_ERROR("node " << node_id << " perform gc head " << i << " = " << h)
-    //        //    if (last == LOG_BUF_SIZE*2)
-    //        //        last = h;
-    //        //    else if (t <= h && h < last)
-    //        //        last = h;
-    //        //    else if (h < last && last < t)
-    //        //        last = h;
-    //        //    else if (last < t && t <= h)
-    //        //        last = h;
-    //        //    if (h == t)
-    //        //        test = true;
-    //        //}
-    //        //LOG_ERROR("node " << node_id << " perform gc last " << last << " t " << t)
-    //        //assert((last== t) == test);
-    //        //if (last == t)
-    //        //    return NULL;
-    //        //for (int i = 0; i < NODE_COUNT; i++) {
-    //        //    if (i == node_id)
-    //        //        continue;
-    //        //    auto h = heads[i].load(std::memory_order_relaxed);
-    //        //    if ((h ^ LOG_BUF_SIZE) == t)
-    //        //        return NULL;
-    //        //}
-    //    }
-    //    log->produced.store(false, std::memory_order_release);
-    //    tail = next(t);
+    //    //std::unique_lock<std::mutex> lk(gc_mtx);
+    //    Log *log;
+    //    auto t = tail.load(std::memory_order_acquire);
+    //    do {
+    //        log = &buf[t & (LOG_BUF_SIZE-1)];
+    //        if (log->produced.load(std::memory_order_acquire)) {
+    //            if (gc_mtx.try_lock()) {
+    //                t = tail.load(std::memory_order_acquire);
+    //                log = &buf[t & (LOG_BUF_SIZE-1)];
+    //                if (log->produced.load(std::memory_order_acquire)) {
+    //                    perform_gc(t);
+    //                    if (log->produced.load(std::memory_order_acquire)) {
+    //                        gc_mtx.unlock()
+    //                        return NULL;
+    //                    }
+    //                }
+    //                gc_mtx.unlock();
+    //            } else {
+    //                return NULL;
+    //            }
+    //        }
+    //    } while(!tail.compare_exchange_weak(t, next(t), std::memory_order_acq_rel, std::memory_order_relaxed));
     //    return log;
     //}
-
-    Log *get_new_log() {
-        auto t = tail.load(std::memory_order_relaxed);
-        Log *log;
-        do {
-            log = &buf[t & (LOG_BUF_SIZE-1)];
-            if (log->produced.load(std::memory_order_acquire)) {
-                if (gc_mtx.try_lock()) {
-                    perform_gc(t);
-                    gc_mtx.unlock();
-                    if (log->produced.load(std::memory_order_acquire))
-                        return NULL;
-                } else {
-                    return NULL;
-                }
-            }
-        } while(!tail.compare_exchange_weak(t, next(t), std::memory_order_relaxed, std::memory_order_relaxed));
-        return log;
-    }
 
     void produce_tail(Log *l, bool r) {
         l->is_rel = r;
@@ -199,18 +176,16 @@ public:
     }
 
     //only allows exclusive access 
-    Log *take_head(unsigned bnid, unsigned nid, bool must_succeed=false) {
+    Log *take_head(unsigned bnid, unsigned nid) {
         //return head, check if overlaps with tail
         auto h = heads[nid].load(std::memory_order_relaxed);
         auto t = tail.load(std::memory_order_relaxed);
         if (h == t) {
-            assert(!must_succeed);
             LOG_INFO("node " << nid << " take head from " << bnid << " blocked, h=t " << h)
             return NULL;
         }
         auto log = &buf[h & (LOG_BUF_SIZE-1)];
         if (!log->produced.load(std::memory_order_acquire)) {
-            assert(!must_succeed);
             LOG_INFO("node " << nid << " take head from " << bnid << " blocked 2, h=t " << h)
             return NULL;
         }

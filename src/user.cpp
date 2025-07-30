@@ -38,8 +38,9 @@ void User::user_help_consume(const VectorClock &target) {
         val = cache_info.get_clock(i);
 
         while(val < target[i]) {
-            Log *log = cxl_meta.bufs[i].take_head(i, node_id, true);
-            assert(log);
+            Log *log;
+            //log might be null here because of yet to be produced loogs before the produced target log
+            while(!(log = cxl_meta.bufs[i].take_head(i, node_id)));
             cache_info.process_log(*log);
             if (log->is_release()) {
                 val = cache_info.update_clock(i);
