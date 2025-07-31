@@ -75,6 +75,10 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         }
     };
 
+    //TODO: change to idx type
+    MPMCRingBuffer<Log *, LOG_BUF_SIZE> freelist;
+    Log *pub[LOG_BUF_SIZE];
+
     alignas(CACHE_LINE_SIZE)
     Log buf[LOG_BUF_SIZE];
 
@@ -84,6 +88,9 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> heads[NODE_COUNT];
 
+    alignas(CACHE_LINE_SIZE)
+    std::atomic<idx_t> last_head;
+    
     alignas(CACHE_LINE_SIZE)
     std::mutex head_mtxs[NODE_COUNT];
 
@@ -96,7 +103,10 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     }
 
     //TODO: check memory order
-    inline void perform_gc(idx_t t) {
+    inline void perform_gc() {
+        if (!gc_mtx.try_lock())
+            return;
+        auto t = tail.load();
         idx_t last = LOG_BUF_SIZE*2;
         for (int i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
@@ -115,30 +125,44 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         LOG_ERROR("node " << node_id << " perform gc last " << last << " t " << t)
         //triggered here:
         assert((last >= t && last - t <= LOG_BUF_SIZE) || (last < t  && t - last >= LOG_BUF_SIZE));
+
         for (idx_t i = t; i != last ; i = next(i)) {
-            buf[i & (LOG_BUF_SIZE-1)].produced.store(false, std::memory_order_release);
+            auto ok = freelist.enqueue(pub[i & (LOG_BUF_SIZE-1)]);
+            assert(ok);
         }
+        //TODO: remove last_head later
+        last_head.store(last);
+        gc_mtx.unlock();
     }
 
 public:
 
+    LogManager() {
+        for (int i =0; i < LOG_BUF_SIZE; i++) {
+            auto ok = freelist.enqueue(&buf[i]);
+            assert(ok);
+        }
+    }
+
     Log *get_new_log() {
-         std::unique_lock<std::mutex> lk(gc_mtx);
-         auto t = tail.load(std::memory_order_acquire);
-         auto log = &buf[t & (LOG_BUF_SIZE-1)];
-         if (log->produced.load(std::memory_order_acquire)) {
-             perform_gc(t);
-             if (log->produced.load(std::memory_order_acquire))
-                 return NULL;
-          }
-         tail.store(next(t), std::memory_order_release);
+         Log *log;
+         auto ok = freelist.dequeue(log);
+         if (!ok) {
+             perform_gc();
+             auto ok = freelist.dequeue(log);
+             if (!ok)
+                return NULL;
+         }
          log->size = 0;
          return log;
     }
 
     void produce_tail(Log *l, bool r) {
+        auto t = tail.load();
+        while(!tail.compare_exchange_weak(t, next(t)));
+        assert(t != last_head);
         l->is_rel = r;
-        l->produced.store(true, std::memory_order_release);
+        pub[t] = l;
     }
 
     std::mutex &get_head_mutex(unsigned nid) {
@@ -153,10 +177,7 @@ public:
         if (h == t) {
             return NULL;
         }
-        auto log = &buf[h & (LOG_BUF_SIZE-1)];
-        if (!log->produced.load(std::memory_order_acquire)) {
-            return NULL;
-        }
+        auto log = pub[h & (LOG_BUF_SIZE-1)];
         return log;
     }
 
