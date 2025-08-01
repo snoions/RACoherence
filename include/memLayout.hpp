@@ -5,7 +5,7 @@
 #include "flushUtils.hpp"
 #include "logManager.hpp"
 #include "maskedPtr.hpp"
-#include "util.hpp"
+#include "utils.hpp"
 #include "vectorClock.hpp"
 
 // Should be power of two

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Default build type: RelWithDebInfo" FORCE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Default build type: Release" FORCE)
     message(STATUS "CMAKE_BUILD_TYPE default:" ${CMAKE_BUILD_TYPE})
 endif()
 

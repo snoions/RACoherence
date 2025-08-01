@@ -3,109 +3,89 @@
 #include <cstdint>
 #include <cassert>
 #include <cstring>
-#include <stdexcept>
 
-// --------- MPMC Ring Buffer (Dmitry Vyukov style) ---------
-template<typename T, size_t Capacity>
-class MPMCRingBuffer {
-    static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of two");
-
-    struct Cell {
-        std::atomic<size_t> sequence;
-        T data;
-    };
-
-    Cell buffer[Capacity];
-    std::atomic<size_t> head;
-    std::atomic<size_t> tail;
-
+// code adapted from Dmitry Vyukov. https://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
+template<typename T, size_t S>
+class mpmc_bounded_queue
+{
 public:
-    MPMCRingBuffer() : head(0), tail(0) {
-        for (size_t i = 0; i < Capacity; ++i)
-            buffer[i].sequence.store(i, std::memory_order_relaxed);
+  mpmc_bounded_queue()
+  {
+    assert((S >= 2) &&
+      ((S & (S - 1)) == 0));
+    for (size_t i = 0; i != S; i += 1)
+      buffer_[i].sequence_.store(i, std::memory_order_relaxed);
+    enqueue_pos_.store(0, std::memory_order_relaxed);
+    dequeue_pos_.store(0, std::memory_order_relaxed);
+  }
+  bool enqueue(T const& data)
+  {
+    cell_t* cell;
+    size_t pos = enqueue_pos_.load(std::memory_order_relaxed);
+    for (;;)
+    {
+      cell = &buffer_[pos & buffer_mask_];
+      size_t seq = 
+        cell->sequence_.load(std::memory_order_acquire);
+      intptr_t dif = (intptr_t)seq - (intptr_t)pos;
+      if (dif == 0)
+      {
+        if (enqueue_pos_.compare_exchange_weak
+            (pos, pos + 1, std::memory_order_relaxed))
+          break;
+      }
+      else if (dif < 0)
+        return false;
+      else
+        pos = enqueue_pos_.load(std::memory_order_relaxed);
     }
-
-    bool enqueue(const T& value) {
-        size_t pos = head.load(std::memory_order_relaxed);
-        while (true) {
-            Cell& cell = buffer[pos & (Capacity - 1)];
-            size_t seq = cell.sequence.load(std::memory_order_acquire);
-            intptr_t diff = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos);
-
-            if (diff == 0) {
-                if (head.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
-                    cell.data = value;
-                    cell.sequence.store(pos + 1, std::memory_order_release);
-                    return true;
-                }
-            } else if (diff < 0) {
-                return false; // full
-            } else {
-                pos = head.load(std::memory_order_relaxed); // retry
-            }
-        }
+    cell->data_ = data;
+    cell->sequence_.store(pos + 1, std::memory_order_release);
+    return true;
+  }
+  bool dequeue(T& data)
+  {
+    cell_t* cell;
+    size_t pos = dequeue_pos_.load(std::memory_order_relaxed);
+    for (;;)
+    {
+      cell = &buffer_[pos & buffer_mask_];
+      size_t seq = 
+        cell->sequence_.load(std::memory_order_acquire);
+      intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
+      if (dif == 0)
+      {
+        if (dequeue_pos_.compare_exchange_weak
+            (pos, pos + 1, std::memory_order_relaxed))
+          break;
+      }
+      else if (dif < 0)
+        return false;
+      else
+        pos = dequeue_pos_.load(std::memory_order_relaxed);
     }
+    data = cell->data_;
+    cell->sequence_.store
+      (pos + buffer_mask_ + 1, std::memory_order_release);
+    return true;
+  }
 
-    bool dequeue(T& result) {
-        size_t pos = tail.load(std::memory_order_relaxed);
-        while (true) {
-            Cell& cell = buffer[pos & (Capacity - 1)];
-            size_t seq = cell.sequence.load(std::memory_order_acquire);
-            intptr_t diff = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos + 1);
-
-            if (diff == 0) {
-                if (tail.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
-                    result = cell.data;
-                    cell.sequence.store(pos + Capacity, std::memory_order_release);
-                    return true;
-                }
-            } else if (diff < 0) {
-                return false; // empty
-            } else {
-                pos = tail.load(std::memory_order_relaxed); // retry
-            }
-        }
-    }
+private:
+  struct cell_t
+  {
+    std::atomic<size_t>   sequence_;
+    T                     data_;
+  };
+  static size_t const     cacheline_size = 64;
+  typedef char            cacheline_pad_t [cacheline_size];
+  cacheline_pad_t         pad0_;
+  cell_t                  buffer_[S];
+  size_t const            buffer_mask_ = S - 1;
+  cacheline_pad_t         pad1_;
+  std::atomic<size_t>     enqueue_pos_;
+  cacheline_pad_t         pad2_;
+  std::atomic<size_t>     dequeue_pos_;
+  cacheline_pad_t         pad3_;
+  mpmc_bounded_queue(mpmc_bounded_queue const&);
+  void operator = (mpmc_bounded_queue const&);
 };
-
-// --------- Lock-Free Fixed-Size Block Allocator ---------
-
-//template <typename BlockType, size_t NumBlocks>
-//class BlockAllocator {
-//    static constexpr size_t BLOCK_SIZE = sizeof(BlockType);           // bytes per block
-//
-//    alignas(64) uint8_t memory[BLOCK_SIZE * NumBlocks];
-//    MPMCRingBuffer<size_t, NumBlocks> freelist;
-//
-//public:
-//    BlockAllocator() {
-//        for (size_t i = 0; i < NumBlocks; ++i) {
-//            bool ok = freelist.enqueue(i);
-//            assert(ok && "Initialization failed to enqueue block");
-//        }
-//    }
-//
-//    BlockType* allocate() {
-//        size_t blockIndex;
-//        if (freelist.dequeue(blockIndex)) {
-//            return (BlockType *)&memory[blockIndex * BLOCK_SIZE];
-//        }
-//        return nullptr; // No free block
-//    }
-//
-//    void deallocate(void* ptr) {
-//        uintptr_t base = reinterpret_cast<uintptr_t>(memory);
-//        uintptr_t p = reinterpret_cast<uintptr_t>(ptr);
-//
-//        if (p < base || p >= base + BLOCK_SIZE * NumBlocks || (p - base) % BLOCK_SIZE != 0) {
-//            throw std::invalid_argument("Pointer does not belong to allocator");
-//        }
-//
-//        size_t index = (p - base) / BLOCK_SIZE;
-//        bool ok = freelist.enqueue(index);
-//        assert(ok && "Double free or freelist overflow");
-//    }
-//
-//    size_t blockSize() const { return BLOCK_SIZE; }
-//    size_t totalBlocks() const { return NumBlocks; }
-//};

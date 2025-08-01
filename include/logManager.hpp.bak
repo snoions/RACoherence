@@ -21,21 +21,6 @@ extern thread_local unsigned node_id;
 
 class LogManager;
 
-constexpr size_t PAR_BIT = LOG_BUF_SIZE << 1;
-
-//index into LogManager's pub array with high bit as parity
-using par_idx_t = size_t;
-
-inline par_idx_t next(par_idx_t idx) {
-    return (idx+1) & (PAR_BIT-1);
-}
-inline par_idx_t flip(par_idx_t idx) {
-    return idx ^ LOG_BUF_SIZE;
-}
-inline size_t get_idx(par_idx_t idx){
-    return idx & (LOG_BUF_SIZE -1);
-}
-
 class alignas(CACHE_LINE_SIZE) Log {
     friend LogManager;
 
@@ -45,7 +30,6 @@ class alignas(CACHE_LINE_SIZE) Log {
     using const_iterator = const Entry *;
 
     Data entries;
-    std::atomic<par_idx_t> pidx{0};
     size_t size = 0;
     bool is_rel = false;
 
@@ -74,6 +58,9 @@ public:
 class alignas(CACHE_LINE_SIZE) LogManager {
     // node-local allocator to reduce coherence messages between nodes
 
+    // index into pub with a high parity bit
+    using par_idx_t = size_t;
+
     struct alignas(CACHE_LINE_SIZE) aligned_par_idx_t {
         par_idx_t data;
     };
@@ -83,10 +70,8 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     };
 
     mpmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
+    Log *pub[LOG_BUF_SIZE] = {};
     par_idx_t bound = flip(0);
-
-    alignas(CACHE_LINE_SIZE)
-    std::atomic<Log *>pub[LOG_BUF_SIZE];
 
     alignas(CACHE_LINE_SIZE)
     Log buf[LOG_BUF_SIZE];
@@ -107,14 +92,24 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     alignas(CACHE_LINE_SIZE)
     std::mutex tail_mtx;
 
+    inline par_idx_t next(par_idx_t idx) {
+        return (idx+1) & ((LOG_BUF_SIZE << 1)-1);
+    }
+    inline par_idx_t flip(par_idx_t idx) {
+        return idx ^ LOG_BUF_SIZE;
+    }
+    inline size_t get_idx(par_idx_t idx){
+        return idx & (LOG_BUF_SIZE -1);
+    }
+
     //TODO: check memory order
     inline void perform_gc() {
-        par_idx_t new_b = PAR_BIT;
+        par_idx_t new_b = LOG_BUF_SIZE*2;
         for (int i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
                continue;
             auto h = flip(heads[i].load(std::memory_order_relaxed));
-            if (new_b == PAR_BIT)
+            if (new_b == LOG_BUF_SIZE*2)
                 new_b = h;
             else if (bound <= h && h < new_b)
                 new_b = h;
@@ -123,7 +118,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
             else if (new_b < bound && bound <= h)
                 new_b = h;
         }
-        LOG_ERROR("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
+        LOG_INFO("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
 
         assert((bound <= new_b && new_b - bound <= LOG_BUF_SIZE) || (new_b  < bound && bound - new_b >= LOG_BUF_SIZE));
         for (par_idx_t i = bound; i != new_b ; i = next(i)) {
@@ -137,8 +132,7 @@ public:
 
     LogManager() {
         for (int i =0; i < LOG_BUF_SIZE; i++) {
-            auto ok = freelist.enqueue(&buf[i]);
-            assert(ok);
+            while(!freelist.enqueue(&buf[i]));
         }
     }
 
@@ -166,10 +160,11 @@ public:
 
     void produce_tail(Log *l, bool r) {
         l->is_rel = r;
-        auto t = tail.load(std::memory_order_relaxed);
-        while(!tail.compare_exchange_weak(t, next(t), std::memory_order_relaxed));
-        l->pidx.store(t + 1, std::memory_order_relaxed);
-        pub[get_idx(t)].store(l, std::memory_order_release);
+        tail_mtx.lock();
+        auto t = tail.load(std::memory_order_acquire);
+        pub[get_idx(t)] = l;
+        tail.store(next(t),std::memory_order_release);
+        tail_mtx.unlock();
     }
 
     std::mutex &get_head_mutex(unsigned nid) {
@@ -179,19 +174,19 @@ public:
     //only allows exclusive access 
     Log *take_head(unsigned bnid, unsigned nid) {
         //return head, check if overlaps with tail
-        auto h = heads[nid].load(std::memory_order_relaxed);
-        auto l = pub[get_idx(h)].load(std::memory_order_acquire);
-        if (!l || l->pidx.load(std::memory_order_relaxed) != h+1) {
+        auto h = heads[nid].load(std::memory_order_acquire);
+        auto t = tail.load(std::memory_order_relaxed);
+        if (h == t)
             return NULL;
-        }
-        return l;
+        auto log = pub[get_idx(h)];
+        return log;
     }
 
     //only allows exclusive access 
     void consume_head(unsigned nid) {
         //move head
-        auto h = heads[nid].load(std::memory_order_relaxed);
-        heads[nid].store(next(h), std::memory_order_relaxed);
+        auto h = heads[nid].load(std::memory_order_acquire);
+        heads[nid].store(next(h), std::memory_order_release);
     }
 };
 
