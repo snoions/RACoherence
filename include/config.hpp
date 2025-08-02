@@ -34,6 +34,6 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define CACHE_AGENT_AFFINITY
 
 // whether to use sequential workload
-//#define SEQ_WORKLOAD
+// #define SEQ_WORKLOAD
 
 #endif

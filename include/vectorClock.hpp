@@ -31,6 +31,11 @@ public:
         }
     }
 
+    // Merge this vector clock with with a new clock value at a given index
+    void merge(size_t index, clock_t clk_val) {
+        vc[index] = std::max(vc[index], clk_val);
+    }
+
     // Merge this vector clock with another (element-wise max)
     void merge(const VectorClock& other) {
         for (sized_t i = 0; i < NODE_COUNT; ++i) {

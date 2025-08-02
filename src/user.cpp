@@ -3,16 +3,7 @@
 #include "logger.hpp"
 
 //should support taking multiple heads for more flexibility
-void User::write_to_log(bool is_release) {
-    Log *curr_log;
-    while(!(curr_log = my_buf().get_new_log())) {
-#ifdef STATS
-        blocked_count++;
-#endif
-        //wait for available space
-        sleep(0);
-    }
-
+void User::write_to_log(Log *curr_log) {
     for(auto cl: dirty_cls) {
         if (cl) {
             curr_log->write(cl);
@@ -21,8 +12,6 @@ void User::write_to_log(bool is_release) {
         }
     }
     flush_fence();
-    my_buf().produce_tail(curr_log, is_release);
-    dirty_cls.clear();
 }
 
 void User::user_help_consume(const VectorClock &target) {
@@ -74,24 +63,32 @@ void User::handle_store(char *addr, bool is_release) {
 
     bool full = dirty_cls.insert(cl_addr);
     //write to log either on release store or on reaching log size limit
-    //TODO: ensure atomicity of log publisha and clock value
     if(is_release || full) {
-        write_to_log(is_release);
+        Log *curr_log;
+        while(!(curr_log = my_buf().get_new_log())) {
+#ifdef STATS
+            blocked_count++;
+#endif
+            sleep(0);
+        }
+        write_to_log(curr_log);
+        clock_t clk_val = my_buf().produce_tail(curr_log, is_release);
+        dirty_cls.clear();
         LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++)
-    }
+        if (!is_release)
+            return;
 
-    if(is_release) {
-       const auto &clock = user_clock.mod([=] (auto &self) {
-           self.tick(node_id);
-           return self;
-       });
-       LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", clock=" << clock)
-       size_t off = addr - cxl_data;
-       cxl_meta.atmap[off].mod([&](auto &self) {
-           self.clock.merge(clock);
-       });
+        const auto &clock = user_clock.mod([=] (auto &self) {
+            self.merge(node_id, clk_val);
+            return self;
+        });
+        LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", clock=" << clock)
+        size_t off = addr - cxl_data;
+        cxl_meta.atmap[off].mod([&](auto &self) {
+            self.clock.merge(clock);
+        });
 
-       ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
+        ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
     } else {
         if (cache_info.invalidate_if_dirty(addr)) {
 #ifdef STATS

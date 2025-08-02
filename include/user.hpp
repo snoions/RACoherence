@@ -35,7 +35,7 @@ class User {
 
     inline LogManager &my_buf() { return cxl_meta.bufs[node_id]; }
 
-    void write_to_log(bool is_release);
+    void write_to_log(Log *curr_log);
 
     void user_help_consume(const VectorClock &target);
 

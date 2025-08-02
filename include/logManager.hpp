@@ -72,7 +72,7 @@ public:
 };
 
 class alignas(CACHE_LINE_SIZE) LogManager {
-    // node-local allocator to reduce coherence messages between nodes
+    // logs are allocated in buffer private to each node to reduce coherence messages between nodes
 
     struct alignas(CACHE_LINE_SIZE) aligned_par_idx_t {
         par_idx_t data;
@@ -85,6 +85,8 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     mpmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
     par_idx_t bound = flip(0);
 
+    clock_t rel_clk = 0;
+
     alignas(CACHE_LINE_SIZE)
     std::atomic<Log *>pub[LOG_BUF_SIZE];
 
@@ -92,7 +94,9 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     Log buf[LOG_BUF_SIZE];
 
     alignas(CACHE_LINE_SIZE)
-    std::atomic<par_idx_t> tail {0};
+    std::mutex tail_mtx;
+
+    par_idx_t tail = 0;
 
     //TODO: pad to different cache lines
     alignas(CACHE_LINE_SIZE)
@@ -103,9 +107,6 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     alignas(CACHE_LINE_SIZE)
     std::mutex gc_mtx;
-
-    alignas(CACHE_LINE_SIZE)
-    std::mutex tail_mtx;
 
     //TODO: check memory order
     inline void perform_gc() {
@@ -164,12 +165,23 @@ public:
          return new(log) Log();
     }
 
-    void produce_tail(Log *l, bool r) {
+    //returns current release clock
+    size_t produce_tail(Log *l, bool r) {
+        size_t ret;
         l->is_rel = r;
-        auto t = tail.load(std::memory_order_relaxed);
-        while(!tail.compare_exchange_weak(t, next(t), std::memory_order_relaxed));
-        l->pidx.store(t + 1, std::memory_order_relaxed);
+        // locking not necessary if the tail is CASed and rel_clk of last release log is found by backward search, but the search could be expensive
+        tail_mtx.lock();
+        auto t = tail;
+        tail = next(t);
+        // atomic because it could conflit with take_head under rare cases
+        l->pidx.store(t+1, std::memory_order_relaxed);
         pub[get_idx(t)].store(l, std::memory_order_release);
+        // maybe save rel_clk into logs easier debugging?
+        if (r)
+            rel_clk++;
+        ret = rel_clk;
+        tail_mtx.unlock();
+        return ret;
     }
 
     std::mutex &get_head_mutex(unsigned nid) {
