@@ -9,7 +9,7 @@
 #include <iostream>
 #include <mutex>
 
-#include "MPMCQueue.hpp"
+#include "SPMCQueue.hpp"
 #include "config.hpp"
 #include "logger.hpp"
 
@@ -84,7 +84,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         std::mutex data;
     };
 
-    mpmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
+    spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
     par_idx_t bound = flip(0);
 
     clock_t rel_clk = 0;
@@ -122,9 +122,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     //TODO: check memory order
     inline void perform_gc() {
         par_idx_t new_b = PAR_BIT;
-        for (int i = 0; i < NODE_COUNT; i++) {
-            if (i == node_id)
-               continue;
+        for (int i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
             auto h = flip(heads[i].load(std::memory_order_relaxed));
             if (new_b == PAR_BIT)
                 new_b = h;

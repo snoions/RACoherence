@@ -44,16 +44,19 @@ constexpr uint64_t L2_ENTRIES = 1ull << L2_BITS;
 
 class CacheLineTableLeaf {
 public:
-    //non-atomic is safe assuming no race on cache line, so uint8_t dirty[CACHE_LINES_PER_PAGE] is another option
+    //non-atomic is safe assuming no races on cache line, so uint8_t dirty[CACHE_LINES_PER_PAGE] is another option
     std::atomic<uint64_t> dirty_mask{0};
 
+    // non-rmw is okay assuming no races on cache line
     void mark_range_dirty(uint64_t mask) {
-        dirty_mask.fetch_or(mask, std::memory_order_relaxed);
+        auto m = dirty_mask.load(std::memory_order_relaxed);
+        dirty_mask.store(m | mask, std::memory_order_relaxed);
     }
 
     void mark_dirty(uint64_t line) {
         uint64_t mask = 1ull << line;
-        dirty_mask.fetch_or(mask, std::memory_order_relaxed);
+        auto m = dirty_mask.load(std::memory_order_relaxed);
+        dirty_mask.store(m | mask, std::memory_order_relaxed);
     }
 
     bool is_dirty(uint64_t line) const {

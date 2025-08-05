@@ -6,10 +6,10 @@
 
 // code adapted from Dmitry Vyukov. https://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
 template<typename T, size_t S>
-class mpmc_bounded_queue
+class spmc_bounded_queue
 {
 public:
-  mpmc_bounded_queue()
+  spmc_bounded_queue()
   {
     assert((S >= 2) &&
       ((S & (S - 1)) == 0));
@@ -30,9 +30,11 @@ public:
       intptr_t dif = (intptr_t)seq - (intptr_t)pos;
       if (dif == 0)
       {
-        if (enqueue_pos_.compare_exchange_weak
-            (pos, pos + 1, std::memory_order_relaxed))
-          break;
+        //if (enqueue_pos_.compare_exchange_weak
+        //    (pos, pos + 1, std::memory_order_relaxed))
+        //  break;
+        enqueue_pos_.store(pos + 1, std::memory_order_relaxed);
+        break;
       }
       else if (dif < 0)
         return false;
@@ -86,6 +88,6 @@ private:
   cacheline_pad_t         pad2_;
   std::atomic<size_t>     dequeue_pos_;
   cacheline_pad_t         pad3_;
-  mpmc_bounded_queue(mpmc_bounded_queue const&);
-  void operator = (mpmc_bounded_queue const&);
+  spmc_bounded_queue(spmc_bounded_queue const&);
+  void operator = (spmc_bounded_queue const&);
 };

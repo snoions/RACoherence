@@ -22,7 +22,7 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define USER_HELP_CONSUME
 
 // whether to use parity index in each log to synchronise between producer and consumer instead of tail pointer
-//#define LOG_USE_PAR_INDEX
+#define LOG_USE_PAR_INDEX
 
 // turn off RACoherence protocol, use raw stores and loads
 //#define PROTOCOL_OFF
@@ -37,6 +37,6 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define CACHE_AGENT_AFFINITY
 
 // whether to use sequential workload
-//#define SEQ_WORKLOAD
+#define SEQ_WORKLOAD
 
 #endif
