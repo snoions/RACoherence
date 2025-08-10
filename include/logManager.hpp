@@ -165,7 +165,7 @@ public:
                 ok = freelist.dequeue(log);
                 if (ok) {
                     gc_mtx.unlock();
-                    return log;
+                    return new(log) Log();
                 }
                 perform_gc();
                 gc_mtx.unlock();
