@@ -26,12 +26,6 @@ constexpr size_t PAR_BIT = LOG_BUF_SIZE << 1;
 //index into LogManager's pub array with high bit as parity
 using par_idx_t = size_t;
 
-inline par_idx_t next(par_idx_t idx) {
-    return (idx+1) & (PAR_BIT-1);
-}
-inline par_idx_t flip(par_idx_t idx) {
-    return idx ^ LOG_BUF_SIZE;
-}
 inline size_t get_idx(par_idx_t idx){
     return idx & (LOG_BUF_SIZE -1);
 }
@@ -84,8 +78,8 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         std::mutex data;
     };
 
-    spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
-    par_idx_t bound = flip(0);
+    alignas(CACHE_LINE_SIZE)
+    std::atomic<par_idx_t> bound{LOG_BUF_SIZE};
 
     clock_t rel_clk = 0;
 
@@ -101,6 +95,9 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     alignas(CACHE_LINE_SIZE)
     std::mutex tail_mtx;
+
+    alignas(CACHE_LINE_SIZE)
+    std::atomic<par_idx_t> alloc_tail{0};
 
 #ifdef LOG_USE_PAR_INDEX
     par_idx_t tail = 0;
@@ -121,61 +118,55 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     //TODO: check memory order
     inline void perform_gc() {
-        par_idx_t new_b = PAR_BIT;
+        auto b = bound.load(std::memory_order_relaxed);
+        par_idx_t new_b = b + LOG_BUF_SIZE + 1;
         for (int i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
-            auto h = flip(heads[i].load(std::memory_order_relaxed));
-            if (new_b == PAR_BIT)
-                new_b = h;
-            else if (bound <= h && h < new_b)
-                new_b = h;
-            else if (h < new_b && new_b < bound)
-                new_b = h;
-            else if (new_b < bound && bound <= h)
+            auto h = heads[i].load(std::memory_order_relaxed) + LOG_BUF_SIZE;
+            if (h < new_b)
                 new_b = h;
         }
-        LOG_ERROR("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
+        LOG_INFO("node " << node_id << " perform gc new bound " << new_b << " b " << b)
 
-        assert((bound <= new_b && new_b - bound <= LOG_BUF_SIZE) || (new_b  < bound && bound - new_b >= LOG_BUF_SIZE));
-        for (par_idx_t i = bound; i != new_b ; i = next(i)) {
-            //handle spurious failures
-#ifdef LOG_USE_PAR_INDEX
-            while(!freelist.enqueue(pub[get_idx(i)].load(std::memory_order_relaxed)));
-#else
-            while(!freelist.enqueue(pub[get_idx(i)]));
-#endif
-        }
-        bound = new_b;
+        assert(new_b >= b && new_b < b + LOG_BUF_SIZE + 1);
+        bound.store(new_b, std::memory_order_relaxed);
     }
 
 public:
 
     LogManager() {
         for (int i =0; i < LOG_BUF_SIZE; i++) {
-            auto ok = freelist.enqueue(&buf[i]);
-            assert(ok);
+#ifdef LOG_USE_PAR_INDEX
+            pub[i].store(&buf[i], std::memory_order_relaxed);
+#else
+            pub[i] = &buf[i];
+#endif
         }
     }
 
     Log *get_new_log() {
-         Log *log;
-         auto ok = freelist.dequeue(log);
-         if (!ok) {
-             if (gc_mtx.try_lock()) {
-                 //check again after locking
-                ok = freelist.dequeue(log);
-                if (ok) {
-                    gc_mtx.unlock();
-                    return new(log) Log();
-                }
-                perform_gc();
-                gc_mtx.unlock();
-                ok = freelist.dequeue(log);
-                if(!ok)
+        Log *log;
+        auto at = alloc_tail.load(std::memory_order_relaxed);
+        do {
+            if (at == bound.load(std::memory_order_relaxed)) {
+                if (gc_mtx.try_lock()) {
+                    //check again after locking
+                    if (at == bound.load(std::memory_order_relaxed)) {
+                        perform_gc();
+                        gc_mtx.unlock();
+                        if (at == bound.load(std::memory_order_relaxed))
+                            return NULL;
+                    } else
+                        gc_mtx.unlock();
+                } else
                     return NULL;
-            } else
-                return NULL;
-         }
-         return new(log) Log();
+            }
+#ifdef LOG_USE_PAR_INDEX
+            log = pub[get_idx(at)].load(std::memory_order_acquire);
+#else
+            log = pub[get_idx(at)];
+#endif
+        } while (!alloc_tail.compare_exchange_weak(at, at+1, std::memory_order_relaxed));
+        return new(log) Log();
     }
 
     //returns current release clock
@@ -186,18 +177,17 @@ public:
             rel_clk++;
             l->rel_clk = rel_clk;
         }
+        ret = rel_clk;
 #ifdef LOG_USE_PAR_INDEX
         // pidx-based version can be lock-free if tail is CASed and rel_clk of last release log is found by backward search, but the search could be expensive
-        auto t = tail;
-        tail = next(t);
-        l->pidx.store(t+1, std::memory_order_relaxed);
-        pub[get_idx(t)].store(l, std::memory_order_release);
+        tail++;
+        l->pidx.store(tail, std::memory_order_relaxed);
+        pub[get_idx(tail-1)].store(l, std::memory_order_release);
 #else
         auto t = tail.load(std::memory_order_relaxed);
         pub[get_idx(t)] = l;
-        tail.store(next(t), std::memory_order_release);
+        tail.store(t+1, std::memory_order_release);
 #endif
-        // maybe save rel_clk into logs easier debugging?
         tail_mtx.unlock();
         return ret;
     }
@@ -228,7 +218,7 @@ public:
     void consume_head(unsigned nid) {
         //move head
         auto h = heads[nid].load(std::memory_order_relaxed);
-        heads[nid].store(next(h), std::memory_order_relaxed);
+        heads[nid].store(h+1, std::memory_order_relaxed);
     }
 };
 
