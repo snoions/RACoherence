@@ -40,6 +40,6 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 #define LOCAL_CL_TABLE_BUFFER
 
 // whether to use sequential workload
-//#define SEQ_WORKLOAD
+#define SEQ_WORKLOAD
 
 #endif
