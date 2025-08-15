@@ -1,18 +1,14 @@
-#ifndef _MASKED_PTR_H
-#define _MASKED_PTR_H
+#ifndef _MASKED_PTR_H_
+#define _MASKED_PTR_H_
 
 #include "config.hpp"
 
 using masked_ptr_t = uint64_t;
-namespace masked_ptr {
-    constexpr int GROUP_SHIFT = CACHE_LINE_SHIFT + 4; // group of 16 CLs
-    constexpr uint64_t PTR_SHIFT = VIRTUAL_ADDRESS_BITS - GROUP_SHIFT;
-    constexpr uint64_t PTR_MASK = (1ull << PTR_SHIFT) - 1ull;
-    // index within group
-    constexpr int INDEX_MASK = 15; // 1111b
-}
-
-using namespace masked_ptr;
+constexpr int GROUP_SHIFT = CACHE_LINE_SHIFT + 4; // group of 16 CLs
+constexpr uint64_t PTR_SHIFT = VIRTUAL_ADDRESS_BITS - GROUP_SHIFT;
+constexpr uint64_t PTR_MASK = (1ull << PTR_SHIFT) - 1ull;
+// index within group
+constexpr int INDEX_MASK = 15; // 1111b
 
 static inline uintptr_t get_ptr(masked_ptr_t pm) {
     return (pm  & PTR_MASK) << GROUP_SHIFT;

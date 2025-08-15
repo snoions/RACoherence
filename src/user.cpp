@@ -3,7 +3,14 @@
 #include "logger.hpp"
 
 //should support taking multiple heads for more flexibility
-void User::write_to_log(Log *curr_log) {
+clock_t User::write_to_log(bool is_release) {
+    Log *curr_log;
+    while(!(curr_log = my_buf().get_new_log())) {
+#ifdef STATS
+        blocked_count++;
+#endif
+        sleep(0);
+    }
     for(auto cl: dirty_cls) {
         if (cl) {
             curr_log->write(cl);
@@ -11,7 +18,12 @@ void User::write_to_log(Log *curr_log) {
                 do_flush((char *)addr);
         }
     }
+
     flush_fence();
+    clock_t clk_val = my_buf().produce_tail(curr_log, is_release);
+    dirty_cls.clear();
+    LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++)
+    return clk_val;
 }
 
 void User::user_help_consume(const VectorClock &target) {
@@ -59,23 +71,12 @@ void User::wait_for_consume(const VectorClock &target) {
 void User::handle_store(char *addr, bool is_release) {
     uintptr_t cl_addr = (uintptr_t)addr & CACHE_LINE_MASK;
 
-    bool full = dirty_cls.insert(cl_addr);
-    //write to log either on release store or on reaching log size limit
-    if(is_release || full) {
-        Log *curr_log;
-        while(!(curr_log = my_buf().get_new_log())) {
-#ifdef STATS
-            blocked_count++;
-#endif
-            sleep(0);
-        }
-        write_to_log(curr_log);
-        clock_t clk_val = my_buf().produce_tail(curr_log, is_release);
-        dirty_cls.clear();
-        LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++)
-        if (!is_release)
-            return;
+    while (dirty_cls.insert(cl_addr))
+        write_to_log(false);
 
+    if(is_release) {
+
+        clock_t clk_val = write_to_log(true);
         const auto &clock = user_clock.mod([=] (auto &self) {
             self.merge(node_id, clk_val);
             return self;
@@ -181,6 +182,7 @@ void User::run(W &workload) {
                 assert("unreachable");
         }
     }
+    LOG_INFO("node" << node_id " user " << user_id << " done")
 }
 
 template void User::run<RandWorkLoad>(RandWorkLoad &workload);

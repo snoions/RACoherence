@@ -34,9 +34,12 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 #define EAGER_INVALIDATE
 
 // pin each cache agent to a core
-//#define CACHE_AGENT_AFFINITY
+#define CACHE_AGENT_AFFINITY
+
+// whether to use buffer in local cl tables
+#define LOCAL_CL_TABLE_BUFFER
 
 // whether to use sequential workload
-#define SEQ_WORKLOAD
+//#define SEQ_WORKLOAD
 
 #endif

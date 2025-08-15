@@ -8,8 +8,6 @@
 constexpr int TABLE_ENTRIES = 1ull << 6;
 constexpr int SEARCH_ITERS = 6; // only look 6 places
 
-using namespace masked_ptr;
-
 struct LocalCLTable {
   /**
    * The insert function returns true if the table was full and
@@ -32,7 +30,7 @@ struct LocalCLTable {
         table[tableindex] = value | valmask; // add this bit
         return false;
       }
-      tableindex++;
+      tableindex = (tableindex + 1) & (TABLE_ENTRIES-1);
     }
     //Table is full...clear and restart
     return true;

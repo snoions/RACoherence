@@ -1,10 +1,6 @@
 #ifndef _USER_H_
 #define _USER_H_
 
-#include <iostream>
-#include <random>
-#include <unordered_set>
-
 #include <unistd.h>
 
 #include "flushUtils.hpp"
@@ -12,21 +8,21 @@
 #include "logManager.hpp"
 #include "memLayout.hpp"
 #include "localCLTable.hpp"
-#include "workload.hpp"
 
 extern thread_local unsigned node_id;
 extern thread_local unsigned user_id;
 
 class User {
-    //LocalCLTracker dirty_cls;
-    LocalCLTable dirty_cls;
-    Log *curr_log;
     //CXL mem shared data
     CXLMemMeta &cxl_meta;
     char *cxl_data;
+
     //node local data
     CacheInfo &cache_info;
     Monitor<VectorClock> &user_clock;
+    LocalCLTable dirty_cls;
+    Log *curr_log;
+
     //user stats
     unsigned write_count = 0;
     unsigned read_count = 0;
@@ -35,7 +31,7 @@ class User {
 
     inline LogManager &my_buf() { return cxl_meta.bufs[node_id]; }
 
-    void write_to_log(Log *curr_log);
+    clock_t write_to_log(bool is_release);
 
     void user_help_consume(const VectorClock &target);
 
@@ -43,7 +39,6 @@ class User {
 
 public:
     User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
-
 
     void handle_store(char *addr, bool is_release = false);
 

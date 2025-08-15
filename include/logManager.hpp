@@ -179,13 +179,14 @@ public:
     }
 
     //returns current release clock
-    size_t produce_tail(Log *l, bool r) {
-        size_t ret;
+    clock_t produce_tail(Log *l, bool r) {
+        clock_t ret;
         tail_mtx.lock();
         if (r) {
             rel_clk++;
             l->rel_clk = rel_clk;
         }
+        ret = rel_clk;
 #ifdef LOG_USE_PAR_INDEX
         // pidx-based version can be lock-free if tail is CASed and rel_clk of last release log is found by backward search, but the search could be expensive
         auto t = tail;

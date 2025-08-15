@@ -22,8 +22,6 @@ void CacheAgent::run() {
                 }
                 LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
                 bufs[i].consume_head(node_id);
-                //if(log->is_release())
-                //    break;
             }
         }
     }
