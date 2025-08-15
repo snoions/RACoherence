@@ -37,9 +37,9 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 #define CACHE_AGENT_AFFINITY
 
 // whether to use buffer in local cl tables
-#define LOCAL_CL_TABLE_BUFFER
+//#define LOCAL_CL_TABLE_BUFFER
 
 // whether to use sequential workload
-//#define SEQ_WORKLOAD
+#define SEQ_WORKLOAD
 
 #endif

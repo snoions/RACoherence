@@ -14,14 +14,20 @@ clock_t User::write_to_log(bool is_release) {
     for(auto cl: dirty_cls) {
         if (cl) {
             curr_log->write(cl);
-            for(auto addr : MaskedPtrRange(cl))
-                do_flush((char *)addr);
+            if (is_length_based(cl)) {
+                for (auto group_addr : LengthCLRange(cl))
+                    for (int i=0; i < GROUP_SIZE; i++)
+                        do_flush((char *)group_addr + (i << CACHE_LINE_SHIFT));
+            } else {
+                for(auto addr : MaskCLRange(cl))
+                    do_flush((char *)addr);
+            }
         }
     }
 
     flush_fence();
     clock_t clk_val = my_buf().produce_tail(curr_log, is_release);
-    dirty_cls.clear();
+    dirty_cls.clear_table();
     LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++)
     return clk_val;
 }
@@ -71,10 +77,14 @@ void User::wait_for_consume(const VectorClock &target) {
 void User::handle_store(char *addr, bool is_release) {
     uintptr_t cl_addr = (uintptr_t)addr & CACHE_LINE_MASK;
 
-    while (dirty_cls.insert(cl_addr))
+    while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)
         write_to_log(false);
 
     if(is_release) {
+#ifdef LOCAL_CL_TABLE_BUFFER
+        while (dirty_cls.dump_buffer_to_table())
+            write_to_log(false);
+#endif
 
         clock_t clk_val = write_to_log(true);
         const auto &clock = user_clock.mod([=] (auto &self) {

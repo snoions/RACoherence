@@ -151,6 +151,7 @@ public:
 
     LogManager() {
         for (int i =0; i < LOG_BUF_SIZE; i++) {
+            pub[i].store(&buf[i], std::memory_order_relaxed);
             auto ok = freelist.enqueue(&buf[i]);
             assert(ok);
         }
@@ -213,7 +214,7 @@ public:
         auto h = heads[nid].load(std::memory_order_relaxed);
 #ifdef LOG_USE_PAR_INDEX
         auto l = pub[get_idx(h)].load(std::memory_order_acquire);
-        if (!l || l->pidx.load(std::memory_order_relaxed) != h+1) {
+        if (l->pidx.load(std::memory_order_relaxed) != h+1) {
             return NULL;
         }
 #else
