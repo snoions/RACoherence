@@ -8,7 +8,7 @@
 #define CLFLUSHOPT 2
 #define CLWB 3
 
-#define FLUSH_INST 3
+#define FLUSH_INST 2
 #define INVALIDATE_INST 2 //may not be CLWB
 
 static inline void do_flush(char *addr)
