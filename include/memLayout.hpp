@@ -9,7 +9,7 @@
 #include "vectorClock.hpp"
 
 // Should be power of two
-constexpr uintptr_t CXLMEM_RANGE = 1ull << 30; 
+constexpr uintptr_t CXLMEM_RANGE = 1ull << 30;
 constexpr uintptr_t CXLMEM_ATOMIC_RANGE = 1ull << 4;
 
 struct AtomicMeta {
@@ -81,7 +81,7 @@ struct CacheInfo {
     VectorClock::clock_t update_clock(VectorClock::sized_t i) {
         return ++clock[i];
     }
-    
+
     VectorClock::clock_t get_clock(VectorClock::sized_t i) {
         return clock[i].load();
     }
@@ -89,8 +89,6 @@ struct CacheInfo {
 
 struct NodeLocalMeta{
     CacheInfo cache_info;
-    // user_clock currently shared by all user threads on the same node, could have smaller groups of user threads share clocks
-    Monitor<VectorClock> user_clock;
 };
 
 #endif

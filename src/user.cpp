@@ -87,14 +87,11 @@ void User::handle_store(char *addr, bool is_release) {
 #endif
 
         clock_t clk_val = write_to_log(true);
-        const auto &clock = user_clock.mod([=] (auto &self) {
-            self.merge(node_id, clk_val);
-            return self;
-        });
-        LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", clock=" << clock)
+        thread_clock.merge(node_id, clk_val);
+        LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", thread clock=" <<thread_clock)
         size_t off = addr - cxl_data;
         cxl_meta.atmap[off].mod([&](auto &self) {
-            self.clock.merge(clock);
+            self.clock.merge(thread_clock);
         });
 
         ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
@@ -131,10 +128,7 @@ char User::handle_load(char *addr, bool is_acquire) {
         wait_for_consume(at_clk);
 #endif
 
-        user_clock.mod([&](auto &self) {
-            self.merge(at_clk);
-        });
-    } else 
+    } else
         ret = *((volatile char *)addr);
 
     return ret;

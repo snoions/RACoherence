@@ -151,7 +151,9 @@ public:
 
     LogManager() {
         for (int i =0; i < LOG_BUF_SIZE; i++) {
+#ifdef LOG_USE_PAR_INDEX
             pub[i].store(&buf[i], std::memory_order_relaxed);
+#endif
             auto ok = freelist.enqueue(&buf[i]);
             assert(ok);
         }

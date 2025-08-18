@@ -19,7 +19,7 @@ class User {
 
     //node local data
     CacheInfo &cache_info;
-    Monitor<VectorClock> &user_clock;
+    VectorClock thread_clock;
     LocalCLTable dirty_cls;
     Log *curr_log;
 
@@ -38,7 +38,7 @@ class User {
     void wait_for_consume(const VectorClock &target);
 
 public:
-    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info), user_clock(local_meta.user_clock) {}
+    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info) {}
 
     void handle_store(char *addr, bool is_release = false);
 
