@@ -21,18 +21,16 @@ extern thread_local unsigned node_id;
 
 class LogManager;
 
-constexpr size_t PAR_BIT = LOG_BUF_SIZE << 1;
+//index into LogManager's pub array that does not wrap around
+using idx_t = size_t;
 
-//index into LogManager's pub array with high bit as parity
-using par_idx_t = size_t;
-
-inline par_idx_t next(par_idx_t idx) {
-    return (idx+1) & (PAR_BIT-1);
+inline idx_t next(idx_t idx) {
+    return idx+1;
 }
-inline par_idx_t flip(par_idx_t idx) {
-    return idx ^ LOG_BUF_SIZE;
+inline idx_t flip(idx_t idx) {
+    return idx + LOG_BUF_SIZE;
 }
-inline size_t get_idx(par_idx_t idx){
+inline size_t get_idx(idx_t idx){
     return idx & (LOG_BUF_SIZE -1);
 }
 
@@ -45,11 +43,9 @@ class alignas(CACHE_LINE_SIZE) Log {
     using const_iterator = const Entry *;
 
     Data entries;
-#ifdef LOG_USE_PAR_INDEX
-    std::atomic<par_idx_t> pidx{0};
-#endif
+    std::atomic<idx_t> idx{0};
     size_t size = 0;
-    clock_t rel_clk = 0;
+    bool is_rel = false;
 
 public:
 
@@ -61,11 +57,11 @@ public:
     }
 
     bool is_release() {
-        return rel_clk != 0;
+        return is_rel;
     }
 
-    clock_t get_rel_clk() {
-        return rel_clk;
+    clock_t get_log_idx() {
+        return idx.load(std::memory_order_relaxed);
     }
 
     const_iterator begin() const {
@@ -85,33 +81,22 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     };
 
     spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
-    par_idx_t bound = flip(0);
+    idx_t bound = flip(0);
 
     clock_t rel_clk = 0;
 
-#ifdef LOG_USE_PAR_INDEX
     alignas(CACHE_LINE_SIZE)
     std::atomic<Log *>pub[LOG_BUF_SIZE];
-#else
-    Log *pub[LOG_BUF_SIZE];
-#endif
 
     alignas(CACHE_LINE_SIZE)
     Log buf[LOG_BUF_SIZE];
 
     alignas(CACHE_LINE_SIZE)
-    std::mutex tail_mtx;
-
-#ifdef LOG_USE_PAR_INDEX
-    par_idx_t tail = 0;
-#else
-    alignas(CACHE_LINE_SIZE)
-    std::atomic<par_idx_t> tail{0};
-#endif
+    std::atomic<idx_t> tail{0};
 
     //TODO: pad to different cache lines
     alignas(CACHE_LINE_SIZE)
-    std::atomic<par_idx_t> heads[NODE_COUNT];
+    std::atomic<idx_t> heads[NODE_COUNT];
 
     alignas(CACHE_LINE_SIZE)
     std::mutex head_mtxs[NODE_COUNT];
@@ -121,10 +106,10 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     //TODO: check memory order
     inline void perform_gc() {
-        par_idx_t new_b = PAR_BIT;
+        idx_t new_b = flip(bound);
         for (int i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
             auto h = flip(heads[i].load(std::memory_order_relaxed));
-            if (new_b == PAR_BIT)
+            if (new_b == flip(bound))
                 new_b = h;
             else if (bound <= h && h < new_b)
                 new_b = h;
@@ -136,13 +121,9 @@ class alignas(CACHE_LINE_SIZE) LogManager {
         LOG_ERROR("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
 
         assert((bound <= new_b && new_b - bound <= LOG_BUF_SIZE) || (new_b  < bound && bound - new_b >= LOG_BUF_SIZE));
-        for (par_idx_t i = bound; i != new_b ; i = next(i)) {
+        for (idx_t i = bound; i != new_b ; i = next(i)) {
             //handle spurious failures
-#ifdef LOG_USE_PAR_INDEX
             while(!freelist.enqueue(pub[get_idx(i)].load(std::memory_order_relaxed)));
-#else
-            while(!freelist.enqueue(pub[get_idx(i)]));
-#endif
         }
         bound = new_b;
     }
@@ -151,9 +132,7 @@ public:
 
     LogManager() {
         for (int i =0; i < LOG_BUF_SIZE; i++) {
-#ifdef LOG_USE_PAR_INDEX
             pub[i].store(&buf[i], std::memory_order_relaxed);
-#endif
             auto ok = freelist.enqueue(&buf[i]);
             assert(ok);
         }
@@ -183,27 +162,12 @@ public:
 
     //returns current release clock
     clock_t produce_tail(Log *l, bool r) {
-        clock_t ret;
-        tail_mtx.lock();
-        if (r) {
-            rel_clk++;
-            l->rel_clk = rel_clk;
-        }
-        ret = rel_clk;
-#ifdef LOG_USE_PAR_INDEX
-        // pidx-based version can be lock-free if tail is CASed and rel_clk of last release log is found by backward search, but the search could be expensive
-        auto t = tail;
-        tail = next(t);
-        l->pidx.store(t+1, std::memory_order_relaxed);
+        auto t =tail.load(std::memory_order_relaxed);
+        while (!tail.compare_exchange_weak(t, next(t), std::memory_order_relaxed));
+        l->is_rel = r;
+        l->idx.store(t+1, std::memory_order_relaxed);
         pub[get_idx(t)].store(l, std::memory_order_release);
-#else
-        auto t = tail.load(std::memory_order_relaxed);
-        pub[get_idx(t)] = l;
-        tail.store(next(t), std::memory_order_release);
-#endif
-        // maybe save rel_clk into logs easier debugging?
-        tail_mtx.unlock();
-        return ret;
+        return t+1;
     }
 
     std::mutex &get_head_mutex(unsigned nid) {
@@ -214,17 +178,10 @@ public:
     Log *take_head(unsigned nid) {
         //return head, check if overlaps with tail
         auto h = heads[nid].load(std::memory_order_relaxed);
-#ifdef LOG_USE_PAR_INDEX
         auto l = pub[get_idx(h)].load(std::memory_order_acquire);
-        if (l->pidx.load(std::memory_order_relaxed) != h+1) {
+        if (l->idx.load(std::memory_order_relaxed) != h+1) {
             return NULL;
         }
-#else
-        auto t = tail.load(std::memory_order_acquire);
-        if (h == t)
-            return NULL;
-        auto l = pub[get_idx(h)];
-#endif
         return l;
     }
 

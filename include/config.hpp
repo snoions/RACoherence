@@ -19,13 +19,13 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 #define STATS
 
 // user threads consume logs to unblock itself, at the expense of contention with cache agent
-#define USER_HELP_CONSUME
+//#define USER_HELP_CONSUME
 
-// whether to use parity index in each log to synchronise between producer and consumer instead of tail pointer
-#define LOG_USE_PAR_INDEX
+// thread clock merges with location clock instead of overwriting it, allows release store to be outside of location clock's critical section
+#define LOCATION_CLOCK_MERGE
 
 // turn off RACoherence protocol, use raw stores and loads
-#define PROTOCOL_OFF
+//#define PROTOCOL_OFF
 
 // simulate CXL memory with remote NUMA nodes
 //#define USE_NUMA
@@ -36,10 +36,10 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 // pin each cache agent to a core
 #define CACHE_AGENT_AFFINITY
 
-// whether to use buffer in local cl tables
+// use buffer in local cl tables
 //#define LOCAL_CL_TABLE_BUFFER
 
-// whether to use sequential workload
+// use sequential workload
 //#define SEQ_WORKLOAD
 
 #endif

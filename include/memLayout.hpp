@@ -78,8 +78,8 @@ struct CacheInfo {
         return inv_cls.invalidate_if_dirty((uintptr_t)addr);
     }
 
-    VectorClock::clock_t update_clock(VectorClock::sized_t i) {
-        return ++clock[i];
+    void update_clock(VectorClock::sized_t i, clock_t val) {
+        clock[i] = val;
     }
 
     VectorClock::clock_t get_clock(VectorClock::sized_t i) {

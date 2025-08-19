@@ -17,8 +17,8 @@ void CacheAgent::run() {
                 cache_info.process_log(*log);
 
                 if (log->is_release()) {
-                    auto clk = cache_info.update_clock(i);
-                    assert(clk == log->get_rel_clk());
+                    auto clk = log->get_log_idx();
+                    cache_info.update_clock(i, clk);
                 }
                 LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
                 bufs[i].consume_head(node_id);

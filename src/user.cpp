@@ -48,7 +48,8 @@ void User::user_help_consume(const VectorClock &target) {
             while(!(log = cxl_meta.bufs[i].take_head(node_id)));
             cache_info.process_log(*log);
             if (log->is_release()) {
-                val = cache_info.update_clock(i);
+                val = log->get_log_idx();
+                cache_info.update_clock(i, val);
             }
             cxl_meta.bufs[i].consume_head(node_id);
             LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i)
@@ -90,11 +91,18 @@ void User::handle_store(char *addr, bool is_release) {
         thread_clock.merge(node_id, clk_val);
         LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", thread clock=" <<thread_clock)
         size_t off = addr - cxl_data;
+#ifdef LOCATION_CLOCK_MERGE
         cxl_meta.atmap[off].mod([&](auto &self) {
             self.clock.merge(thread_clock);
         });
-
         ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
+#else
+        cxl_meta.atmap[off].mod([&](auto &self) {
+            self.clock = thread_clock;
+            ((volatile std::atomic<char> *)addr)->store(0, std::memory_order_release);
+        });
+#endif
+
     } else {
         if (cache_info.invalidate_if_dirty(addr)) {
 #ifdef STATS
