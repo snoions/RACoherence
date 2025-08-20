@@ -24,9 +24,6 @@ class LogManager;
 //index into LogManager's pub array that does not wrap around
 using idx_t = size_t;
 
-inline idx_t next(idx_t idx) {
-    return idx+1;
-}
 inline idx_t flip(idx_t idx) {
     return idx + LOG_BUF_SIZE;
 }
@@ -118,10 +115,10 @@ class alignas(CACHE_LINE_SIZE) LogManager {
             else if (new_b < bound && bound <= h)
                 new_b = h;
         }
-        LOG_ERROR("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
+        LOG_INFO("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
 
-        assert((bound <= new_b && new_b - bound <= LOG_BUF_SIZE) || (new_b  < bound && bound - new_b >= LOG_BUF_SIZE));
-        for (idx_t i = bound; i != new_b ; i = next(i)) {
+        assert(bound <= new_b);
+        for (idx_t i = bound; i != new_b; i++) {
             //handle spurious failures
             while(!freelist.enqueue(pub[get_idx(i)].load(std::memory_order_relaxed)));
         }
@@ -162,11 +159,10 @@ public:
 
     //returns current release clock
     clock_t produce_tail(Log *l, bool r) {
-        auto t =tail.load(std::memory_order_relaxed);
-        while (!tail.compare_exchange_weak(t, next(t), std::memory_order_relaxed));
+        auto t = tail.fetch_add(1, std::memory_order_relaxed);
         l->is_rel = r;
-        l->idx.store(t+1, std::memory_order_relaxed);
-        pub[get_idx(t)].store(l, std::memory_order_release);
+        pub[get_idx(t)].store(l, std::memory_order_relaxed);
+        l->idx.store(t+1, std::memory_order_release);
         return t+1;
     }
 
@@ -178,8 +174,8 @@ public:
     Log *take_head(unsigned nid) {
         //return head, check if overlaps with tail
         auto h = heads[nid].load(std::memory_order_relaxed);
-        auto l = pub[get_idx(h)].load(std::memory_order_acquire);
-        if (l->idx.load(std::memory_order_relaxed) != h+1) {
+        auto l = pub[get_idx(h)].load(std::memory_order_relaxed);
+        if (l->idx.load(std::memory_order_acquire) != h+1) {
             return NULL;
         }
         return l;
@@ -189,7 +185,7 @@ public:
     void consume_head(unsigned nid) {
         //move head
         auto h = heads[nid].load(std::memory_order_relaxed);
-        heads[nid].store(next(h), std::memory_order_relaxed);
+        heads[nid].store(h+1, std::memory_order_relaxed);
     }
 };
 
