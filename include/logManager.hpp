@@ -12,6 +12,7 @@
 #include "SPMCQueue.hpp"
 #include "config.hpp"
 #include "logger.hpp"
+#include "utils.hpp"
 
 constexpr size_t LOG_SIZE = 1ull << 6;
 //LOG_BUF_SIZE must be power of 2
@@ -71,11 +72,6 @@ public:
 };
 
 class alignas(CACHE_LINE_SIZE) LogManager {
-    // logs are allocated in buffer private to each node to reduce coherence messages between nodes
-
-    struct alignas(CACHE_LINE_SIZE) aligned_mutex {
-        std::mutex data;
-    };
 
     spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
     idx_t bound = flip(0);
@@ -85,23 +81,19 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     alignas(CACHE_LINE_SIZE)
     std::atomic<Log *>pub[LOG_BUF_SIZE];
 
-    alignas(CACHE_LINE_SIZE)
     Log buf[LOG_BUF_SIZE];
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> tail{0};
 
-    //TODO: pad to different cache lines
-    alignas(CACHE_LINE_SIZE)
-    std::atomic<idx_t> heads[NODE_COUNT];
+    // CacheAligned ensures each element is aligned to cache line boundary
+    CacheAligned<std::atomic<idx_t>> heads[NODE_COUNT];
 
-    alignas(CACHE_LINE_SIZE)
-    std::mutex head_mtxs[NODE_COUNT];
+    CacheAligned<std::mutex> head_mtxs[NODE_COUNT];
 
     alignas(CACHE_LINE_SIZE)
     std::mutex gc_mtx;
 
-    //TODO: check memory order
     inline void perform_gc() {
         idx_t new_b = flip(bound);
         for (int i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
