@@ -35,7 +35,7 @@ struct CXLPool {
     CXLPool(): meta() {};
 };
 
-using AtomicClock = std::array<std::atomic<VectorClock::clock_t>, NODE_COUNT>;
+using AtomicClock = std::atomic<VectorClock::clock_t>[NODE_COUNT];
 
 struct CacheInfo {
     AtomicClock clock;
@@ -49,25 +49,19 @@ struct CacheInfo {
     CacheInfo(): clock(), inv_cls(), consumed_count{}, produced_count{0} {};
 
     void process_log(Log &log) {
-        int count = 0;
-        for (auto invalid_cl: log) {
-            if (is_length_based(invalid_cl)) {
-                for (auto cl_group_addr: LengthCLRange(invalid_cl)) {
+        struct InvalidateOp {
+            inline void operator() (uintptr_t ptr, uint64_t mask) {
 #ifdef EAGER_INVALIDATE
-                    for (int i = 0; i < GROUP_SIZE; i++)
-                        do_invalidate((char *)cl_group_addr + (i << CACHE_LINE_SHIFT));
-#else
-                    inv_cls.mark_range_dirty(cl_group_addr, FULL_MASK);
-#endif
-                }
-            } else {
-#ifdef EAGER_INVALIDATE
-                for (auto cl_addr: MaskCLRange(invalid_cl))
+                for (auto cl_addr: MaskCLRange(ptr, mask))
                     do_invalidate((char *)cl_addr);
 #else
-                inv_cls.mark_range_dirty(get_ptr(invalid_cl), get_mask64(invalid_cl));
+                inv_cls.mark_range_dirty(get_ptr(invalid_cg), cl_group::get_mask64(invalid_cg));
 #endif
             }
+        };
+
+        for (auto invalid_cg: log) {
+            process_cl_group(invalid_cg, InvalidateOp());
         }
 #ifdef EAGER_INVALIDATE
         invalidate_fence();

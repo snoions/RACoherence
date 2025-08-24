@@ -11,17 +11,18 @@ clock_t User::write_to_log(bool is_release) {
 #endif
         sleep(0);
     }
-    for(auto cl: dirty_cls) {
-        if (cl) {
-            curr_log->write(cl);
-            if (is_length_based(cl)) {
-                for (auto group_addr : LengthCLRange(cl))
-                    for (int i=0; i < GROUP_SIZE; i++)
-                        do_flush((char *)group_addr + (i << CACHE_LINE_SHIFT));
-            } else {
-                for(auto addr : MaskCLRange(cl))
-                    do_flush((char *)addr);
-            }
+
+    struct FlushOp {
+        inline void operator() (uintptr_t ptr, uint64_t mask) {
+            for (auto cl_addr: MaskCLRange(ptr, mask))
+                do_flush((char *)cl_addr);
+        }
+    };
+
+    for(auto cg: dirty_cls) {
+        if (cg) {
+            curr_log->write(cg);
+            process_cl_group(cg, FlushOp());
         }
     }
 

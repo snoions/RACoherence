@@ -26,6 +26,7 @@ class LocalCLTable {
 
         // returns true when ptr cannot be inserted into buffer
         inline bool insert(uintptr_t ptr) {
+            using namespace cl_group;
             cl_group_index_t index = ptr >> GROUP_SHIFT;
             if (!begin_index)
                 begin_index = index;
@@ -57,36 +58,38 @@ class LocalCLTable {
     } buffer;
 
     inline bool insert_length(cl_group_index_t group_index, size_t length) {
-      //TODO: deal with this case
-      assert(length <= GROUP_LEN_MAX);
-      cl_group_t entry = group_index | (length << GROUP_INDEX_SHIFT) | TYPE_MASK;
+        using namespace cl_group;
+        //TODO: deal with this case
+        assert(length <= GROUP_LEN_MAX);
+        cl_group_t entry = group_index | (length << GROUP_INDEX_SHIFT) | TYPE_MASK;
 
-      //scan table for overlaps
-      bool inserted = false;
-      for(int i = 0; i < TABLE_ENTRIES; i++) {
-        cl_group_t val = table[i];
-        uint64_t val_index = val & GROUP_INDEX_MASK;
-        if (!val && !inserted) {
-            table[i] = entry;
-            inserted = true;
-        } else if (val && val_index >= group_index && val_index < group_index + length) {
-          //TODO: deal with the case when val is length-based
-              assert(!is_length_based(val));
-              if (inserted)
-                  table[i] = 0;
-              else {
-                  table[i] = entry;
-                  inserted = true;
-              }
+        //scan table for overlaps
+        bool inserted = false;
+        for(int i = 0; i < TABLE_ENTRIES; i++) {
+          cl_group_t val = table[i];
+          uint64_t val_index = val & GROUP_INDEX_MASK;
+          if (!val && !inserted) {
+              table[i] = entry;
+              inserted = true;
+          } else if (val && val_index >= group_index && val_index < group_index + length) {
+            //TODO: deal with the case when val is length-based
+                assert(!is_length_based(val));
+                if (inserted)
+                    table[i] = 0;
+                else {
+                    table[i] = entry;
+                    inserted = true;
+                }
+          }
         }
-      }
 
-      if (inserted)
-          length_entry_count++;
-      return !inserted;
+        if (inserted)
+            length_entry_count++;
+        return !inserted;
     }
 
     inline bool insert_mask(uintptr_t group_index, uint64_t mask) {
+        using namespace cl_group;
         //alternatively starting searching from 0
         int tableindex = group_index & (TABLE_ENTRIES - 1);
         for(int i = 0; i < SEARCH_ITERS; i++) {
@@ -112,6 +115,7 @@ public:
      * insertion was not possible.
      */
     inline bool insert(uintptr_t ptr) {
+        using namespace cl_group;
 #ifdef LOCAL_CL_TABLE_BUFFER
         if (buffer.insert(ptr)) {
             if (dump_buffer_to_table())
@@ -130,6 +134,7 @@ public:
 
     // returns whether table is full
     inline bool dump_buffer_to_table() {
+        using namespace cl_group;
         if (buffer.begin_mask) {
             if (insert_mask(buffer.begin_index, buffer.begin_mask))
                 return true;
