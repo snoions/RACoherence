@@ -107,7 +107,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
             else if (new_b < bound && bound <= h)
                 new_b = h;
         }
-        LOG_INFO("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
+        LOG_DEBUG("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
 
         assert(bound <= new_b);
         for (idx_t i = bound; i != new_b; i++) {

@@ -67,7 +67,7 @@ public:
             return self.clock;
         });
 
-        LOG_INFO("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk)
+        LOG_DEBUG("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk)
 
 #ifdef USER_HELP_CONSUME
         user_help_consume(at_clk);
@@ -89,7 +89,7 @@ public:
 #endif
         clock_t clk_val = write_to_log(true);
         thread_clock.merge(node_id, clk_val);
-        LOG_INFO("node " << node_id << " release at " << (void *)addr << std::dec << ", thread clock=" <<thread_clock)
+        LOG_DEBUG("node " << node_id << " release at " << (void *)addr << std::dec << ", thread clock=" <<thread_clock)
         size_t off = addr - cxl_data;
 #ifdef LOCATION_CLOCK_MERGE
         cxl_meta.atmap[off].mod([&](auto &self) {

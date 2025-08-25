@@ -29,7 +29,7 @@ clock_t User::write_to_log(bool is_release) {
     flush_fence();
     clock_t clk_val = my_buf().produce_tail(curr_log, is_release);
     dirty_cls.clear_table();
-    LOG_INFO("node " << node_id << " produce log " << cache_info.produced_count++)
+    LOG_DEBUG("node " << node_id << " produce log " << cache_info.produced_count++)
     return clk_val;
 }
 
@@ -53,7 +53,7 @@ void User::user_help_consume(const VectorClock &target) {
                 cache_info.update_clock(i, val);
             }
             cxl_meta.bufs[i].consume_head(node_id);
-            LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i)
+            LOG_DEBUG("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i)
         }
 
     }
@@ -128,7 +128,7 @@ void User::run(W &workload) {
                 assert("unreachable");
         }
     }
-    LOG_INFO("node" << node_id " user " << user_id << " done")
+    LOG_INFO("node " << node_id " user " << user_id << " done")
 }
 
 template void User::run<RandWorkLoad>(RandWorkLoad &workload);

@@ -20,10 +20,11 @@ void CacheAgent::run() {
                     auto clk = log->get_log_idx();
                     cache_info.update_clock(i, clk);
                 }
-                LOG_INFO("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
+                LOG_DEBUG("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
                 bufs[i].consume_head(node_id);
             }
         }
     }
+    LOG_INFO("node " << node_id " cache agent done")
 }
 

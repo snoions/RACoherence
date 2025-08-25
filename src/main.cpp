@@ -36,6 +36,8 @@ int main() {
 #ifndef PROTOCOL_OFF
     std::vector<std::thread> cacheAgent_group;
 #endif
+
+    auto start = std::chrono::high_resolution_clock::now();
     for (unsigned i=0; i<NODE_COUNT; i++) {
         auto run_user = [=, &workload] (unsigned uid) {
             node_id = i;
@@ -70,6 +72,10 @@ int main() {
     for (unsigned i=0; i<cacheAgent_group.size(); i++)
         cacheAgent_group[i].join();
 #endif
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = end - start;
+    std::cout << "Elapsed time: " << elapsed.count() / 1000 << "s" << std::endl;
 
 #ifndef USE_NUMA
     delete[] cxl_pool_buf;
