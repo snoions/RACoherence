@@ -19,9 +19,10 @@ class User {
 
     //node local data
     CacheInfo &cache_info;
+
+    //thread local data
     VectorClock thread_clock;
     LocalCLTable dirty_cls;
-    Log *curr_log;
 
     //user stats
     unsigned write_count = 0;
@@ -29,17 +30,20 @@ class User {
     unsigned invalidate_count = 0;
     unsigned blocked_count = 0;
 
+public:
+    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info) {}
+
     inline LogManager &my_buf() { return cxl_meta.bufs[node_id]; }
 
     clock_t write_to_log(bool is_release);
 
-    void user_help_consume(const VectorClock &target);
+    void help_consume(const VectorClock &target);
 
     void wait_for_consume(const VectorClock &target);
 
     inline void handle_invalidate(char *addr) {
 #ifndef EAGER_INVALIDATE
-            if (cache_info.invalidate_if_dirty(addr)) {
+            if (cache_info.invalid_cls.invalidate_if_dirty((uintptr_t)addr)) {
 #ifdef STATS
                 invalidate_count++;
 #endif
@@ -55,40 +59,27 @@ class User {
 #endif
     }
 
-public:
-    User(CXLPool &pool, NodeLocalMeta &local_meta): cxl_meta(pool.meta), cxl_data(pool.data), cache_info(local_meta.cache_info) {}
-
-
-    inline char handle_load_acquire(char *addr) {
-        char ret;
-        size_t off = addr - cxl_data;
-        auto at_clk = cxl_meta.atmap[off].get([&](auto &self) {
-            ret = ((volatile std::atomic<char> *)addr)->load(std::memory_order_acquire);
-            return self.clock;
-        });
-
-        LOG_DEBUG("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk)
-
-#ifdef USER_HELP_CONSUME
-        user_help_consume(at_clk);
-#else
-        wait_for_consume(at_clk);
-#endif
-        return ret;
-    }
-
-    inline char handle_load(char *addr) {
-        handle_invalidate(addr);
-         return *((volatile char *)addr);
-    }
-
-    inline void handle_store_release(char *addr, char val) {
+    inline const VectorClock &thread_release() {
 #ifdef LOCAL_CL_TABLE_BUFFER
         while (dirty_cls.dump_buffer_to_table())
             write_to_log(false);
 #endif
         clock_t clk_val = write_to_log(true);
         thread_clock.merge(node_id, clk_val);
+        return thread_clock;
+    }
+
+    inline void thread_acquire(const VectorClock &clock) {
+        thread_clock.merge(clock);
+#ifdef USER_HELP_CONSUME
+        help_consume(clock);
+#else
+        wait_for_consume(clock);
+#endif
+    }
+
+    inline void handle_store_release(char *addr, char val) {
+        auto thread_clock = thread_release();
         LOG_DEBUG("node " << node_id << " release at " << (void *)addr << std::dec << ", thread clock=" <<thread_clock)
         size_t off = addr - cxl_data;
 #ifdef LOCATION_CLOCK_MERGE
@@ -112,6 +103,25 @@ public:
 
         handle_invalidate(addr);
         *((volatile char *)addr) = val;
+    }
+
+    inline char handle_load_acquire(char *addr) {
+        char ret;
+        size_t off = addr - cxl_data;
+        auto at_clk = cxl_meta.atmap[off].get([&](auto &self) {
+            ret = ((volatile std::atomic<char> *)addr)->load(std::memory_order_acquire);
+            return self.clock;
+        });
+
+        LOG_DEBUG("node " << node_id << " acquire " << (void*) addr << std::dec << ", clock=" << at_clk)
+
+        thread_acquire(at_clk);
+        return ret;
+    }
+
+    inline char handle_load(char *addr) {
+        handle_invalidate(addr);
+        return *((volatile char *)addr);
     }
 
     inline void handle_store_release_raw(char *addr, char val) {

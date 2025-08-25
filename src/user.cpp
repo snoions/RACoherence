@@ -33,7 +33,7 @@ clock_t User::write_to_log(bool is_release) {
     return clk_val;
 }
 
-void User::user_help_consume(const VectorClock &target) {
+void User::help_consume(const VectorClock &target) {
     for (unsigned i=0; i<NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
         auto val = cache_info.get_clock(i);
         if (val >= target[i])

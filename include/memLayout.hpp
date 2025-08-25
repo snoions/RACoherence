@@ -68,10 +68,6 @@ struct CacheInfo {
 #endif
     }
 
-    bool invalidate_if_dirty(char *addr) {
-        return inv_cls.invalidate_if_dirty((uintptr_t)addr);
-    }
-
     void update_clock(VectorClock::sized_t i, clock_t val) {
         clock[i] = val;
     }
