@@ -12,6 +12,7 @@ std::atomic<bool> complete {false};
 thread_local unsigned node_id;
 thread_local unsigned user_id;
 
+//TODO: measure time with std::chrono::high_resolution_clock
 int main() {
 #ifdef USE_NUMA
     run_on_local_numa();

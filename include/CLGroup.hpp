@@ -131,4 +131,5 @@ inline void process_cl_group(cl_group_t cg, F f) {
     } else
         f(cl_group::get_ptr(cg), cl_group::get_mask16(cg));
 }
+
 #endif

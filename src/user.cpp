@@ -87,18 +87,18 @@ void User::run(W &workload) {
                 write_count++;
 #endif
 #ifdef PROTOCOL_OFF
-                handle_store_raw(&cxl_data[op.offset], true);
+                handle_store_release_raw(&cxl_data[op.offset], 0);
 #else
-                handle_store(&cxl_data[op.offset], true);
+                handle_store_release(&cxl_data[op.offset], 0);
 #endif
             case OP_STORE: {
 #ifdef STATS
                 write_count++;
 #endif
 #ifdef PROTOCOL_OFF
-                handle_store_raw(&cxl_data[op.offset]);
+                handle_store_raw(&cxl_data[op.offset], 0);
 #else
-                handle_store(&cxl_data[op.offset]);
+                handle_store(&cxl_data[op.offset], 0);
 #endif
                 break;
             } 
@@ -107,9 +107,9 @@ void User::run(W &workload) {
                 read_count++;
 #endif
 #ifdef PROTOCOL_OFF
-                handle_load_raw(&cxl_data[op.offset], true);
+                handle_load_acquire_raw(&cxl_data[op.offset]);
 #else
-                handle_load(&cxl_data[op.offset], true);
+                handle_load_acquire(&cxl_data[op.offset]);
 #endif
                 break;
             }

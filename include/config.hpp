@@ -16,7 +16,7 @@ constexpr unsigned WORKER_PER_NODE = 4;
 constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
 // whether to collect statistics
-#define STATS
+//#define STATS
 
 // user threads consume logs to unblock itself, at the expense of contention with cache agent
 //#define USER_HELP_CONSUME
@@ -40,6 +40,6 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define LOCAL_CL_TABLE_BUFFER
 
 // use sequential workload
-//#define SEQ_WORKLOAD
+#define SEQ_WORKLOAD
 
 #endif
