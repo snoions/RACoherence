@@ -18,8 +18,6 @@ constexpr size_t LOG_SIZE = 1ull << 6;
 //LOG_BUF_SIZE must be power of 2
 constexpr size_t LOG_BUF_SIZE = 1ull << 10;
 
-extern thread_local unsigned node_id;
-
 class LogManager;
 
 //index into LogManager's pub array that does not wrap around
@@ -73,6 +71,8 @@ public:
 
 class alignas(CACHE_LINE_SIZE) LogManager {
 
+    unsigned node_id;
+
     spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
     idx_t bound = flip(0);
 
@@ -119,7 +119,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
 public:
 
-    LogManager() {
+    LogManager(unsigned nid): node_id(nid) {
         for (int i =0; i < LOG_BUF_SIZE; i++) {
             pub[i].store(&buf[i], std::memory_order_relaxed);
             auto ok = freelist.enqueue(&buf[i]);

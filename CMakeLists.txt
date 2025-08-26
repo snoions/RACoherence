@@ -1,6 +1,6 @@
 # CMakeLists.txt
 cmake_minimum_required(VERSION 3.10)
-project(RACoherence LANGUAGES CXX)
+project(RACoherence LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,14 +10,20 @@ if (NOT CMAKE_BUILD_TYPE)
     message(STATUS "CMAKE_BUILD_TYPE default:" ${CMAKE_BUILD_TYPE})
 endif()
 
+set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0")
+
 set(INDEX_FILES
+      src/malloc.c
       src/main.cpp
       src/user.cpp
       src/cacheAgent.cpp
+      src/clh_mutex.cpp
       src/logger.cpp
+      src/threadOps.cpp
     )
 
 add_executable(main ${INDEX_FILES})
+target_compile_options(main PUBLIC -ftls-model=initial-exec -fno-extern-tls-init)
 
 target_include_directories(main PUBLIC include)
 

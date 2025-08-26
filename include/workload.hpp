@@ -2,7 +2,7 @@
 #define _WORKLOAD_H_
 
 #include "config.hpp"
-#include "memLayout.hpp"
+#include "user.hpp"
 
 // Should be power of 2
 constexpr unsigned SEQ_OP_FACTOR = 3;
@@ -33,7 +33,7 @@ public:
             t = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
         else
             t = is_acq_rel ? OP_STORE_REL: OP_STORE;
-        size_t range = is_acq_rel ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE;
+        size_t range = is_acq_rel ? CXL_SYNC_DEVICE_COUNT: CXL_NHC_RANGE;
         size_t offset = (OP_ALIGN * index) & (range-1);
         return {t, offset};
     }
@@ -70,7 +70,7 @@ class RandWorkLoad {
             t = is_acq_rel ? OP_LOAD_ACQ: OP_LOAD;
         else
             t = is_acq_rel ? OP_STORE_REL: OP_STORE;
-        size_t range = is_acq_rel ? CXLMEM_ATOMIC_RANGE: CXLMEM_RANGE;
+        size_t range = is_acq_rel ? CXL_SYNC_DEVICE_COUNT: CXL_NHC_RANGE;
         size_t offset = (fast_rand() & (range-1)) & ~(OP_ALIGN-1);
         op.type = t;
         op.offset = offset;

@@ -1,30 +1,36 @@
-// main.cpp
 #include <thread>
 
 #include "config.hpp"
 #include "cacheAgent.hpp"
-#include "memLayout.hpp"
+#include "malloc.hpp"
+#include "cacheInfo.hpp"
 #include "numaUtils.hpp"
 #include "user.hpp"
 #include "workload.hpp"
 
 std::atomic<bool> complete {false};
-thread_local unsigned node_id;
-thread_local unsigned user_id;
+mspace cxl_hc_space;
+thread_local ThreadOps *thread_ops;
 
-//TODO: measure time with std::chrono::high_resolution_clock
 int main() {
 #ifdef USE_NUMA
     run_on_local_numa();
-    char *cxl_pool_buf = (char *)remote_numa_alloc(sizeof(CXLPool));
+    char *cxl_nhc_buf = (char *)remote_numa_alloc(sizeof(CXLPool));
+    //TODO: verify hc buf size
+    char *cxl_hc_buf = (char *)remote_numa_alloc(sizeof(PerNode<LogManager>) + CXL_HC_RANGE);
 #else 
-    char *cxl_pool_buf = new char[sizeof(CXLPool)];
+    char *cxl_nhc_buf = new char[sizeof(CXLPool)];
+    //TODO: verify hc buf size
+    char *cxl_hc_buf = new char[sizeof(LogManager[NODE_COUNT]) + CXL_HC_RANGE];
 #endif
+    char *node_local_buf = new char[sizeof(CacheInfo) * NODE_COUNT];
 
-    CXLPool *cxl_pool = new (cxl_pool_buf) CXLPool();
-
-    char *node_local_meta_buf = new char[sizeof(NodeLocalMeta) * NODE_COUNT];
-    NodeLocalMeta *node_local_meta = new (node_local_meta_buf) NodeLocalMeta[NODE_COUNT];
+    LogManager* log_mgrs = (LogManager *) cxl_hc_buf;
+    for (int i = 0; i < NODE_COUNT; i++)
+        new (&log_mgrs[i]) LogManager(i); 
+    cxl_hc_space = create_mspace_with_base(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE, false); 
+    CXLPool *cxl_pool = new (cxl_nhc_buf) CXLPool();
+    CacheInfo *cache_info = new (node_local_buf) CacheInfo[NODE_COUNT];
 
 #ifdef SEQ_WORKLOAD
     SeqWorkLoad workload;
@@ -40,10 +46,10 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
     for (unsigned i=0; i<NODE_COUNT; i++) {
         auto run_user = [=, &workload] (unsigned uid) {
-            node_id = i;
-            user_id = uid;
-            User user(*cxl_pool, node_local_meta[i]);
+            thread_ops = new ThreadOps(log_mgrs, &cache_info[i], i);
+            User user(*cxl_pool, i, uid);
             user.run<decltype(workload)>(workload);
+            delete thread_ops;
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
             user_group.push_back(std::thread{run_user, j});
@@ -56,8 +62,7 @@ int main() {
 #ifdef CACHE_AGENT_AFFINITY
             set_thread_affinity(i);
 #endif
-            node_id = i;
-            CacheAgent cacheAgent(*cxl_pool, node_local_meta[i]);
+            CacheAgent cacheAgent(cache_info[i], log_mgrs, i);
             cacheAgent.run();
         };
         cacheAgent_group.push_back(std::thread{run_cacheAgent});
@@ -77,10 +82,11 @@ int main() {
     std::chrono::duration<double, std::milli> elapsed = end - start;
     std::cout << "Elapsed time: " << elapsed.count() / 1000 << "s" << std::endl;
 
-#ifndef USE_NUMA
-    delete[] cxl_pool_buf;
+#ifndef use_numa
+    delete[] cxl_hc_buf;
+    delete[] cxl_nhc_buf;
 #endif
-    delete[] node_local_meta_buf;
+    delete[] node_local_buf;
     return 0;
 }
 

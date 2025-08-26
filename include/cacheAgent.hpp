@@ -4,22 +4,22 @@
 #include "config.hpp"
 #include "logManager.hpp"
 #include "logger.hpp"
-#include "memLayout.hpp"
+#include "cacheInfo.hpp"
 
 extern std::atomic<bool> complete;
-extern thread_local unsigned node_id;
 constexpr size_t LOG_MAX_BATCH = 100;
 
 class CacheAgent {
-    // local data
     unsigned count = 0;
-    //CXL mem shared adta
-    PerNode<LogManager> &bufs;
-    //node local data
+    unsigned node_id;
+
+    // CXL mem shared adta
+    LogManager *log_mgrs;
+    // node local data
     CacheInfo &cache_info;
 
 public:
-    CacheAgent(CXLPool &pool, NodeLocalMeta &node_meta): bufs(pool.meta.bufs), cache_info(node_meta.cache_info) {}
+    CacheAgent(CacheInfo &cinfo, LogManager *lmgrs, unsigned nid): cache_info(cinfo), log_mgrs(lmgrs), node_id(nid) {}
 
     void run();
 };

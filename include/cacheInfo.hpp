@@ -1,5 +1,5 @@
-#ifndef _MEM_LAYOUT_H_
-#define _MEM_LAYOUT_H_
+#ifndef _CACHE_INFO_H_
+#define _CACHE_INFO_H_
 
 #include "CLGroup.hpp"
 #include "CLTracker.hpp"
@@ -7,33 +7,6 @@
 #include "logManager.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
-
-// Should be power of two
-constexpr uintptr_t CXLMEM_RANGE = 1ull << 30;
-constexpr uintptr_t CXLMEM_ATOMIC_RANGE = 1ull << 4;
-
-struct AtomicMeta {
-    VectorClock clock;
-
-    AtomicMeta(): clock() {};
-};
-
-struct CXLMemMeta {
-    PerNode<LogManager> bufs;
-
-    //TODO: support dynamically allocated atomic locs
-    Monitor<AtomicMeta> atmap[CXLMEM_ATOMIC_RANGE];
-
-    CXLMemMeta(): bufs(), atmap{} {};
-};
-
-
-struct CXLPool {
-    CXLMemMeta meta;
-    alignas(CACHE_LINE_SIZE) char data[CXLMEM_RANGE];
-
-    CXLPool(): meta() {};
-};
 
 using AtomicClock = std::atomic<VectorClock::clock_t>[NODE_COUNT];
 
@@ -76,9 +49,4 @@ struct CacheInfo {
         return clock[i].load();
     }
 };
-
-struct NodeLocalMeta{
-    CacheInfo cache_info;
-};
-
 #endif
