@@ -41,12 +41,12 @@ struct CacheInfo {
 #endif
     }
 
-    void update_clock(VectorClock::sized_t i, clock_t val) {
-        clock[i] = val;
+    inline void update_clock(VectorClock::sized_t i, clock_t val) {
+        clock[i].store(val, std::memory_order_relaxed);
     }
 
-    VectorClock::clock_t get_clock(VectorClock::sized_t i) {
-        return clock[i].load();
+    inline VectorClock::clock_t get_clock(VectorClock::sized_t i) {
+        return clock[i].load(std::memory_order_relaxed);
     }
 };
 #endif

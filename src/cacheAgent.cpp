@@ -25,6 +25,6 @@ void CacheAgent::run() {
             }
         }
     }
-    LOG_INFO("node " << node_id " cache agent done")
+    LOG_INFO("node " << node_id << " cache agent done")
 }
 

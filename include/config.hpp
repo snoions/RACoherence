@@ -22,7 +22,7 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define USER_HELP_CONSUME
 
 // thread clock merges with location clock instead of overwriting it, allows release store to be outside of location clock's critical section
-#define LOCATION_CLOCK_MERGE
+//#define LOCATION_CLOCK_MERGE
 
 // turn off RACoherence protocol, use raw stores and loads
 //#define PROTOCOL_OFF

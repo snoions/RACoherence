@@ -35,7 +35,7 @@ public:
 
     inline void store(T desired, std::memory_order order) {
         if (order == std::memory_order_seq_cst || order == std::memory_order_release) { 
-            auto thread_clock = thread_ops.thread_release();
+            auto thread_clock = thread_ops->thread_release();
 #ifdef LOCATION_CLOCK_MERGE
             inner->clock.mod([&](auto &self) {
                 self.merge(thread_clock);
@@ -57,14 +57,14 @@ public:
             char ret;
             auto clock = inner->clock.get([&](auto &self) {
                 ret = inner->atomic_data.load(order);
-                return self.clock;
+                return self;
             });
 
-            thread_ops.thread_acquire(clock);
+            thread_ops->thread_acquire(clock);
             return ret;
         }
         else
-            inner->atomic_data.load(order);
+            return inner->atomic_data.load(order);
     };
 };
 
@@ -95,11 +95,11 @@ public:
 
     void lock() {
         clh_mutex_lock(&inner->mutex);
-        thread_ops.thread_acquire(inner->clock);
+        thread_ops->thread_acquire(inner->clock);
     };
 
     void unlock() {
-        auto thread_clock = thread_ops.thread_release();
+        auto thread_clock = thread_ops->thread_release();
 #ifdef LOCATION_CLOCK_MERGE
         inner->clock.merge(thread_clock);
 #else

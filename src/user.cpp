@@ -15,7 +15,8 @@ void User::run(W &workload) {
 #ifdef PROTOCOL_OFF
                 handle_store_release_raw(&cxl_pool.data[op.offset], 0);
 #else
-                handle_store_release(&cxl_pool.data[op.offset], 0);
+                //handle_store_release(&cxl_pool.data[op.offset], 0);
+                cxl_pool.atomic_data[op.offset].store(0, std::memory_order_release);
 #endif
             case OP_STORE: {
 #ifdef STATS
@@ -35,7 +36,8 @@ void User::run(W &workload) {
 #ifdef PROTOCOL_OFF
                 handle_load_acquire_raw(&cxl_pool.data[op.offset]);
 #else
-                handle_load_acquire(&cxl_pool.data[op.offset]);
+                //handle_load_acquire(&cxl_pool.data[op.offset]);
+                cxl_pool.atomic_data[op.offset].load(std::memory_order_acquire);
 #endif
                 break;
             }
@@ -54,7 +56,7 @@ void User::run(W &workload) {
                 assert("unreachable");
         }
     }
-    LOG_INFO("node " << node_id " user " << user_id << " done")
+    LOG_INFO("node " << node_id << " user " << user_id << " done")
 }
 
 template void User::run<RandWorkLoad>(RandWorkLoad &workload);

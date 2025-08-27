@@ -10,8 +10,6 @@ if (NOT CMAKE_BUILD_TYPE)
     message(STATUS "CMAKE_BUILD_TYPE default:" ${CMAKE_BUILD_TYPE})
 endif()
 
-set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0")
-
 set(INDEX_FILES
       src/malloc.c
       src/main.cpp
@@ -21,17 +19,21 @@ set(INDEX_FILES
       src/logger.cpp
       src/threadOps.cpp
     )
+set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0")
 
 add_executable(main ${INDEX_FILES})
-target_compile_options(main PUBLIC -ftls-model=initial-exec -fno-extern-tls-init)
-
 target_include_directories(main PUBLIC include)
+# Copmile options to improve TLS efficiency
+target_compile_options(main PUBLIC
+    -ftls-model=initial-exec
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
+)
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -fno-omit-frame-pointer -fPIC")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer -fPIC")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer")
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
