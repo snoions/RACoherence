@@ -14,6 +14,24 @@ constexpr uintptr_t CXL_NHC_RANGE = 1ull << 30;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 20;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
+// ratio of plain operations to acq/rel operations, needs to be power of two
+constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;
+
+enum OpType {
+    OP_STORE,
+    OP_STORE_RLS,
+    OP_LOAD,
+    OP_LOAD_ACQ,
+    OP_END,
+    OP_LOCK,
+    OP_UNLOCK
+};
+
+struct UserOp {
+    OpType type;
+    size_t offset;
+};
+
 // CXLPool should be in CXL-NHC memory
 struct CXLPool {
 
@@ -29,10 +47,10 @@ struct CXLPool {
 };
 
 class User {
-    // CXL mem shared data
     CXLPool &cxl_pool;
-
     unsigned node_id;
+    unsigned locked_offset;
+
     // user stats
     unsigned write_count = 0;
     unsigned read_count = 0;
@@ -47,8 +65,10 @@ class User {
 
     char handle_load_raw(char *addr);
 
+    void use_locks(UserOp &op);
+
 public:
-    User(CXLPool &pool, unsigned nid): cxl_pool(pool), node_id(nid){}
+    User(CXLPool &pool, unsigned nid): cxl_pool(pool), node_id(nid), locked_offset(CXL_SYNC_RANGE){}
 
     void run();
 };

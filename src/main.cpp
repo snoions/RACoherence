@@ -6,7 +6,6 @@
 #include "cacheInfo.hpp"
 #include "numaUtils.hpp"
 #include "user.hpp"
-#include "workload.hpp"
 
 std::atomic<bool> complete {false};
 mspace cxl_hc_space;
