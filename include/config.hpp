@@ -40,12 +40,12 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define LOCAL_CL_TABLE_BUFFER
 
 // sequential workload
-//#define WORKLOAD_TYPE SeqWorkLoad
+#define WORKLOAD_TYPE SeqWorkLoad
 // random workload
 //#define WORKLOAD_TYPE RandWorkLoad
 // sequential workload with locking
 //#define WORKLOAD_TYPE SeqLockWorkLoad
 // random workload with locking
-#define WORKLOAD_TYPE RandLockWorkLoad
+//#define WORKLOAD_TYPE RandLockWorkLoad
 
 #endif

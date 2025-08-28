@@ -2,6 +2,44 @@
 #include "workload.hpp"
 #include "logger.hpp"
 
+inline void User::handle_store(char *addr, char val) {
+    if (thread_ops->check_invalidate(addr)) {
+#ifdef STATS
+        invalidate_count++;
+#endif
+    }
+    thread_ops->log_store(addr);
+    *((volatile char *)addr) = val;
+}
+
+inline char User::handle_load(char *addr) {
+    if (thread_ops->check_invalidate(addr)) {
+#ifdef STATS
+        invalidate_count++;
+#endif
+    }
+    return *((volatile char *)addr);
+}
+
+inline void User::handle_store_raw(char *addr, char val) {
+    do_invalidate(addr);
+    invalidate_fence();
+#ifdef STATS
+    invalidate_count++;
+#endif
+    *((volatile char *)addr) = val;
+    do_flush((char *)addr);
+}
+
+inline char User::handle_load_raw(char *addr) {
+    do_invalidate(addr);
+    invalidate_fence();
+#ifdef STATS
+    invalidate_count++;
+#endif
+    return *((volatile char *)addr);
+}
+
 void User::run() {
     WORKLOAD_TYPE workload;
 
@@ -13,10 +51,9 @@ void User::run() {
 #ifdef STATS
                 write_count++;
 #endif
-#ifdef PROTOCOL_OFF
-                handle_store_release_raw(&cxl_pool.data[op.offset], 0);
-#else
                 cxl_pool.atomic_data[op.offset].store(0, std::memory_order_release);
+#ifdef PROTOCOL_OFF
+                flush_fence();
 #endif
                 break;
             }
@@ -35,11 +72,7 @@ void User::run() {
 #ifdef STATS
                 read_count++;
 #endif
-#ifdef PROTOCOL_OFF
-                handle_load_acquire_raw(&cxl_pool.data[op.offset]);
-#else
                 cxl_pool.atomic_data[op.offset].load(std::memory_order_acquire);
-#endif
                 break;
             }
             case OP_LOAD: {
@@ -59,6 +92,9 @@ void User::run() {
             }
             case OP_UNLOCK: {
                 cxl_pool.mutexes[op.offset].unlock();
+#ifdef PROTOCOL_OFF
+                flush_fence();
+#endif
                 break;
             }
             default:
