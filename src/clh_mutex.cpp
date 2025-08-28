@@ -65,14 +65,16 @@
  */
 #include <cassert>
 
-#include "malloc.hpp"
+// #include "malloc.hpp"
 #include "clh_mutex.hpp"
+#include "cxlMalloc.hpp"
 
-extern mspace cxl_hc_space;
+//extern mspace cxl_hc_space;
 
 static clh_mutex_node_t * clh_mutex_create_node(char islocked)
 {
-    clh_mutex_node_t * new_node = (clh_mutex_node_t *)mspace_malloc(cxl_hc_space, sizeof(clh_mutex_node_t));
+    //clh_mutex_node_t * new_node = (clh_mutex_node_t *)mspace_malloc(cxl_hc_space, sizeof(clh_mutex_node_t));
+    clh_mutex_node_t * new_node = (clh_mutex_node_t *)hc_malloc(sizeof(clh_mutex_node_t));
     atomic_store_explicit(&new_node->succ_must_wait, islocked, std::memory_order_relaxed);
     new_node->id = std::this_thread::get_id();
     return new_node;
@@ -102,7 +104,8 @@ void clh_mutex_init(clh_mutex_t * self)
  */
 void clh_mutex_destroy(clh_mutex_t * self)
 {
-    mspace_free(cxl_hc_space, atomic_load(&self->tail));
+    //mspace_free(cxl_hc_space, atomic_load(&self->tail));
+    hc_free(atomic_load(&self->tail), sizeof(clh_mutex_node_t));
 }
 
 
@@ -128,7 +131,8 @@ void clh_mutex_lock(clh_mutex_t * self)
     }
     // This thread has acquired the lock on the mutex and it is now safe to
     // cleanup the memory of the previous node.
-    mspace_free(cxl_hc_space, prev);
+    //mspace_free(cxl_hc_space, prev);
+    hc_free(prev, sizeof(clh_mutex_node_t));
 
     // Store mynode for clh_mutex_unlock() to use. We could replace
     // this with a thread-local, not sure which is faster.

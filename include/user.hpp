@@ -5,14 +5,9 @@
 #include "config.hpp"
 #include "threadOps.hpp"
 #include "vectorClock.hpp"
-#include "CXLSync.hpp"
+#include "cxlSync.hpp"
 
 extern thread_local ThreadOps *thread_ops;
-
-// Should be power of two
-constexpr uintptr_t CXL_NHC_RANGE = 1ull << 30;
-constexpr uintptr_t CXL_HC_RANGE = 1ull << 20;
-constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // ratio of plain operations to acq/rel operations, needs to be power of two
 constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;
@@ -44,6 +39,8 @@ struct CXLPool {
     alignas(CACHE_LINE_SIZE) CXLAtomic<char> atomic_data[CXL_SYNC_RANGE];
 #endif
     alignas(CACHE_LINE_SIZE) char data[CXL_NHC_RANGE];
+
+    CXLPool(): mutexes{}, atomic_data{} {}
 };
 
 class User {

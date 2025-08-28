@@ -2,14 +2,14 @@
 #define _CXL_MUTEX_H_
 
 #include <atomic>
-#include <cassert>
 #include "clh_mutex.hpp"
-#include "malloc.hpp"
+#include "cxlMalloc.hpp"
+//#include "malloc.hpp"
 #include "threadOps.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
-extern mspace cxl_hc_space;
+//extern mspace cxl_hc_space;
 extern thread_local ThreadOps *thread_ops;
 
 template<typename T>
@@ -24,14 +24,13 @@ class CXLAtomic {
     InnerData *inner;
 
 public:
-    CXLAtomic(): inner(new(mspace_malloc(cxl_hc_space, sizeof(InnerData))) InnerData()) 
-    {
-        assert(inner);
-    }
+    // CXLAtomic(): inner(new(mspace_malloc(cxl_hc_space, sizeof(InnerData))) InnerData()) 
+    CXLAtomic(): inner(new(hc_malloc(sizeof(InnerData))) InnerData()) {}
 
     ~CXLAtomic() {
         inner->~InnerData();
-        mspace_free(cxl_hc_space, inner);
+        //mspace_free(cxl_hc_space, inner);
+        hc_free(inner, sizeof(InnerData));
     }
 
     inline void store(T desired, std::memory_order order) {
@@ -90,14 +89,13 @@ class CXLMutex {
     InnerData *inner;
 
 public:
-    CXLMutex(): inner(new(mspace_malloc(cxl_hc_space, sizeof(InnerData))) InnerData()) 
-    {
-        assert(inner);
-    }
+    //CXLMutex(): inner(new(mspace_malloc(cxl_hc_space, sizeof(InnerData))) InnerData()) 
+    CXLMutex(): inner(new(hc_malloc(sizeof(InnerData))) InnerData()) {}
 
     ~CXLMutex() {
         inner->~InnerData();
-        mspace_free(cxl_hc_space, inner);
+        //mspace_free(cxl_hc_space, inner);
+        hc_free(inner, sizeof(InnerData));
     }
 
     void lock() {

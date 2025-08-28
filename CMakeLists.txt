@@ -11,7 +11,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(INDEX_FILES
-      src/malloc.c
+      # src/malloc.c
       src/main.cpp
       src/user.cpp
       src/cacheAgent.cpp
@@ -19,7 +19,7 @@ set(INDEX_FILES
       src/logger.cpp
       src/threadOps.cpp
     )
-    set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
+# set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
 add_executable(main ${INDEX_FILES})
 target_include_directories(main PUBLIC include)
@@ -39,6 +39,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer")
+
+find_package(PkgConfig REQUIRED)
+
+# Jemalloc library
+pkg_check_modules(JEMALLOC REQUIRED jemalloc)
+include_directories(${JEMALLOC_INCLUDE_DIRS})
+target_link_libraries(main PRIVATE ${JEMALLOC_LIBRARIES})
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)

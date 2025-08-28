@@ -15,6 +15,11 @@ constexpr unsigned NODE_COUNT = 4;
 constexpr unsigned WORKER_PER_NODE = 4;
 constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
+// Should be power of two
+constexpr uintptr_t CXL_NHC_RANGE = 1ull << 30;
+constexpr uintptr_t CXL_HC_RANGE = 1ull << 25;
+constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
+
 // whether to collect statistics
 //#define STATS
 
@@ -43,8 +48,8 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 //#define WORKLOAD_USE_LOCKS
 
 // sequential workload
-//#define WORKLOAD_TYPE SeqWorkLoad
+#define WORKLOAD_TYPE SeqWorkLoad
 // random workload
-#define WORKLOAD_TYPE RandWorkLoad
+//#define WORKLOAD_TYPE RandWorkLoad
 
 #endif

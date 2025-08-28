@@ -2,14 +2,17 @@
 
 #include "config.hpp"
 #include "cacheAgent.hpp"
-#include "malloc.hpp"
+//#include "malloc.hpp"
 #include "cacheInfo.hpp"
+#include "memoryPool.hpp"
+#include "logger.hpp"
 #include "numaUtils.hpp"
 #include "user.hpp"
 
 std::atomic<bool> complete {false};
-mspace cxl_hc_space;
+//mspace cxl_hc_space;
 thread_local ThreadOps *thread_ops;
+MemoryPool<64, 128, 256> cxlhc_pool;
 
 int main() {
 #ifdef USE_NUMA
@@ -26,8 +29,10 @@ int main() {
 
     LogManager* log_mgrs = (LogManager *) cxl_hc_buf;
     for (int i = 0; i < NODE_COUNT; i++)
-        new (&log_mgrs[i]) LogManager(i); 
-    cxl_hc_space = create_mspace_with_base(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE, true); 
+        new (&log_mgrs[i]) LogManager(i);
+
+    // cxl_hc_space = create_mspace_with_base(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE, true); 
+    cxlhc_pool.initialize(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE);
     CXLPool *cxl_pool = new (cxl_nhc_buf) CXLPool();
     CacheInfo *cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
 
