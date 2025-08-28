@@ -13,6 +13,7 @@ class ThreadOps {
     //node local data
     CacheInfo *cache_info;
     unsigned node_id;
+    unsigned thread_id;
 
     //thread local data
     VectorClock thread_clock;
@@ -26,8 +27,11 @@ class ThreadOps {
 
 public:
     ThreadOps() = default;
-    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid) {}
+    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid) {}
     ThreadOps &operator=(const ThreadOps &other) = default;
+
+    unsigned get_node_id() { return node_id; }
+    unsigned get_thread_id() { return thread_id; }
 
     inline const VectorClock &thread_release() {
 #ifdef LOCAL_CL_TABLE_BUFFER

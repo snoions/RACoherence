@@ -28,15 +28,9 @@ int main() {
     LogManager* log_mgrs = (LogManager *) cxl_hc_buf;
     for (int i = 0; i < NODE_COUNT; i++)
         new (&log_mgrs[i]) LogManager(i); 
-    cxl_hc_space = create_mspace_with_base(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE, false); 
+    cxl_hc_space = create_mspace_with_base(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE, true); 
     CXLPool *cxl_pool = new (cxl_nhc_buf) CXLPool();
-    CacheInfo *cache_info = new (node_local_buf) CacheInfo[NODE_COUNT];
-
-#ifdef SEQ_WORKLOAD
-    SeqWorkLoad workload;
-#else
-    RandWorkLoad workload;
-#endif
+    CacheInfo *cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
 
     std::vector<std::thread> user_group;
 #ifndef PROTOCOL_OFF
@@ -45,14 +39,14 @@ int main() {
 
     auto start = std::chrono::high_resolution_clock::now();
     for (unsigned i=0; i<NODE_COUNT; i++) {
-        auto run_user = [=, &workload] (unsigned uid) {
-            thread_ops = new ThreadOps(log_mgrs, &cache_info[i], i);
-            User user(*cxl_pool, i, uid);
-            user.run<decltype(workload)>(workload);
+        auto run_user = [=] (unsigned tid) {
+            thread_ops = new ThreadOps(log_mgrs, &cache_infos[i], i, tid);
+            User user(*cxl_pool, i);
+            user.run();
             delete thread_ops;
         };
         for (int j=0; j<WORKER_PER_NODE;j++)
-            user_group.push_back(std::thread{run_user, j});
+            user_group.push_back(std::thread{run_user, i * WORKER_PER_NODE + j});
     }
 
 #ifndef PROTOCOL_OFF
@@ -62,7 +56,7 @@ int main() {
 #ifdef CACHE_AGENT_AFFINITY
             set_thread_affinity(i);
 #endif
-            CacheAgent cacheAgent(cache_info[i], log_mgrs, i);
+            CacheAgent cacheAgent(cache_infos[i], log_mgrs, i);
             cacheAgent.run();
         };
         cacheAgent_group.push_back(std::thread{run_cacheAgent});
@@ -81,6 +75,13 @@ int main() {
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end - start;
     std::cout << "Elapsed time: " << elapsed.count() / 1000 << "s" << std::endl;
+
+
+    for (int i = 0; i < NODE_COUNT; i++)
+        log_mgrs[i].~LogManager();
+    for (int i = 0; i < NODE_COUNT; i++)
+        cache_infos[i].~CacheInfo();
+    cxl_pool->~CXLPool();
 
 #ifndef use_numa
     delete[] cxl_hc_buf;

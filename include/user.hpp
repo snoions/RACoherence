@@ -12,18 +12,12 @@ extern thread_local ThreadOps *thread_ops;
 // Should be power of two
 constexpr uintptr_t CXL_NHC_RANGE = 1ull << 30;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 20;
-constexpr uintptr_t CXL_SYNC_DEVICE_COUNT = 1ull << 4;
-
-struct AtomicMeta {
-    VectorClock clock;
-
-    AtomicMeta(): clock() {};
-};
+constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // CXLPool should be in CXL-NHC memory
 struct CXLPool {
-    //alignas(CACHE_LINE_SIZE) CXLMutex mutexes[CXL_SYNC_DEVICE_COUNT];
-    alignas(CACHE_LINE_SIZE) CXLAtomic<char> atomic_data[CXL_SYNC_DEVICE_COUNT];
+    alignas(CACHE_LINE_SIZE) CXLMutex mutexes[CXL_SYNC_RANGE];
+    alignas(CACHE_LINE_SIZE) CXLAtomic<char> atomic_data[CXL_SYNC_RANGE];
     alignas(CACHE_LINE_SIZE) char data[CXL_NHC_RANGE];
 
     CXLPool(): atomic_data{} {};
@@ -34,7 +28,6 @@ class User {
     CXLPool &cxl_pool;
 
     unsigned node_id;
-    unsigned user_id;
     // user stats
     unsigned write_count = 0;
     unsigned read_count = 0;
@@ -42,7 +35,7 @@ class User {
     unsigned blocked_count = 0;
 
 public:
-    User(CXLPool &pool, unsigned nid, unsigned uid): cxl_pool(pool), node_id(nid), user_id(uid) {}
+    User(CXLPool &pool, unsigned nid): cxl_pool(pool), node_id(nid){}
 
     inline void handle_store(char *addr, char val) {
         if (thread_ops->check_invalidate(addr)) {
@@ -93,8 +86,7 @@ public:
         return *((volatile char *)addr);
     }
 
-    template <typename W>
-    void run(W &workload);
+    void run();
 };
 
 #endif

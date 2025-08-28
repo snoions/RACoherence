@@ -63,6 +63,8 @@
  * - In the unlock() function is has a single synchronized operation, the
  *   atomic_store() with a release barrier.
  */
+#include <cassert>
+
 #include "malloc.hpp"
 #include "clh_mutex.hpp"
 
@@ -72,6 +74,7 @@ static clh_mutex_node_t * clh_mutex_create_node(char islocked)
 {
     clh_mutex_node_t * new_node = (clh_mutex_node_t *)mspace_malloc(cxl_hc_space, sizeof(clh_mutex_node_t));
     atomic_store_explicit(&new_node->succ_must_wait, islocked, std::memory_order_relaxed);
+    new_node->id = std::this_thread::get_id();
     return new_node;
 }
 
@@ -146,7 +149,9 @@ void clh_mutex_unlock(clh_mutex_t * self)
     // the current thread's mynode.
     if (self->mynode == NULL) {
         // ERROR: This will occur if unlock() is called without a lock()
+        assert(false && "unlock without lock");
         return;
     }
+    assert(self->mynode->id == std::this_thread::get_id());
     atomic_store(&self->mynode->succ_must_wait, 0);
 }

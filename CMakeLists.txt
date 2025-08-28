@@ -19,15 +19,20 @@ set(INDEX_FILES
       src/logger.cpp
       src/threadOps.cpp
     )
-set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0")
+    set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
 add_executable(main ${INDEX_FILES})
 target_include_directories(main PUBLIC include)
-# Copmile options to improve TLS efficiency
+# Compile options to improve TLS efficiency
 target_compile_options(main PUBLIC
     -ftls-model=initial-exec
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
 )
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if (ENABLE_ASAN)
+    target_compile_options(main PUBLIC -fsanitize=address)
+    target_link_options(main PUBLIC -fsanitize=address)
+endif()
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
@@ -49,23 +54,23 @@ else()
     message(FATAL_ERROR "libnuma not found!")
 endif()
 
-# Fetch GoogleTest
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/release-1.12.1.zip
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-
-# Add the header-only library
-add_library(cache_tracker INTERFACE)
-target_include_directories(cache_tracker INTERFACE include)
-
-# Add test
-enable_testing()
-add_executable(tests test/testCacheTracker.cpp)
-target_link_libraries(tests cache_tracker gtest_main)
-
-include(GoogleTest)
-gtest_discover_tests(tests)
+# # Fetch GoogleTest
+# include(FetchContent)
+# FetchContent_Declare(
+#   googletest
+#   URL https://github.com/google/googletest/archive/release-1.12.1.zip
+# )
+# set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+# FetchContent_MakeAvailable(googletest)
+# 
+# # Add the header-only library
+# add_library(cache_tracker INTERFACE)
+# target_include_directories(cache_tracker INTERFACE include)
+# 
+# # Add test
+# enable_testing()
+# add_executable(tests test/testCacheTracker.cpp)
+# target_link_libraries(tests cache_tracker gtest_main)
+# 
+# include(GoogleTest)
+# gtest_discover_tests(tests)

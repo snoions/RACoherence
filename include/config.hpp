@@ -11,8 +11,8 @@ constexpr uintptr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
 // assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 
-constexpr unsigned NODE_COUNT = 4;
-constexpr unsigned WORKER_PER_NODE = 4;
+constexpr unsigned NODE_COUNT = 2;
+constexpr unsigned WORKER_PER_NODE = 1;
 constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
 // whether to collect statistics
@@ -39,7 +39,13 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 // use buffer in local cl tables
 //#define LOCAL_CL_TABLE_BUFFER
 
-// use sequential workload
-#define SEQ_WORKLOAD
+// sequential workload
+//#define WORKLOAD_TYPE SeqWorkLoad
+// random workload
+//#define WORKLOAD_TYPE RandWorkLoad
+// sequential workload with locking
+//#define WORKLOAD_TYPE SeqLockWorkLoad
+// random workload with locking
+#define WORKLOAD_TYPE RandLockWorkLoad
 
 #endif

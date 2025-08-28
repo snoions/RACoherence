@@ -30,12 +30,16 @@ public:
     }
 
     ~CXLAtomic() {
+        inner->~InnerData();
         mspace_free(cxl_hc_space, inner);
     }
 
     inline void store(T desired, std::memory_order order) {
         if (order == std::memory_order_seq_cst || order == std::memory_order_release) { 
             auto thread_clock = thread_ops->thread_release();
+
+            LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
+
 #ifdef LOCATION_CLOCK_MERGE
             inner->clock.mod([&](auto &self) {
                 self.merge(thread_clock);
@@ -59,6 +63,8 @@ public:
                 ret = inner->atomic_data.load(order);
                 return self;
             });
+
+            LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<clock)
 
             thread_ops->thread_acquire(clock);
             return ret;
@@ -90,16 +96,23 @@ public:
     }
 
     ~CXLMutex() {
+        inner->~InnerData();
         mspace_free(cxl_hc_space, inner);
     }
 
     void lock() {
         clh_mutex_lock(&inner->mutex);
+
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " lock at " << this << std::dec << ", loc clock=" << inner->clock)
+
         thread_ops->thread_acquire(inner->clock);
     };
 
     void unlock() {
         auto thread_clock = thread_ops->thread_release();
+
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " unlock at " << this << std::dec << ", thread clock=" << thread_clock)
+
 #ifdef LOCATION_CLOCK_MERGE
         inner->clock.merge(thread_clock);
 #else

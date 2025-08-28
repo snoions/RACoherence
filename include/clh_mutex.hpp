@@ -28,6 +28,7 @@
 #ifndef _CLH_MUTEX_H_
 #define _CLH_MUTEX_H_
 
+#include <thread>
 #include <atomic>
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,6 +41,7 @@ typedef struct clh_mutex_node_ clh_mutex_node_t;
 struct clh_mutex_node_
 {
     std::atomic<char> succ_must_wait;
+    std::thread::id id;
 };
 
 typedef struct
