@@ -54,11 +54,16 @@ int main() {
     }
 
 #ifndef PROTOCOL_OFF
+    unsigned cpu_id = 0;
     for (unsigned i=0; i<NODE_COUNT; i++) {
+#if defined(CACHE_AGENT_AFFINITY) && defined(USE_NUMA)
+            find_cpu_on_numa(cpu_id, LOCAL_NUMA_ID)
+#elif defined(CACHE_AGENT_AFFINITY)
+            cpu_id = i;
+#endif
         auto run_cacheAgent = [=](){
-            //TODO: make sure these cores are on local NUMA
 #ifdef CACHE_AGENT_AFFINITY
-            set_thread_affinity(i);
+            set_thread_affinity(cpu_id);
 #endif
             CacheAgent cacheAgent(cache_infos[i], log_mgrs, i);
             cacheAgent.run();
