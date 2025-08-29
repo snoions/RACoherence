@@ -10,29 +10,25 @@
 #include "user.hpp"
 
 std::atomic<bool> complete {false};
-//mspace cxl_hc_space;
 thread_local ThreadOps *thread_ops;
-MemoryPool<64, 128, 256> cxlhc_pool;
 
 int main() {
 #ifdef USE_NUMA
     run_on_local_numa();
     char *cxl_nhc_buf = (char *)remote_numa_alloc(sizeof(CXLPool));
-    //TODO: verify hc buf size
     char *cxl_hc_buf = (char *)remote_numa_alloc(sizeof(PerNode<LogManager>) + CXL_HC_RANGE);
 #else 
     char *cxl_nhc_buf = new char[sizeof(CXLPool)];
-    //TODO: verify hc buf size
-    char *cxl_hc_buf = new char[sizeof(LogManager[NODE_COUNT]) + CXL_HC_RANGE];
+    char *cxl_hc_buf = new char[CXL_HC_RANGE];
 #endif
     char *node_local_buf = new char[sizeof(CacheInfo) * NODE_COUNT];
 
+    static_assert(CXL_HC_RANGE > sizeof(LogManager[NODE_COUNT]));
     LogManager* log_mgrs = (LogManager *) cxl_hc_buf;
     for (int i = 0; i < NODE_COUNT; i++)
         new (&log_mgrs[i]) LogManager(i);
 
-    // cxl_hc_space = create_mspace_with_base(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE, true); 
-    cxlhc_pool.initialize(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE);
+    hc_pool_initialize(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE - sizeof(LogManager[NODE_COUNT]));
     CXLPool *cxl_pool = new (cxl_nhc_buf) CXLPool();
     CacheInfo *cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
 

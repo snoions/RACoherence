@@ -4,7 +4,6 @@
 #include <atomic>
 #include "clh_mutex.hpp"
 #include "cxlMalloc.hpp"
-//#include "malloc.hpp"
 #include "threadOps.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
@@ -24,12 +23,10 @@ class CXLAtomic {
     InnerData *inner;
 
 public:
-    // CXLAtomic(): inner(new(mspace_malloc(cxl_hc_space, sizeof(InnerData))) InnerData()) 
     CXLAtomic(): inner(new(hc_malloc(sizeof(InnerData))) InnerData()) {}
 
     ~CXLAtomic() {
         inner->~InnerData();
-        //mspace_free(cxl_hc_space, inner);
         hc_free(inner, sizeof(InnerData));
     }
 
@@ -89,12 +86,10 @@ class CXLMutex {
     InnerData *inner;
 
 public:
-    //CXLMutex(): inner(new(mspace_malloc(cxl_hc_space, sizeof(InnerData))) InnerData()) 
     CXLMutex(): inner(new(hc_malloc(sizeof(InnerData))) InnerData()) {}
 
     ~CXLMutex() {
         inner->~InnerData();
-        //mspace_free(cxl_hc_space, inner);
         hc_free(inner, sizeof(InnerData));
     }
 

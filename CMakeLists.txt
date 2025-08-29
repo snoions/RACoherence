@@ -11,15 +11,16 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(INDEX_FILES
-      # src/malloc.c
-      src/main.cpp
-      src/user.cpp
       src/cacheAgent.cpp
       src/clh_mutex.cpp
+      src/cxlMalloc.cpp
+      src/dlmalloc.c
       src/logger.cpp
+      src/main.cpp
       src/threadOps.cpp
+      src/user.cpp
     )
-# set_source_files_properties(src/malloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
+set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
 add_executable(main ${INDEX_FILES})
 target_include_directories(main PUBLIC include)
@@ -40,12 +41,12 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer")
 
-find_package(PkgConfig REQUIRED)
-
-# Jemalloc library
-pkg_check_modules(JEMALLOC REQUIRED jemalloc)
-include_directories(${JEMALLOC_INCLUDE_DIRS})
-target_link_libraries(main PRIVATE ${JEMALLOC_LIBRARIES})
+# find_package(PkgConfig REQUIRED)
+#
+# # Jemalloc library
+# pkg_check_modules(JEMALLOC REQUIRED jemalloc)
+# include_directories(${JEMALLOC_INCLUDE_DIRS})
+# target_link_libraries(main PRIVATE ${JEMALLOC_LIBRARIES})
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -61,23 +62,25 @@ else()
     message(FATAL_ERROR "libnuma not found!")
 endif()
 
-# # Fetch GoogleTest
-# include(FetchContent)
-# FetchContent_Declare(
-#   googletest
-#   URL https://github.com/google/googletest/archive/release-1.12.1.zip
-# )
-# set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-# FetchContent_MakeAvailable(googletest)
-# 
-# # Add the header-only library
-# add_library(cache_tracker INTERFACE)
-# target_include_directories(cache_tracker INTERFACE include)
-# 
-# # Add test
-# enable_testing()
-# add_executable(tests test/testCacheTracker.cpp)
-# target_link_libraries(tests cache_tracker gtest_main)
-# 
-# include(GoogleTest)
-# gtest_discover_tests(tests)
+option(ENABLE_TESTS "Enable Tests" OFF)
+if(ENABLE_TESTS)
+    # Fetch GoogleTest
+    include(FetchContent)
+    FetchContent_Declare(
+      googletest
+      URL https://github.com/google/googletest/archive/release-1.12.1.zip
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    add_library(test_lib INTERFACE)
+    target_include_directories(test_lib INTERFACE include)
+
+    # Add test
+    enable_testing()
+    add_executable(tests test/testCacheTracker.cpp test/testMemoryPool.cpp)
+    target_link_libraries(tests test_lib gtest_main)
+
+    include(GoogleTest)
+    gtest_discover_tests(tests)
+endif()

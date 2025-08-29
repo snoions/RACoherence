@@ -17,7 +17,7 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
 // Should be power of two
 constexpr uintptr_t CXL_NHC_RANGE = 1ull << 30;
-constexpr uintptr_t CXL_HC_RANGE = 1ull << 25;
+constexpr uintptr_t CXL_HC_RANGE = 4ull << 20;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // whether to collect statistics
@@ -43,6 +43,9 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // use buffer in local cl tables
 //#define LOCAL_CL_TABLE_BUFFER
+
+// use dlmalloc for as allocator for CXL hardware coherent memory
+//#define HC_USE_DLMALLOC
 
 // use locks instead of atomics in workload
 //#define WORKLOAD_USE_LOCKS

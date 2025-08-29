@@ -32,12 +32,8 @@ public:
     static constexpr size_t bucket_count = sizeof...(BlockSizes);
     static constexpr std::array<size_t, bucket_count> block_sizes = { BlockSizes... };
 
-    MemoryPool() = default;
-
     // Construct with a buffer and its size. Buffer must outlive pool.
-    void initialize(void* buf, size_t buf_size) {
-        base = reinterpret_cast<char*>(buf);
-        base_size = buf_size;
+    MemoryPool(void* buf, unsigned buf_size): base(reinterpret_cast<char*>(buf)), base_size(buf_size) {
         for (size_t i = 0; i < bucket_count; ++i) {
             heads[i].store(nullptr, std::memory_order_relaxed);
             counts[i].store(0, std::memory_order_relaxed);
@@ -159,23 +155,4 @@ private:
     }
 };
 
-static int custom_pool_test() {
-    constexpr size_t POOL_SIZE = 1024 * 1024;
-    static char buffer[POOL_SIZE];
-
-    MemoryPool<32, 64, 128> pool;
-    pool.initialize(buffer, POOL_SIZE);
-
-    void* p1 = pool.allocate(20);   // 32B pool
-    void* p2 = pool.allocate(60);   // 64B pool
-    void* p3 = pool.allocate(100);  // 128B pool
-
-    std::cout << "Allocated: " << p1 << " " << p2 << " " << p3 << "\n";
-
-    pool.deallocate(p1, 20);
-    pool.deallocate(p2, 60);
-    pool.deallocate(p3, 100);
-    std::cout << "Deallocated: " << p1 << " " << p2 << " " << p3 << "\n";
-    return 0;
-}
 #endif

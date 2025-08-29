@@ -16,7 +16,7 @@
 
 constexpr size_t LOG_SIZE = 1ull << 6;
 //LOG_BUF_SIZE must be power of 2
-constexpr size_t LOG_BUF_SIZE = 1ull << 10;
+constexpr size_t LOG_BUF_SIZE = 1ull << 8;
 
 class LogManager;
 
