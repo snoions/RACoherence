@@ -32,8 +32,10 @@ struct CXLPool {
 
 #ifdef PROTOCOL_OFF
     // assume these are cache coherent
-    alignas(CACHE_LINE_SIZE) std::mutex mutexes[CXL_SYNC_RANGE];
-    alignas(CACHE_LINE_SIZE) std::atomic<char> atomic_data[CXL_SYNC_RANGE];
+    //alignas(CACHE_LINE_SIZE) std::mutex mutexes[CXL_SYNC_RANGE];
+    //alignas(CACHE_LINE_SIZE) std::atomic<char> atomic_data[CXL_SYNC_RANGE];
+    alignas(CACHE_LINE_SIZE) CXLMutexRaw mutexes[CXL_SYNC_RANGE];
+    alignas(CACHE_LINE_SIZE) CXLAtomicRaw<char> atomic_data[CXL_SYNC_RANGE];
 #else
     alignas(CACHE_LINE_SIZE) CXLMutex mutexes[CXL_SYNC_RANGE];
     alignas(CACHE_LINE_SIZE) CXLAtomic<char> atomic_data[CXL_SYNC_RANGE];

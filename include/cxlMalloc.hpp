@@ -12,7 +12,7 @@ using CXLHCPool = MemoryPool<64, 128>;
 extern CXLHCPool *cxlhc_pool;
 #endif
 
-inline void hc_pool_initialize(char *buf, size_t size) {
+inline void cxlhc_pool_initialize(char *buf, size_t size) {
 #ifdef HC_USE_DLMALLOC
     cxlhc_space = create_mspace_with_base(buf, size, true);
 #else
@@ -21,7 +21,7 @@ inline void hc_pool_initialize(char *buf, size_t size) {
 #endif
 }
 
-inline void *hc_malloc(size_t size) {
+inline void *cxlhc_malloc(size_t size) {
 #ifdef HC_USE_DLMALLOC
     return mspace_malloc(cxlhc_space, size);
 #else
@@ -29,7 +29,7 @@ inline void *hc_malloc(size_t size) {
 #endif
 }
 
-inline void hc_free(void *ptr, size_t size) {
+inline void cxlhc_free(void *ptr, size_t size) {
 #ifdef HC_USE_DLMALLOC
     return mspace_free(cxlhc_space, ptr);
 #else

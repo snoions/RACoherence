@@ -28,7 +28,7 @@ int main() {
     for (int i = 0; i < NODE_COUNT; i++)
         new (&log_mgrs[i]) LogManager(i);
 
-    hc_pool_initialize(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE - sizeof(LogManager[NODE_COUNT]));
+    cxlhc_pool_initialize(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE - sizeof(LogManager[NODE_COUNT]));
     CXLPool *cxl_pool = new (cxl_nhc_buf) CXLPool();
     CacheInfo *cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
 

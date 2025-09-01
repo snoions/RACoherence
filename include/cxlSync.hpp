@@ -8,7 +8,7 @@
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
-//extern mspace cxl_hc_space;
+//extern mspace cxl_cxlhc_space;
 extern thread_local ThreadOps *thread_ops;
 
 template<typename T>
@@ -23,11 +23,11 @@ class CXLAtomic {
     InnerData *inner;
 
 public:
-    CXLAtomic(): inner(new(hc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLAtomic(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
 
     ~CXLAtomic() {
         inner->~InnerData();
-        hc_free(inner, sizeof(InnerData));
+        cxlhc_free(inner, sizeof(InnerData));
     }
 
     inline void store(T desired, std::memory_order order) {
@@ -86,11 +86,11 @@ class CXLMutex {
     InnerData *inner;
 
 public:
-    CXLMutex(): inner(new(hc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLMutex(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
 
     ~CXLMutex() {
         inner->~InnerData();
-        hc_free(inner, sizeof(InnerData));
+        cxlhc_free(inner, sizeof(InnerData));
     }
 
     void lock() {
@@ -115,4 +115,61 @@ public:
     };
 };
 
+template<typename T>
+class CXLAtomicRaw {
+    struct InnerData {
+        std::atomic<T> atomic_data;
+
+        InnerData() = default;
+    };
+
+    InnerData *inner;
+
+public:
+    CXLAtomicRaw(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+
+    ~CXLAtomicRaw() {
+        inner->~InnerData();
+        cxlhc_free(inner, sizeof(InnerData));
+    }
+
+    inline void store(T desired, std::memory_order order) {
+            inner->atomic_data.store(desired, order);
+    };
+
+    inline T load(std::memory_order order) {
+            return inner->atomic_data.load(order);
+    };
+};
+
+class CXLMutexRaw {
+    struct InnerData{
+        clh_mutex_t mutex;
+
+        InnerData() {
+            clh_mutex_init(&mutex);
+        }
+        ~InnerData() {
+            clh_mutex_destroy(&mutex);
+        }
+    };
+
+    InnerData *inner;
+
+public:
+    CXLMutexRaw(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+
+    ~CXLMutexRaw() {
+        inner->~InnerData();
+        cxlhc_free(inner, sizeof(InnerData));
+    }
+
+    void lock() {
+        clh_mutex_lock(&inner->mutex);
+    };
+
+    void unlock() {
+        clh_mutex_unlock(&inner->mutex);
+    };
+};
 #endif
