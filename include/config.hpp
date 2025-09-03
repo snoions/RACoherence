@@ -51,8 +51,8 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 //#define WORKLOAD_USE_LOCKS
 
 // sequential workload
-#define WORKLOAD_TYPE SeqWorkLoad
+//#define WORKLOAD_TYPE SeqWorkLoad
 // random workload
-//#define WORKLOAD_TYPE RandWorkLoad
+#define WORKLOAD_TYPE RandWorkLoad
 
 #endif

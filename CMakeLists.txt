@@ -41,12 +41,21 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer")
 
-# find_package(PkgConfig REQUIRED)
-#
-# # Jemalloc library
-# pkg_check_modules(JEMALLOC REQUIRED jemalloc)
-# include_directories(${JEMALLOC_INCLUDE_DIRS})
-# target_link_libraries(main PRIVATE ${JEMALLOC_LIBRARIES})
+# Jemalloc library
+include(ExternalProject)
+ExternalProject_Add(jemalloc_proj
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps/jemalloc
+    INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/install
+    CONFIGURE_COMMAND ./autogen.sh --without-export --disable-cxx --prefix=<INSTALL_DIR>
+    BUILD_COMMAND make
+    INSTALL_COMMAND make install
+    BUILD_IN_SOURCE 1
+)
+ExternalProject_Get_Property(jemalloc_proj INSTALL_DIR)
+add_library(jemalloc STATIC IMPORTED)
+add_dependencies(main jemalloc_proj)
+target_link_libraries(main PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
+target_include_directories(main PRIVATE ${INSTALL_DIR}/include) 
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -79,7 +88,7 @@ if(ENABLE_TESTS)
     # Add test
     enable_testing()
     add_executable(tests test/testCacheTracker.cpp test/testMemoryPool.cpp)
-    target_link_libraries(tests test_lib gtest_main)
+    target_link_libraries(tests test_lib gtest_main ${INSTALL_DIR}/lib/libjemalloc.a)
 
     include(GoogleTest)
     gtest_discover_tests(tests)

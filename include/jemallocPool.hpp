@@ -1,12 +1,18 @@
 #ifndef _JEMALLOC_POOL_H_
 #define _JEMALLOC_POOL_H_
 
+#include <atomic>
+#include <cassert>
+#include <cstring>
 #include <map>
 #include <set>
+#include <iostream>
+#include <mutex>
 #include <unordered_map>
 #include <unistd.h>
 #include <vector>
 
+#include "logger.hpp"
 #include "jemalloc/jemalloc.h"
 
 /* ExtentPool + jemalloc extent hooks can be used to allocate from a custom pool. 
@@ -217,89 +223,5 @@ private:
         }
     }
 };
-
-ExtentPool* g_extent_pool;
-unsigned my_arena_index;
-
-static void* my_extent_alloc(extent_hooks_t* /*hooks*/,
-                             void* /*new_addr*/, size_t size, size_t alignment,
-                             bool* zero, bool* commit, unsigned /*arena_ind*/) {
-    std::cout << "[hook] extent_alloc requested size=" << size << " align=" << alignment << "\n";
-    if (!g_extent_pool) return nullptr;
-
-    // jemalloc expects exact size and alignment. Our pool will satisfy it or return nullptr.
-    void* p = g_extent_pool->alloc_extent(size, alignment);
-    if (!p) {
-        std::cout << "[hook] alloc_extent failed (out of pool)\n";
-        return nullptr;
-    }
-
-    if (zero && *zero) {
-        // jemalloc says it wants zeroed memory. Zero it for safety.
-        std::memset(p, 0, size);
-        *zero = false; // we satisfied zero
-    }
-    if (commit) *commit = true;
-
-    return p;
-}
-
-static bool my_extent_dalloc(extent_hooks_t* /*hooks*/,
-                             void* addr, size_t size, bool /*committed*/, unsigned /*arena_ind*/) {
-    std::cout << "[hook] extent_dalloc addr=" << addr << " size=" << size << "\n";
-    if (!g_extent_pool) return true; // claim we handled it
-    g_extent_pool->dealloc_extent(addr, size);
-    // Return true means "jemalloc should not try to free it again" — semantics vary;
-    // jemalloc expects 'true' when the hook freed it, but many examples return false.
-    // Returning true signals dalloc handled it; we'll return true.
-    return true;
-}
-
-static extent_hooks_t my_hooks = {
-    .alloc = my_extent_alloc,
-    .dalloc = my_extent_dalloc,
-    .commit = nullptr,
-    .decommit = nullptr,
-    .purge_lazy = nullptr,
-    .purge_forced = nullptr,
-    .split = nullptr,
-    .merge = nullptr
-};
-
-constexpr size_t POOL_SIZE = 1 << 30;
-alignas(4096) static char buffer[POOL_SIZE];
-
-static void jemalloc_pool_test() {
-    ExtentPool pool(buffer, POOL_SIZE);
-    g_extent_pool = &pool;
-
-    int ret;
-
-    // Create new arena
-    size_t sz = sizeof(my_arena_index);
-    if ((ret = mallctl("arenas.create", &my_arena_index, &sz, nullptr, 0)))
-        LOG_ERROR("mallctl arena.create returned " << strerror(ret))
-    // Assign hooks
-    extent_hooks_t* new_hooks = &my_hooks;
-    extent_hooks_t* old_hooks = nullptr;
-    size_t olen = sizeof(old_hooks);
-    if ((ret = mallctl(("arena." + std::to_string(my_arena_index) + ".extent_hooks").c_str(), &old_hooks, &olen, &new_hooks, sizeof(new_hooks))))
-        LOG_ERROR("mallctl arena.extent_hooks returned " << strerror(ret))
-
-    if ((ret = mallctl("thread.arena", nullptr, nullptr, &my_arena_index, sizeof(my_arena_index))))
-        LOG_ERROR("mallctl thread.arena returned " << strerror(ret))
-    // now allocate a tiny block
-
-    // Allocate using custom arena
-    void* p1 = mallocx(32, MALLOCX_ARENA(my_arena_index) | MALLOCX_TCACHE_NONE);
-    void* p2 = mallocx(100, MALLOCX_ARENA(my_arena_index));
-    void* p3 = mallocx(200, MALLOCX_ARENA(my_arena_index));
-    std::cout << "Allocated p1=" << p1 << ", p2=" << p2 << ", p3=" << p3 << "\n";
-
-    dallocx(p1, MALLOCX_ARENA(my_arena_index));
-    dallocx(p2, MALLOCX_ARENA(my_arena_index));
-    dallocx(p3, MALLOCX_ARENA(my_arena_index));
-    std::cout << "Freed p1, p2, p3\n";
-}
 
 #endif

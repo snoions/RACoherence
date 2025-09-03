@@ -2,9 +2,7 @@
 
 #include "config.hpp"
 #include "cacheAgent.hpp"
-//#include "malloc.hpp"
 #include "cacheInfo.hpp"
-#include "memoryPool.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"
 #include "user.hpp"
@@ -23,12 +21,17 @@ int main() {
 #endif
     char *node_local_buf = new char[sizeof(CacheInfo) * NODE_COUNT];
 
+    size_t cxl_hc_off = 0;
     static_assert(CXL_HC_RANGE > sizeof(LogManager[NODE_COUNT]));
     LogManager* log_mgrs = (LogManager *) cxl_hc_buf;
     for (int i = 0; i < NODE_COUNT; i++)
         new (&log_mgrs[i]) LogManager(i);
+    cxl_hc_off += sizeof(LogManager[NODE_COUNT]);
 
-    cxlhc_pool_initialize(cxl_hc_buf + sizeof(LogManager[NODE_COUNT]), CXL_HC_RANGE - sizeof(LogManager[NODE_COUNT]));
+    // allocator for user programs
+    //cxlnhc_pool_initialize(cxl_hc_buf, cxl_hc_off, cxl_nhc_buf, CXL_NHC_RANGE);
+    assert(CXL_HC_RANGE > cxl_hc_off);
+    cxlhc_pool_initialize(cxl_hc_buf + cxl_hc_off, CXL_HC_RANGE - cxl_hc_off);
     CXLPool *cxl_pool = new (cxl_nhc_buf) CXLPool();
     CacheInfo *cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
 
