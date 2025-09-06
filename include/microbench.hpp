@@ -40,9 +40,12 @@ struct CXLPool {
     CXLPool(): mutexes{}, atomic_data{} {}
 };
 
+extern thread_local ThreadOps *thread_ops;
+
 class Microbench {
     CXLPool &cxl_pool;
     unsigned node_id;
+    unsigned thread_id;
     unsigned locked_offset;
 
     // user stats
@@ -62,7 +65,7 @@ class Microbench {
     void use_locks(UserOp &op);
 
 public:
-    Microbench(CXLPool &pool, unsigned nid): cxl_pool(pool), node_id(nid), locked_offset(CXL_SYNC_RANGE){}
+    Microbench(CXLPool &pool): cxl_pool(pool), node_id(thread_ops->get_node_id()), thread_id(thread_ops->get_thread_id()), locked_offset(CXL_SYNC_RANGE){}
 
     void run();
 };

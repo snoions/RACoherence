@@ -18,20 +18,16 @@ void rac_store16(void * addr, uint16_t val, const char *);
 void rac_store32(void * addr, uint32_t val, const char *);
 void rac_store64(void * addr, uint64_t val, const char *);
 
-#if __cplusplus
-}
-#endif
+int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg);
 
-typedef struct RACThreadArgs_ {
-    unsigned nid;
-    std::function<void*(void*)>func;
-    void* arg;
-} RACThreadArgs;
-
-void *rac_thread_func_wrapper(void *arg);
+int rac_thread_join(unsigned /*nid*/, pthread_t thread, void **thread_ret);
 
 void rac_init(unsigned nid);
 
 void rac_shutdown();
+
+#if __cplusplus
+}
+#endif
 
 #endif

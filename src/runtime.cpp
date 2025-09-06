@@ -1,7 +1,9 @@
-#include <thread>
 #include <atomic>
+#include <pthread.h>
+#include <unordered_map>
 #include "cacheAgent.hpp"
 #include "cxlMalloc.hpp"
+#include "cxlSync.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"
 #include "runtime.hpp"
@@ -9,7 +11,8 @@
 thread_local ThreadOps *thread_ops;
 std::atomic<bool> complete {false};
 std::atomic<unsigned> curr_tid {0};
-std::vector<std::thread> cacheAgent_group;
+//TODO: change to pthread for uniformity
+pthread_t cacheAgent_group[NODE_COUNT];
 char *cxl_nhc_buf;
 char *cxl_hc_buf;
 char *node_local_buf;
@@ -23,7 +26,6 @@ inline bool in_cxl_nhc_memory(void *addr) {
 //TODO: check CXL memory ranges
 #define RACLOAD(size) \
     uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        LOG_DEBUG("rac_load" << size << ":addr = " << addr) \
         if (thread_ops && in_cxl_nhc_memory(addr)) { \
             thread_ops->check_invalidate((char *)addr); \
         } \
@@ -32,7 +34,6 @@ inline bool in_cxl_nhc_memory(void *addr) {
 
 #define RACSTORE(size) \
     void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        LOG_DEBUG("rac_store" << size << ":addr = " << addr << " " << (uint64_t) val) \
         if (thread_ops && in_cxl_nhc_memory(addr)) { \
             thread_ops->check_invalidate((char *)addr); \
             thread_ops->log_store((char *)addr); \
@@ -50,13 +51,58 @@ RACLOAD(16)
 RACLOAD(32)
 RACLOAD(64)
 
-//TODO: change node id to non thread-local
+struct RACThreadArg {
+    unsigned nid;
+    void* (*func)(void*);
+    void* arg;
+};
+
+struct RACThreadRet {
+    ThreadOps *ops;
+    void* ret;
+};
+
 void *rac_thread_func_wrapper(void *arg) {
-    auto args = (RACThreadArgs *)arg;
-    thread_ops = new ThreadOps(log_mgrs, &cache_infos[args->nid], args->nid, curr_tid.fetch_add(1, std::memory_order_relaxed));
-    void* ret = args->func(args->arg);
-    delete thread_ops;
+    auto rac_arg = (RACThreadArg *)arg;
+    unsigned tid = curr_tid.fetch_add(1, std::memory_order_relaxed);
+    thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
+    void* ret = rac_arg->func(rac_arg->arg);
+    thread_ops->thread_release();
+    delete rac_arg;
+    auto *rac_ret = new RACThreadRet{thread_ops, ret};
+    return rac_ret;
+}
+
+int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg) {
+    RACThreadArg *rac_arg = new RACThreadArg{nid, func, arg};
+    return pthread_create(thread, nullptr, rac_thread_func_wrapper, rac_arg);
+};
+
+int rac_thread_join(unsigned /*nid*/, pthread_t thread, void **thread_ret) {
+    RACThreadRet *rac_ret;
+    int ret = pthread_join(thread, (void **)&rac_ret);
+    auto child_ops = rac_ret->ops;
+    thread_ops->thread_acquire(child_ops->get_clock());
+    if (thread_ret)
+        *thread_ret = rac_ret->ret;
+    delete child_ops;
+    delete rac_ret;
     return ret;
+}
+
+struct CacheAgentArg {
+    unsigned node_id;
+    unsigned cpu_id;
+};
+
+void *run_cache_agent(void *arg) {
+    auto carg = (CacheAgentArg*) arg;
+#ifdef CACHE_AGENT_AFFINITY
+    set_thread_affinity(carg->cpu_id);
+#endif
+    unsigned nid = carg->node_id;
+    CacheAgent(cache_infos[nid], log_mgrs, nid).run();
+    return arg;
 }
 
 void rac_init(unsigned nid) {
@@ -86,19 +132,16 @@ void rac_init(unsigned nid) {
 #ifndef PROTOCOL_OFF
     unsigned cpu_id = 0;
     for (unsigned i=0; i<NODE_COUNT; i++) {
+        int ret;
 #if defined(CACHE_AGENT_AFFINITY) && defined(USE_NUMA)
-            find_cpu_on_numa(cpu_id, LOCAL_NUMA_ID)
+        ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_ID);
+        assert(!ret);
 #elif defined(CACHE_AGENT_AFFINITY)
-            cpu_id = i;
+        cpu_id = i;
 #endif
-        auto run_cacheAgent = [=](){
-#ifdef CACHE_AGENT_AFFINITY
-            set_thread_affinity(cpu_id);
-#endif
-            CacheAgent cacheAgent(cache_infos[i], log_mgrs, i);
-            cacheAgent.run();
-        };
-        cacheAgent_group.push_back(std::thread{run_cacheAgent});
+        auto arg = new CacheAgentArg{i, cpu_id};
+        ret = pthread_create(&cacheAgent_group[i], nullptr, run_cache_agent, arg);
+        assert(!ret);
     }
 #endif
 
@@ -107,8 +150,12 @@ void rac_init(unsigned nid) {
 void rac_shutdown() {
 #ifndef PROTOCOL_OFF
     complete.store(true);
-    for (unsigned i=0; i<cacheAgent_group.size(); i++)
-        cacheAgent_group[i].join();
+    for (unsigned i=0; i<NODE_COUNT; i++) {
+        void *arg;
+        int ret = pthread_join(cacheAgent_group[i], &arg);
+        assert(!ret);
+        delete (CacheAgentArg*)arg;
+    }
 #endif
     for (int i = 0; i < NODE_COUNT; i++)
         log_mgrs[i].~LogManager();

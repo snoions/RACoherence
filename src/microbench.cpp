@@ -185,5 +185,5 @@ void Microbench::run() {
 
     if(locked_offset != CXL_SYNC_RANGE)
         cxl_pool.mutexes[locked_offset].unlock();
-    LOG_INFO("node " << node_id << " user " << user_id << " done")
+    LOG_INFO("node " << node_id << " thread " << thread_id << " done")
 }
