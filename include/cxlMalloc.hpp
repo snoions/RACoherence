@@ -53,6 +53,14 @@ inline void cxlnhc_pool_initialize(char *hc_buf, size_t &hc_off, char *buf, size
         LOG_ERROR("mallctl arena.extent_hooks returned " << strerror(ret))
 }
 
+inline void *cxlnhc_malloc(size_t size) {
+    return mallocx(size, 0);
+}
+
+inline void cxlnhc_free(void *ptr, size_t size) {
+    dallocx(ptr, 0);
+}
+
 inline void cxlhc_pool_initialize(char *buf, size_t size) {
 #ifdef HC_USE_DLMALLOC
     cxlhc_space = create_mspace_with_base(buf, size, true);

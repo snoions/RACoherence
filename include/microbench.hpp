@@ -1,13 +1,8 @@
-#ifndef _USER_H_
-#define _USER_H_
+#ifndef _MICROBENCH_H_
+#define _MICROBENCH_H_
 
-#include "flushUtils.hpp"
-#include "config.hpp"
-#include "threadOps.hpp"
-#include "vectorClock.hpp"
 #include "cxlSync.hpp"
-
-extern thread_local ThreadOps *thread_ops;
+#include "config.hpp"
 
 // ratio of plain operations to acq/rel operations, needs to be power of two
 constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;
@@ -45,7 +40,7 @@ struct CXLPool {
     CXLPool(): mutexes{}, atomic_data{} {}
 };
 
-class User {
+class Microbench {
     CXLPool &cxl_pool;
     unsigned node_id;
     unsigned locked_offset;
@@ -67,7 +62,7 @@ class User {
     void use_locks(UserOp &op);
 
 public:
-    User(CXLPool &pool, unsigned nid): cxl_pool(pool), node_id(nid), locked_offset(CXL_SYNC_RANGE){}
+    Microbench(CXLPool &pool, unsigned nid): cxl_pool(pool), node_id(nid), locked_offset(CXL_SYNC_RANGE){}
 
     void run();
 };

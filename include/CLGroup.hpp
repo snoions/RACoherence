@@ -61,7 +61,7 @@ public:
         size_t length;
     public:
         inline iterator(uintptr_t p, size_t c): ptr(p), length(c) {}
-        inline const uintptr_t operator*() const {
+        inline uintptr_t operator*() const {
             return ptr + (length << cl_group::GROUP_SHIFT);
         }
 
@@ -95,7 +95,7 @@ public:
         uint64_t mask;
     public:
         inline iterator(uintptr_t p, uint64_t m): ptr(p), mask(m) {}
-        inline const uintptr_t operator*() const {
+        inline uintptr_t operator*() const {
             int p = __builtin_ctzl(mask);
             return ptr + (p << CACHE_LINE_SHIFT);
         }

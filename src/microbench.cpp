@@ -1,4 +1,4 @@
-#include "user.hpp"
+#include "microbench.hpp"
 #include "logger.hpp"
 
 constexpr unsigned SEQ_OP_FACTOR = 3;
@@ -68,7 +68,7 @@ public:
     }
 };
 
-inline void User::handle_store(char *addr, char val) {
+inline void Microbench::handle_store(char *addr, char val) {
     if (thread_ops->check_invalidate(addr)) {
 #ifdef STATS
         invalidate_count++;
@@ -78,7 +78,7 @@ inline void User::handle_store(char *addr, char val) {
     *((volatile char *)addr) = val;
 }
 
-inline char User::handle_load(char *addr) {
+inline char Microbench::handle_load(char *addr) {
     if (thread_ops->check_invalidate(addr)) {
 #ifdef STATS
         invalidate_count++;
@@ -87,7 +87,7 @@ inline char User::handle_load(char *addr) {
     return *((volatile char *)addr);
 }
 
-inline void User::handle_store_raw(char *addr, char val) {
+inline void Microbench::handle_store_raw(char *addr, char val) {
     do_invalidate(addr);
     invalidate_fence();
 #ifdef STATS
@@ -97,7 +97,7 @@ inline void User::handle_store_raw(char *addr, char val) {
     do_flush((char *)addr);
 }
 
-inline char User::handle_load_raw(char *addr) {
+inline char Microbench::handle_load_raw(char *addr) {
     do_invalidate(addr);
     invalidate_fence();
 #ifdef STATS
@@ -106,7 +106,7 @@ inline char User::handle_load_raw(char *addr) {
     return *((volatile char *)addr);
 }
 
-inline void User::use_locks(UserOp &op) {
+inline void Microbench::use_locks(UserOp &op) {
     if (op.type != OP_STORE_RLS && op.type != OP_LOAD_ACQ)
         return;
     if (locked_offset == CXL_SYNC_RANGE) {
@@ -119,7 +119,7 @@ inline void User::use_locks(UserOp &op) {
     }
 }
 
-void User::run() {
+void Microbench::run() {
     WORKLOAD_TYPE workload;
     for (int i =0; i < TOTAL_OPS; i++) {
         UserOp op = workload.getNextOp(i);

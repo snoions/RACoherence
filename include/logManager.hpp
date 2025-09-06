@@ -96,7 +96,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     inline void perform_gc() {
         idx_t new_b = flip(bound);
-        for (int i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
+        for (unsigned i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
             auto h = flip(heads[i].load(std::memory_order_relaxed));
             if (new_b == flip(bound))
                 new_b = h;
@@ -120,7 +120,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 public:
 
     LogManager(unsigned nid): node_id(nid) {
-        for (int i =0; i < LOG_BUF_SIZE; i++) {
+        for (unsigned i = 0; i < LOG_BUF_SIZE; i++) {
             pub[i].store(&buf[i], std::memory_order_relaxed);
             auto ok = freelist.enqueue(&buf[i]);
             assert(ok);

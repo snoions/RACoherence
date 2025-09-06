@@ -10,29 +10,35 @@ if (NOT CMAKE_BUILD_TYPE)
     message(STATUS "CMAKE_BUILD_TYPE default:" ${CMAKE_BUILD_TYPE})
 endif()
 
-set(INDEX_FILES
+set(RUNTIME_LIB
       src/cacheAgent.cpp
       src/clh_mutex.cpp
       src/cxlMalloc.cpp
       src/dlmalloc.c
       src/logger.cpp
       src/main.cpp
+      src/microbench.cpp
+      src/runtime.cpp
       src/threadOps.cpp
-      src/user.cpp
     )
 set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
-add_executable(main ${INDEX_FILES})
-target_include_directories(main PUBLIC include)
+add_library(racoherence SHARED ${RUNTIME_LIB})
+add_library(racoherence_static STATIC ${RUNTIME_LIB})
+add_executable(main src/main.cpp)
+target_link_libraries(main PRIVATE racoherence_static)
+
+include_directories(include)
 # Compile options to improve TLS efficiency
-target_compile_options(main PUBLIC
+add_compile_options(
     -ftls-model=initial-exec
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
 )
+
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 if (ENABLE_ASAN)
-    target_compile_options(main PUBLIC -fsanitize=address)
-    target_link_options(main PUBLIC -fsanitize=address)
+    add_compile_options(-fsanitize=address)
+    add_link_options(-fsanitize=address)
 endif()
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
@@ -54,8 +60,10 @@ ExternalProject_Add(jemalloc_proj
 ExternalProject_Get_Property(jemalloc_proj INSTALL_DIR)
 add_library(jemalloc STATIC IMPORTED)
 add_dependencies(main jemalloc_proj)
-target_link_libraries(main PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
-target_include_directories(main PRIVATE ${INSTALL_DIR}/include) 
+target_link_libraries(racoherence PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
+target_include_directories(racoherence PRIVATE ${INSTALL_DIR}/include) 
+target_link_libraries(racoherence_static PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
+target_include_directories(racoherence_static PRIVATE ${INSTALL_DIR}/include) 
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
