@@ -21,7 +21,8 @@ constexpr uintptr_t CXL_HC_RANGE = 4ull << 20;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // whether to collect statistics
-//#define STATS
+//#define STATS(s) {s;}
+#define STATS(s)
 
 // user threads consume logs to unblock itself, at the expense of contention with cache agent
 #define USER_HELP_CONSUME

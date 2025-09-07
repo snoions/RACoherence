@@ -19,7 +19,7 @@
  * Though has to make sure jemalloc is compiled with --without-export to not override
  * the default allocator, mainly because tcache can only come from one arena, causing pool memory to be used for normal allocation as well. 
  */
-//TODO: replace alloactor for std data structures
+//TODO: use cxl_hc_memory for allocator data
 class ExtentPool {
 public:
     ExtentPool(void* buffer, size_t buffer_size)
@@ -38,7 +38,6 @@ public:
             if (it != per_size_buckets_.end() && !it->second.empty()) {
                 void* p = it->second.back();
                 it->second.pop_back();
-                std::cout << "[ExtentPool2] reuse exact bucket ptr=" << p << " size=" << size << "\n";
                 return p;
             }
         }
@@ -89,8 +88,6 @@ public:
                         insert_free_region_locked(suffix_start, suffix_size);
                     }
                     void* p = reinterpret_cast<void*>(alloc_start);
-                    std::cout << "[ExtentPool2] reused region ptr=" << p << " size=" << size
-                              << " (orig_region=" << start << "/" << orig_size << ") align=" << alignment << "\n";
                     return p;
                 } else {
                     // this region cannot satisfy alignment-adjusted request; try next candidate in same size set,
@@ -116,8 +113,6 @@ public:
                                               std::memory_order_acq_rel,
                                               std::memory_order_relaxed)) {
                 void* p = reinterpret_cast<void*>(aligned);
-                std::cout << "[ExtentPool2] bump alloc ptr=" << p << " size=" << size
-                          << " alignment=" << alignment << "\n";
                 return p;
             }
             // CAS failed, cur updated -> retry
@@ -170,11 +165,6 @@ public:
             // pull region out of free_by_addr/free_by_size and put into bucket
             remove_free_region_locked(region_start, region_size);
             it_bucket->second.push_back(reinterpret_cast<void*>(region_start));
-            std::cout << "[ExtentPool2] dealloc placed into exact bucket ptr=" << reinterpret_cast<void*>(region_start)
-                      << " size=" << region_size << "\n";
-        } else {
-            std::cout << "[ExtentPool2] dealloc inserted region ptr=" << reinterpret_cast<void*>(region_start)
-                      << " size=" << region_size << "\n";
         }
     }
 

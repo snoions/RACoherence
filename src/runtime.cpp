@@ -2,7 +2,6 @@
 #include <pthread.h>
 #include <unordered_map>
 #include "cacheAgent.hpp"
-#include "cxlMalloc.hpp"
 #include "cxlSync.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"

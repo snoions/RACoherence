@@ -4,6 +4,7 @@
 #include <atomic>
 #include "clh_mutex.hpp"
 #include "cxlMalloc.hpp"
+#include "flushUtils.hpp"
 #include "threadOps.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
@@ -32,6 +33,9 @@ public:
 
     inline void store(T desired, std::memory_order order) {
         if (order == std::memory_order_seq_cst || order == std::memory_order_release) { 
+#ifdef PROTOCOL_OFF
+            flush_fence();
+#else
             auto thread_clock = thread_ops->thread_release();
 
             LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
@@ -46,6 +50,7 @@ public:
                 self = thread_clock;
                 inner->atomic_data.store(desired, order);
             });
+#endif
 #endif
         }
         else
@@ -93,7 +98,7 @@ public:
         cxlhc_free(inner, sizeof(InnerData));
     }
 
-    void lock() {
+    inline void lock() {
         clh_mutex_lock(&inner->mutex);
 
         LOG_DEBUG("thread " << std::this_thread::get_id() << " lock at " << this << std::dec << ", loc clock=" << inner->clock)
@@ -101,7 +106,10 @@ public:
         thread_ops->thread_acquire(inner->clock);
     };
 
-    void unlock() {
+    inline void unlock() {
+#ifdef PROTOCOL_OFF
+        flush_fence();
+#else
         auto thread_clock = thread_ops->thread_release();
 
         LOG_DEBUG("thread " << std::this_thread::get_id() << " unlock at " << this << std::dec << ", thread clock=" << thread_clock)
@@ -111,65 +119,9 @@ public:
 #else
         inner->clock = thread_clock;
 #endif
+#endif
         clh_mutex_unlock(&inner->mutex);
     };
 };
 
-template<typename T>
-class CXLAtomicRaw {
-    struct InnerData {
-        std::atomic<T> atomic_data;
-
-        InnerData() = default;
-    };
-
-    InnerData *inner;
-
-public:
-    CXLAtomicRaw(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
-
-    ~CXLAtomicRaw() {
-        inner->~InnerData();
-        cxlhc_free(inner, sizeof(InnerData));
-    }
-
-    inline void store(T desired, std::memory_order order) {
-            inner->atomic_data.store(desired, order);
-    };
-
-    inline T load(std::memory_order order) {
-            return inner->atomic_data.load(order);
-    };
-};
-
-class CXLMutexRaw {
-    struct InnerData{
-        clh_mutex_t mutex;
-
-        InnerData() {
-            clh_mutex_init(&mutex);
-        }
-        ~InnerData() {
-            clh_mutex_destroy(&mutex);
-        }
-    };
-
-    InnerData *inner;
-
-public:
-    CXLMutexRaw(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
-
-    ~CXLMutexRaw() {
-        inner->~InnerData();
-        cxlhc_free(inner, sizeof(InnerData));
-    }
-
-    void lock() {
-        clh_mutex_lock(&inner->mutex);
-    };
-
-    void unlock() {
-        clh_mutex_unlock(&inner->mutex);
-    };
-};
 #endif

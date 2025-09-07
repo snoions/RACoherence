@@ -7,9 +7,7 @@
 clock_t ThreadOps::write_to_log(bool is_release) {
     Log *curr_log;
     while(!(curr_log = log_mgrs[node_id].get_new_log())) {
-#ifdef STATS
-        blocked_count++;
-#endif
+        STATS(blocked_count++)
         sleep(0);
     }
 
