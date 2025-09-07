@@ -1,8 +1,8 @@
 #include <atomic>
 #include <pthread.h>
-#include <unordered_map>
 #include "cacheAgent.hpp"
 #include "cxlSync.hpp"
+#include "flushUtils.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"
 #include "runtime.hpp"
@@ -18,27 +18,47 @@ char *node_local_buf;
 CacheInfo *cache_infos;
 LogManager *log_mgrs;
 
-inline bool in_cxl_nhc_memory(void *addr) {
-    return addr >= cxl_nhc_buf && addr < cxl_nhc_buf + CXL_NHC_RANGE;
-}
-
-//TODO: check CXL memory ranges
+#ifdef PROTOCOL_OFF
 #define RACLOAD(size) \
-    uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        if (thread_ops && in_cxl_nhc_memory(addr)) { \
+    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
+        if (addr >= cxl_nhc_buf && addr < cxl_nhc_buf + CXL_NHC_RANGE && cxl_nhc_buf) { \
+            do_invalidate((char *)addr); \
+            invalidate_fence(); \
+        } \
+        return *((uint ## size ## _t*)addr); \
+    }
+#else
+#define RACLOAD(size) \
+    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
+        if (addr >= cxl_nhc_buf && addr < cxl_nhc_buf + CXL_NHC_RANGE && cxl_nhc_buf) { \
             thread_ops->check_invalidate((char *)addr); \
         } \
         return *((uint ## size ## _t*)addr); \
     }
+#endif
 
+#ifdef PROTOCOL_OFF
 #define RACSTORE(size) \
-    void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        if (thread_ops && in_cxl_nhc_memory(addr)) { \
+    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+        bool in_cxl_nhc = addr >= cxl_nhc_buf && addr < cxl_nhc_buf + CXL_NHC_RANGE && cxl_nhc_buf; \
+        if (in_cxl_nhc) { \
+            do_invalidate((char *)addr); \
+            invalidate_fence(); \
+        } \
+        *((uint ## size ## _t*)addr) = val; \
+        if (in_cxl_nhc) \
+            do_flush((char *)addr); \
+    }
+#else
+#define RACSTORE(size) \
+    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+        if (addr >= cxl_nhc_buf && addr < cxl_nhc_buf + CXL_NHC_RANGE && cxl_nhc_buf) { \
             thread_ops->check_invalidate((char *)addr); \
             thread_ops->log_store((char *)addr); \
         } \
         *((uint ## size ## _t*)addr) = val; \
     }
+#endif
 
 RACSTORE(8)
 RACSTORE(16)
@@ -49,7 +69,6 @@ RACLOAD(8)
 RACLOAD(16)
 RACLOAD(32)
 RACLOAD(64)
-
 struct RACThreadArg {
     unsigned nid;
     void* (*func)(void*);
