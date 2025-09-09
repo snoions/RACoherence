@@ -9,6 +9,7 @@ extern thread_local ThreadOps *thread_ops;
 #if __cplusplus
 extern "C" {
 #endif
+
 uint8_t rac_load8(void *addr, const char *);
 uint16_t rac_load16(void *addr, const char *);
 uint32_t rac_load32(void *addr, const char *);

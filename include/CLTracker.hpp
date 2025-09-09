@@ -47,24 +47,25 @@ public:
     //non-atomic is safe assuming no races on cache line, so uint8_t dirty[CACHE_LINES_PER_PAGE] is another option
     std::atomic<uint64_t> dirty_mask{0};
 
-    // non-rmw is okay assuming no races on cache line
-    void mark_range_dirty(uint64_t mask) {
-        auto m = dirty_mask.load(std::memory_order_relaxed);
-        dirty_mask.store(m | mask, std::memory_order_relaxed);
+    inline uint64_t mark_dirty_with_mask(uint64_t mask) {
+        return dirty_mask.fetch_or(mask, std::memory_order_relaxed);
     }
 
-    void mark_dirty(uint64_t line) {
+    inline void mark_dirty(uint64_t line) {
         uint64_t mask = 1ull << line;
-        auto m = dirty_mask.load(std::memory_order_relaxed);
-        dirty_mask.store(m | mask, std::memory_order_relaxed);
+        dirty_mask.fetch_or(mask, std::memory_order_relaxed);
     }
 
-    bool is_dirty(uint64_t line) const {
+    inline bool is_dirty(uint64_t line) const {
         uint64_t mask = 1ull << line;
         return dirty_mask.load(std::memory_order_relaxed) & mask;
     }
 
-    void clear_dirty(uint64_t line) {
+    inline uint64_t clear_dirty_with_mask(uint64_t mask) {
+        return dirty_mask.fetch_and(~mask, std::memory_order_relaxed);
+    }
+
+    inline void clear_dirty(uint64_t line) {
         uint64_t mask = ~(1ull << line);
         dirty_mask.fetch_and(mask, std::memory_order_relaxed);
     }
@@ -102,7 +103,7 @@ public:
     void mark_range_dirty(uintptr_t va, uint64_t mask) {
         uint64_t l1_idx, l2_idx, line;
         split_va(va, l1_idx, l2_idx, line);
-        get_or_create_leaf(l1_idx, l2_idx)->mark_range_dirty(mask);
+        get_or_create_leaf(l1_idx, l2_idx)->mark_dirty_with_mask(mask);
     }
 
     bool is_dirty(uintptr_t va) const {
@@ -129,6 +130,74 @@ public:
             return true;
         }
         return false;
+    }
+
+
+    bool invalidate_range_if_dirty(uintptr_t begin, uintptr_t end) {
+        bool any_dirty = false;
+
+        // Align begin to cache line boundary
+        uintptr_t addr = begin & ~(CACHE_LINE_SIZE - 1);
+
+        while (addr < end) {
+            uint64_t l1_idx, l2_idx, line_idx;
+            split_va(addr, l1_idx, l2_idx, line_idx);
+
+            auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
+            if (!l2) {
+                // Jump to next leaf
+                addr = ((addr >> 12) + 1) << 12;
+                continue;
+            }
+
+            auto* leaf = l2->leaves[l2_idx].load(std::memory_order_acquire);
+            if (!leaf) {
+                // Jump to next leaf
+                addr = ((addr >> 12) + 1) << 12;
+                continue;
+            }
+
+            // Calculate how many cache lines in this page we need to process
+            uint64_t start_line = line_idx;
+            uint64_t end_line = CACHE_LINES_PER_PAGE;
+
+            uintptr_t page_end_va = ((addr >> 12) + 1) << 12; // next page boundary
+            if (page_end_va > end) {
+                // Clamp to range end
+                end_line = (end >> 6) & (CACHE_LINES_PER_PAGE - 1);
+            }
+
+            // Construct a mask of all lines in [start_line, end_line)
+            uint64_t mask;
+            if (end_line == 64) {
+                mask = ~0ull << start_line;   // full tail mask
+            } else {
+                mask = ((1ull << end_line) - 1) & ~((1ull << start_line) - 1);
+            }
+
+            // Atomically clear all those bits
+            // might allow more parallelism for flushes if all fetch_and are moved to end of function
+            uint64_t prev = leaf->clear_dirty_with_mask(mask);
+            uint64_t was_dirty = prev & mask;
+
+            if (was_dirty) {
+                any_dirty = true;
+
+                // For each bit set in was_dirty, invalidate that line
+                uint64_t bits = was_dirty;
+                while (bits) {
+                    unsigned bit = __builtin_ctzll(bits);  // index of lowest set bit
+                    uintptr_t line_va = (addr & ~((1ull << 12) - 1)) + (bit * CACHE_LINE_SIZE);
+                    do_invalidate((char*)line_va);
+                    bits &= bits - 1; // clear lowest set bit
+                }
+            }
+
+            // Advance to next page (next leaf in L2)
+            addr = page_end_va;
+        }
+
+        return any_dirty;
     }
 
     void clear_dirty(uintptr_t va) {

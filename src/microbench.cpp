@@ -76,7 +76,7 @@ inline void Microbench::handle_store(char *addr, char val) {
     *((volatile char *)addr) = val;
     do_flush((char *)addr);
 #else
-    if (thread_ops->check_invalidate(addr)) {
+    if (check_invalidate(addr)) {
         STATS(invalidate_count++)
     }
     thread_ops->log_store(addr);
@@ -91,7 +91,7 @@ inline char Microbench::handle_load(char *addr) {
     STATS(invalidate_count++)
     return *((volatile char *)addr);
 #else
-    if (thread_ops->check_invalidate(addr)) {
+    if (check_invalidate(addr)) {
         STATS(invalidate_count++)
     }
     return *((volatile char *)addr);

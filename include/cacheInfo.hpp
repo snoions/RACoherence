@@ -23,18 +23,20 @@ struct CacheInfo {
 
     void process_log(Log &log) {
         struct InvalidateOp {
+            CacheInfo &self;
+
             inline void operator() (uintptr_t ptr, uint64_t mask) {
 #ifdef EAGER_INVALIDATE
                 for (auto cl_addr: MaskCLRange(ptr, mask))
                     do_invalidate((char *)cl_addr);
 #else
-                inv_cls.mark_range_dirty(get_ptr(invalid_cg), cl_group::get_mask64(invalid_cg));
+                self.inv_cls.mark_range_dirty(ptr, mask);
 #endif
             }
         };
 
         for (auto invalid_cg: log) {
-            process_cl_group(invalid_cg, InvalidateOp());
+            process_cl_group(invalid_cg, InvalidateOp{*this});
         }
 #ifdef EAGER_INVALIDATE
         invalidate_fence();
@@ -49,4 +51,5 @@ struct CacheInfo {
         return clock[i].load(std::memory_order_relaxed);
     }
 };
+
 #endif

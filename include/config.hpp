@@ -25,7 +25,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define STATS(s)
 
 // user threads consume logs to unblock itself, at the expense of contention with cache agent
-#define USER_HELP_CONSUME
+//#define USER_HELP_CONSUME
 
 // thread clock merges with location clock instead of overwriting it, allows release store to be outside of location clock's critical section
 //#define LOCATION_CLOCK_MERGE
@@ -52,8 +52,8 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define WORKLOAD_USE_LOCKS
 
 // sequential workload
-//#define WORKLOAD_TYPE SeqWorkLoad
+#define WORKLOAD_TYPE SeqWorkLoad
 // random workload
-#define WORKLOAD_TYPE RandWorkLoad
+//#define WORKLOAD_TYPE RandWorkLoad
 
 #endif

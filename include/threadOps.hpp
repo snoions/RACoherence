@@ -53,13 +53,6 @@ public:
 #endif
     }
 
-    inline bool check_invalidate(char *addr) {
-#ifndef EAGER_INVALIDATE
-        return cache_info->invalid_cls.invalidate_if_dirty((uintptr_t)addr);
-#endif
-        return false;
-    }
-
     inline void log_store(char *addr) {
         uintptr_t cl_addr = (uintptr_t)addr & CACHE_LINE_MASK;
 
@@ -67,5 +60,23 @@ public:
             write_to_log(false);
     }
 
+    inline void log_range_store(char *begin, char *end) {
+        uintptr_t begin_addr = (uintptr_t)begin & CACHE_LINE_MASK;
+        uintptr_t end_addr = (uintptr_t)end & CACHE_LINE_MASK;
+
+        while (dirty_cls.range_insert(begin_addr, end_addr) || dirty_cls.get_length_entry_count() != 0)
+            write_to_log(false);
+    }
 };
+
+//TODO: use a non-thread-local node_id to access cache info when running multiple processes/machines, move these definitions to CacheInfo
+extern thread_local ThreadOps *thread_ops;
+extern CacheInfo *cache_infos;
+inline bool check_range_invalidate(char *begin, char *end) {
+        return cache_infos[thread_ops->get_node_id()].inv_cls.invalidate_range_if_dirty((uintptr_t)begin, (uintptr_t)end);
+}
+
+inline bool check_invalidate(char *addr) {
+        return cache_infos[thread_ops->get_node_id()].inv_cls.invalidate_if_dirty((uintptr_t)addr);
+}
 #endif

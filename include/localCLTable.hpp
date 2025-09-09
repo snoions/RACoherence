@@ -1,6 +1,7 @@
 #ifndef _LOCAL_CL_TABLE_H_
 #define _LOCAL_CL_TABLE_H_
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -59,7 +60,6 @@ class LocalCLTable {
 
     inline bool insert_length(cl_group_index_t group_index, size_t length) {
         using namespace cl_group;
-        //TODO: deal with this case
         assert(length <= GROUP_LEN_MAX);
         cl_group_t entry = group_index | (length << GROUP_INDEX_SHIFT) | TYPE_MASK;
 
@@ -132,6 +132,15 @@ public:
 #endif
     }
 
+    inline bool range_insert(uintptr_t &begin, uintptr_t end) {
+        //TODO: optimize
+        assert(begin <=end);
+        for (; begin < end + CACHE_LINE_SIZE; begin+= CACHE_LINE_SIZE)
+            if (insert(begin))
+                return true;
+        return false;
+    }
+
     // returns whether table is full
     inline bool dump_buffer_to_table() {
         using namespace cl_group;
@@ -152,9 +161,10 @@ public:
                         return true;
                 }
             } else {
+                unsigned length = std::max(buffer.mid_length, GROUP_LEN_MAX);
                 if (insert_length(buffer.begin_index + 1, buffer.mid_length))
                     return true;
-                buffer.mid_length = 0;
+                buffer.mid_length -= length;
             }
         }
         if (buffer.begin_index)
