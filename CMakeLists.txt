@@ -23,8 +23,12 @@ set(RUNTIME_LIB
     )
 set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
-add_library(racoherence SHARED ${RUNTIME_LIB})
-add_library(racoherence_static STATIC ${RUNTIME_LIB})
+add_library(racoherence_object OBJECT ${RUNTIME_LIB})
+set_property(TARGET racoherence_object PROPERTY POSITION_INDEPENDENT_CODE ON)
+add_library(racoherence SHARED)
+target_link_libraries(racoherence PRIVATE racoherence_object)
+add_library(racoherence_static STATIC)
+target_link_libraries(racoherence_static PRIVATE racoherence_object)
 add_executable(main src/main.cpp)
 target_link_libraries(main PRIVATE racoherence_static)
 
@@ -59,22 +63,23 @@ ExternalProject_Add(jemalloc_proj
 )
 ExternalProject_Get_Property(jemalloc_proj INSTALL_DIR)
 add_library(jemalloc STATIC IMPORTED)
-add_dependencies(main jemalloc_proj)
-target_link_libraries(racoherence PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
-target_include_directories(racoherence PRIVATE ${INSTALL_DIR}/include) 
-target_link_libraries(racoherence_static PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
-target_include_directories(racoherence_static PRIVATE ${INSTALL_DIR}/include) 
+add_dependencies(racoherence_object jemalloc_proj)
+target_link_libraries(racoherence_object PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
+target_include_directories(racoherence_object PRIVATE ${INSTALL_DIR}/include) 
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-target_link_libraries(main PRIVATE Threads::Threads)
+target_link_libraries(racoherence_object PRIVATE Threads::Threads)
+
+# Other libraries
+target_link_libraries(racoherence_object PRIVATE ${CMAKE_DL_LIBS})
 
 # NUMA library
 find_library(NUMA_LIB NAMES numa)
 if(NUMA_LIB)
     message(STATUS "Found libnuma at: ${NUMA_LIB}")
-    target_link_libraries(main PRIVATE ${NUMA_LIB})
+    target_link_libraries(racoherence_object PUBLIC ${NUMA_LIB})
 else()
     message(FATAL_ERROR "libnuma not found!")
 endif()
