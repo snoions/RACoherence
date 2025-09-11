@@ -10,6 +10,8 @@ void cxlnhc_pool_initialize(char *hc_buf, char *buf, size_t size);
 
 void *cxlnhc_malloc(size_t size);
 
+void *cxlnhc_cl_aligned_malloc(size_t size);
+
 void cxlnhc_free(void *ptr, size_t size);
 
 void cxlhc_pool_initialize(char *buf, size_t size);
@@ -56,12 +58,12 @@ public:// type definitions
 	cxlhc_allocator(const cxlhc_allocator&) throw() {}
 
 	template<typename T2>
-    cxlhc_allocator(const cxlhc_allocator<T2> &alloc) throw() {}
+    cxlhc_allocator(const cxlhc_allocator<T2> &/*alloc*/) throw() {}
  
     ~cxlhc_allocator() throw() {}
 
 	//operators
-	bool operator!=(const cxlhc_allocator<T> other) {return true;} 
+	bool operator!=(const cxlhc_allocator<T> /*other*/) {return true;}
 
 	// Allocate memory for n objects of type T 
     pointer allocate(size_t n) {

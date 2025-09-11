@@ -28,6 +28,8 @@ void rac_init(unsigned nid);
 
 void rac_shutdown();
 
+unsigned rac_get_node_id();
+
 #if __cplusplus
 }
 #endif

@@ -1,3 +1,4 @@
+#include "config.hpp"
 #include "cxlMalloc.hpp"
 #include "memoryPool.hpp"
 #include "jemallocPool.hpp"
@@ -61,6 +62,10 @@ void cxlnhc_pool_initialize(char *hc_buf, char *buf, size_t size) {
 
 void *cxlnhc_malloc(size_t size) {
     return mallocx(size, 0);
+}
+
+void *cxlnhc_cl_aligned_malloc(size_t size) {
+    return mallocx(size, 0 | MALLOCX_ALIGN(CACHE_LINE_SIZE));
 }
 
 void cxlnhc_free(void *ptr, size_t size) {

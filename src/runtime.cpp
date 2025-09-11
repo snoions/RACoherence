@@ -131,6 +131,10 @@ int rac_thread_join(unsigned /*nid*/, pthread_t thread, void **thread_ret) {
     return ret;
 }
 
+unsigned rac_get_node_id() {
+    return thread_ops->get_node_id();
+}
+
 void * (*volatile memcpy_real)(void * dst, const void *src, size_t n) = nullptr;
 void * (*volatile memmove_real)(void * dst, const void *src, size_t len) = nullptr;
 void (*volatile bzero_real)(void * dst, size_t len) = nullptr;
