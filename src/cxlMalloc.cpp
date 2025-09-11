@@ -1,9 +1,12 @@
 #include "cxlMalloc.hpp"
+#include "memoryPool.hpp"
 #include "jemallocPool.hpp"
 
 #ifdef HC_USE_DLMALLOC
+#include "dlmalloc.h"
 mspace cxlhc_space;
 #else
+using CXLHCPool = MemoryPool<64, 128>;
 CXLHCPool *cxlhc_pool;
 #endif
 ExtentPool *cxlnhc_extent_pool;
@@ -45,9 +48,8 @@ extent_hooks_t cxlnhc_hooks = {
     .merge = nullptr
 };
 
-void cxlnhc_pool_initialize(char *hc_buf, size_t &hc_off, char *buf, size_t size) {
-    cxlnhc_extent_pool = new (hc_buf + hc_off) ExtentPool(buf, size);
-    hc_off+= sizeof(ExtentPool);
+void cxlnhc_pool_initialize(char *hc_buf, char *buf, size_t size) {
+    cxlnhc_extent_pool = new (hc_buf) ExtentPool(buf, size);
     extent_hooks_t* new_hooks = &cxlnhc_hooks;
     extent_hooks_t* old_hooks = nullptr;
     size_t olen = sizeof(old_hooks);
@@ -63,4 +65,29 @@ void *cxlnhc_malloc(size_t size) {
 
 void cxlnhc_free(void *ptr, size_t size) {
     dallocx(ptr, 0);
+}
+
+void cxlhc_pool_initialize(char *buf, size_t size) {
+#ifdef HC_USE_DLMALLOC
+    cxlhc_space = create_mspace_with_base(buf, size, true);
+#else
+    assert(size > sizeof(CXLHCPool));
+    cxlhc_pool = new (buf) CXLHCPool(buf + sizeof(CXLHCPool), size - sizeof(CXLHCPool));
+#endif
+}
+
+void *cxlhc_malloc(size_t size) {
+#ifdef HC_USE_DLMALLOC
+    return mspace_malloc(cxlhc_space, size);
+#else
+    return cxlhc_pool->allocate(size);
+#endif
+}
+
+void cxlhc_free(void *ptr, size_t size) {
+#ifdef HC_USE_DLMALLOC
+    return mspace_free(cxlhc_space, ptr);
+#else
+    return cxlhc_pool->deallocate(ptr, size);
+#endif
 }

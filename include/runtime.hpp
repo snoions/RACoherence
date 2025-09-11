@@ -1,10 +1,10 @@
 #ifndef _USER_H_
 #define _USER_H_
 
-#include "threadOps.hpp"
 #include "cxlMalloc.hpp"
-
-extern thread_local ThreadOps *thread_ops;
+#include "stdint.h"
+#include "pthread.h"
+#include "config.hpp"
 
 #if __cplusplus
 extern "C" {

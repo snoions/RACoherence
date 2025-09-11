@@ -16,7 +16,7 @@ constexpr long CPU_FREQ_MHZ = 2100;
 
 static inline void do_flush(char *addr)
 {
-    volatile char *ptr = (char *)((uintptr_t)addr & CACHE_LINE_MASK);
+    volatile char *ptr = (char *)((uintptr_t)addr & ~CACHE_LINE_MASK);
 #if FLUSH_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
 #elif FLUSH_INST == CLFLUSHOPT
@@ -28,7 +28,7 @@ static inline void do_flush(char *addr)
 
 static inline void do_invalidate(char *addr)
 {
-    volatile char *ptr = (char *)((uintptr_t)addr & CACHE_LINE_MASK);
+    volatile char *ptr = (char *)((uintptr_t)addr & ~CACHE_LINE_MASK);
 #if INVALIDATE_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
 #elif INVALIDATE_INST == CLFLUSHOPT
@@ -54,7 +54,7 @@ static inline unsigned long read_tsc(void)
 
 inline void do_range_flush(char *data, int len)
 {
-    char *ptr = (char *)((unsigned long)data & CACHE_LINE_MASK);
+    char *ptr = (char *)((unsigned long)data & ~CACHE_LINE_MASK);
     for (; ptr < data+len; ptr += CACHE_LINE_SIZE){
         unsigned long etsc = read_tsc() +
             (unsigned long)(WRITE_LATENCY_IN_NS * CPU_FREQ_MHZ/1000);
@@ -65,7 +65,7 @@ inline void do_range_flush(char *data, int len)
 
 inline void do_range_invalidate(char *data, int len)
 {
-    char *ptr = (char *)((unsigned long)data & CACHE_LINE_MASK);
+    char *ptr = (char *)((unsigned long)data & ~CACHE_LINE_MASK);
     for (; ptr < data+len; ptr += CACHE_LINE_SIZE){
         unsigned long etsc = read_tsc() +
             (unsigned long)(WRITE_LATENCY_IN_NS * CPU_FREQ_MHZ/1000);

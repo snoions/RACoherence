@@ -6,7 +6,7 @@
 constexpr uintptr_t PAGE_SIZE = 1ull << 12; // 4KB
 constexpr uintptr_t CACHE_LINE_SIZE = 64;
 constexpr uintptr_t CACHE_LINE_SHIFT = 6; // log(CACHE_LINE_SIZE)
-constexpr uintptr_t CACHE_LINE_MASK = ~(CACHE_LINE_SIZE-1);
+constexpr uintptr_t CACHE_LINE_MASK = CACHE_LINE_SIZE-1;
 constexpr uintptr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
 // assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;

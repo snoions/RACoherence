@@ -54,15 +54,15 @@ public:
     }
 
     inline void log_store(char *addr) {
-        uintptr_t cl_addr = (uintptr_t)addr & CACHE_LINE_MASK;
+        uintptr_t cl_addr = (uintptr_t)addr & ~CACHE_LINE_MASK;
 
         while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)
             write_to_log(false);
     }
 
     inline void log_range_store(char *begin, char *end) {
-        uintptr_t begin_addr = (uintptr_t)begin & CACHE_LINE_MASK;
-        uintptr_t end_addr = (uintptr_t)end & CACHE_LINE_MASK;
+        uintptr_t begin_addr = (uintptr_t)begin & ~CACHE_LINE_MASK;
+        uintptr_t end_addr = (uintptr_t)end & ~CACHE_LINE_MASK;
 
         while (dirty_cls.range_insert(begin_addr, end_addr) || dirty_cls.get_length_entry_count() != 0)
             write_to_log(false);

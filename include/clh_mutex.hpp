@@ -57,5 +57,23 @@ void clh_mutex_destroy(clh_mutex_t * self);
 void clh_mutex_lock(clh_mutex_t * self);
 void clh_mutex_unlock(clh_mutex_t * self);
 
+struct CLHMutex: private clh_mutex_t {
+    CLHMutex() {
+        clh_mutex_init(this);
+    }
+
+    ~CLHMutex() {
+        clh_mutex_destroy(this);
+    }
+
+    void lock() {
+        clh_mutex_lock(this);
+    }
+
+    void unlock() {
+        clh_mutex_unlock(this);
+    }
+
+};
 
 #endif /* _CLH_MUTEX_H_ */

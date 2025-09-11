@@ -4,22 +4,32 @@
 #include <atomic>
 #include <cassert>
 #include <cstring>
-#include <map>
-#include <set>
 #include <iostream>
+#include <map>
 #include <mutex>
+#include <set>
 #include <unordered_map>
 #include <unistd.h>
 #include <vector>
 
 #include "logger.hpp"
 #include "jemalloc/jemalloc.h"
+#include "clh_mutex.hpp"
+#include "cxlMalloc.hpp"
+
+template<typename K, typename T>
+using cxlhc_map = std::map<K, T, std::less<K>,  cxlhc_allocator<std::pair<const K, T>>> ;
+template<typename T>
+using cxlhc_set = std::set<T, std::less<T>, cxlhc_allocator<T>> ;
+template<typename K, typename T>
+using cxlhc_unordered_map = std::unordered_map<K, T, std::hash<K>,  std::equal_to<K>, cxlhc_allocator<std::pair<const K, T>>> ;
+template<typename T>
+using cxlhc_vector = std::vector<T, cxlhc_allocator<T>>;
 
 /* ExtentPool + jemalloc extent hooks can be used to allocate from a custom pool. 
  * Though has to make sure jemalloc is compiled with --without-export to not override
  * the default allocator, mainly because tcache can only come from one arena, causing pool memory to be used for normal allocation as well. 
  */
-//TODO: use cxl_hc_memory for allocator data
 class ExtentPool {
 public:
     ExtentPool(void* buffer, size_t buffer_size)
@@ -33,7 +43,7 @@ public:
     void* alloc_extent(size_t size, size_t alignment) {
         // 1) Fast exact-size bucket reuse
         {
-            std::lock_guard<std::mutex> lg(meta_mtx_);
+            std::lock_guard lg(meta_mtx_);
             auto it = per_size_buckets_.find(size);
             if (it != per_size_buckets_.end() && !it->second.empty()) {
                 void* p = it->second.back();
@@ -44,7 +54,7 @@ public:
 
         // 2) Try to find a free region with sufficient size (best-fit style via free_by_size)
         {
-            std::lock_guard<std::mutex> lg(meta_mtx_);
+            std::lock_guard lg(meta_mtx_);
             auto fit = free_by_size_.lower_bound(size);
             while (fit != free_by_size_.end()) {
                 size_t region_size = fit->first;
@@ -123,7 +133,7 @@ public:
     void dealloc_extent(void* ptr, size_t size) {
         if (!ptr || size == 0) return;
         uintptr_t start = reinterpret_cast<uintptr_t>(ptr);
-        std::lock_guard<std::mutex> lg(meta_mtx_);
+        std::lock_guard lg(meta_mtx_);
 
         // Coalesce with neighbors if present
         uintptr_t region_start = start;
@@ -170,7 +180,7 @@ public:
 
     // Register a per-size bucket (call before using pool if you expect many repeats of that size)
     void ensure_bucket_for_size(size_t size) {
-        std::lock_guard<std::mutex> lg(meta_mtx_);
+        std::lock_guard lg(meta_mtx_);
         per_size_buckets_.try_emplace(size);
     }
 
@@ -184,16 +194,16 @@ private:
     size_t page_size_;
 
     // metadata protected by meta_mtx_
-    std::mutex meta_mtx_;
+    CLHMutex meta_mtx_;
+    //std::mutex meta_mtx_;
 
     // map from start_address -> size (free regions), ordered by start address for coalescing
-    std::map<uintptr_t, size_t> free_by_addr_;
+    cxlhc_map<uintptr_t, size_t> free_by_addr_;
 
     // map from size -> set of start addresses; ordered by size, so lower_bound finds smallest suitable
-    std::map<size_t, std::set<uintptr_t>> free_by_size_;
-
+    cxlhc_map<size_t, cxlhc_set<uintptr_t>> free_by_size_;
     // per-size exact buckets for very fast reuse
-    std::unordered_map<size_t, std::vector<void*>> per_size_buckets_;
+    cxlhc_unordered_map<size_t, cxlhc_vector<void*>> per_size_buckets_;
 
     // helper: insert free region (locked)
     void insert_free_region_locked(uintptr_t start, size_t sz) {
