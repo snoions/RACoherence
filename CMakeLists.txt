@@ -19,7 +19,6 @@ set(RUNTIME_LIB
       src/main.cpp
       src/microbench.cpp
       src/runtime.cpp
-      src/threadOps.cpp
     )
 set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 

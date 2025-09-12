@@ -89,6 +89,7 @@ RACLOAD(32)
 RACLOAD(64)
 
 struct RACThreadArg {
+    const VectorClock *parent_clock;
     unsigned nid;
     void* (*func)(void*);
     void* arg;
@@ -99,10 +100,13 @@ struct RACThreadRet {
     void* ret;
 };
 
+//TODO: only need a full thread_acquire/release if parent and child threads are on different nodes, only need to merge clocks
 void *rac_thread_func_wrapper(void *arg) {
     auto rac_arg = (RACThreadArg *)arg;
     unsigned tid = curr_tid.fetch_add(1, std::memory_order_relaxed);
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
+    if (rac_arg->parent_clock)
+        thread_ops->thread_acquire(*rac_arg->parent_clock);
     void* ret = rac_arg->func(rac_arg->arg);
 #ifndef PROTOCOL_OFF
     thread_ops->thread_release();
@@ -113,7 +117,12 @@ void *rac_thread_func_wrapper(void *arg) {
 }
 
 int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg) {
-    RACThreadArg *rac_arg = new RACThreadArg{nid, func, arg};
+#ifndef PROTOCOL_OFF
+    const VectorClock *parent_clock = &thread_ops->thread_release();
+#else
+    const VectorClock *parent_clock = nullptr;
+#endif
+    RACThreadArg *rac_arg = new RACThreadArg{parent_clock, nid, func, arg};
     return pthread_create(thread, nullptr, rac_thread_func_wrapper, rac_arg);
 };
 
