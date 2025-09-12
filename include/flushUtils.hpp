@@ -54,6 +54,7 @@ static inline unsigned long read_tsc(void)
 
 inline void do_range_flush(char *data, int len)
 {
+#if FLUSH_INST == CLFLUSHOPT || FLUSH_ISNT == CLWB || FLUSH_INST == CLFLUSH
     char *ptr = (char *)((unsigned long)data & ~CACHE_LINE_MASK);
     for (; ptr < data+len; ptr += CACHE_LINE_SIZE){
         unsigned long etsc = read_tsc() +
@@ -61,10 +62,12 @@ inline void do_range_flush(char *data, int len)
         do_flush(ptr);
         while (read_tsc() < etsc) cpu_pause();
     }
+#endif
 }
 
 inline void do_range_invalidate(char *data, int len)
 {
+#if INVALIDATE_INST == CLFLUSHOPT || INVALIDATE_ISNT == CLWB || INVALIDATE_INST == CLFLUSH
     char *ptr = (char *)((unsigned long)data & ~CACHE_LINE_MASK);
     for (; ptr < data+len; ptr += CACHE_LINE_SIZE){
         unsigned long etsc = read_tsc() +
@@ -72,6 +75,7 @@ inline void do_range_invalidate(char *data, int len)
         do_invalidate(ptr);
         while (read_tsc() < etsc) cpu_pause();
     }
+#endif
 }
 
 static inline void flush_fence()
