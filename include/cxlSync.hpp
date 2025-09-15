@@ -10,7 +10,6 @@
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
-//extern mspace cxl_cxlhc_space;
 extern thread_local ThreadOps *thread_ops;
 
 template<typename T>
@@ -34,6 +33,7 @@ public:
         if (order == std::memory_order_seq_cst || order == std::memory_order_release) { 
 #ifdef PROTOCOL_OFF
             flush_fence();
+            inner->atomic_data.store(desired, order);
 #else
             auto thread_clock = thread_ops->thread_release();
 
@@ -111,7 +111,7 @@ public:
         if (order == std::memory_order_seq_cst || order == std::memory_order_release || order == std::memory_order_acq_rel)
             flush_fence();
 
-            return inner->atomic_data.fetch_add(arg, order);
+        return inner->atomic_data.fetch_add(arg, order);
 #endif
     };
 };
@@ -173,6 +173,11 @@ class CXLBarrier {
     CXLAtomic<int> phase;
 
 public:
+    CXLBarrier() = default;
+
+    CXLBarrier(int count) {
+        init(count);
+    }
 
     inline void init(int count) {
         target.store(count, std::memory_order_seq_cst);

@@ -24,7 +24,7 @@ int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), voi
 
 int rac_thread_join(unsigned /*nid*/, pthread_t thread, void **thread_ret);
 
-void rac_init(unsigned nid);
+void rac_init(unsigned nid, size_t cxl_hc_range, size_t cxl_nhc_range);
 
 void rac_shutdown();
 

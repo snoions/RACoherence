@@ -4,9 +4,6 @@
 #include "cxlSync.hpp"
 #include "config.hpp"
 
-// ratio of plain operations to acq/rel operations, needs to be power of two
-constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;
-
 enum OpType {
     OP_STORE,
     OP_STORE_RLS,

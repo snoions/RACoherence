@@ -54,7 +54,7 @@ static inline unsigned long read_tsc(void)
 
 inline void do_range_flush(char *data, int len)
 {
-#if FLUSH_INST == CLFLUSHOPT || FLUSH_ISNT == CLWB || FLUSH_INST == CLFLUSH
+#if FLUSH_INST == CLFLUSHOPT || FLUSH_INST == CLWB || FLUSH_INST == CLFLUSH
     char *ptr = (char *)((unsigned long)data & ~CACHE_LINE_MASK);
     for (; ptr < data+len; ptr += CACHE_LINE_SIZE){
         unsigned long etsc = read_tsc() +

@@ -2,6 +2,8 @@
 #include "logger.hpp"
 
 constexpr unsigned SEQ_OP_FACTOR = 3;
+// ratio of plain operations to acq/rel operations, needs to be power of two
+constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;
 
 // xorshf96
 inline unsigned long fast_rand() {          //period 2^96-1

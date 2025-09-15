@@ -16,11 +16,13 @@ pthread_t cacheAgent_group[NODE_COUNT];
 char *cxl_nhc_buf;
 char *cxl_hc_buf;
 char *node_local_buf;
+size_t cxl_nhc_range;
+size_t cxl_hc_range;
 CacheInfo *cache_infos;
 LogManager *log_mgrs;
 
 inline bool in_cxl_nhc_mem(void *addr) {
-    return addr >= cxl_nhc_buf && addr < cxl_nhc_buf + CXL_NHC_RANGE && cxl_nhc_buf;
+    return addr >= cxl_nhc_buf && addr < cxl_nhc_buf + cxl_nhc_range && cxl_nhc_buf;
 }
 
 #ifdef PROTOCOL_OFF
@@ -403,19 +405,21 @@ void *run_cache_agent(void *arg) {
     return arg;
 }
 
-void rac_init(unsigned nid) {
+void rac_init(unsigned nid, size_t cxl_hc_rng, size_t cxl_nhc_rng) {
+    cxl_hc_range = cxl_hc_rng;
+    cxl_nhc_range = cxl_nhc_rng;
 #ifdef USE_NUMA
     run_on_local_numa();
     cxl_nhc_buf = (char *)remote_numa_alloc(sizeof(CXLPool));
-    cxl_hc_buf = (char *)remote_numa_alloc(sizeof(PerNode<LogManager>) + CXL_HC_RANGE);
+    cxl_hc_buf = (char *)remote_numa_alloc(sizeof(PerNode<LogManager>) + cxl_hc_range);
 #else 
-    cxl_nhc_buf = new char[CXL_NHC_RANGE];
-    cxl_hc_buf = new char[CXL_HC_RANGE];
+    cxl_nhc_buf = new char[cxl_nhc_range];
+    cxl_hc_buf = new char[cxl_hc_range];
 #endif
     node_local_buf = new char[sizeof(CacheInfo) * NODE_COUNT];
 
     size_t cxl_hc_off = 0;
-    static_assert(CXL_HC_RANGE > sizeof(LogManager[NODE_COUNT]));
+    assert(cxl_hc_range > sizeof(LogManager[NODE_COUNT]));
     log_mgrs = (LogManager *) cxl_hc_buf;
     for (int i = 0; i < NODE_COUNT; i++)
         new (&log_mgrs[i]) LogManager(i);
@@ -427,9 +431,9 @@ void rac_init(unsigned nid) {
     //align buffer to cache line
     if (uintptr_t remain = (uintptr_t)(cxl_hc_buf + cxl_hc_off) & (CACHE_LINE_SIZE-1))
         cxl_hc_off += CACHE_LINE_SIZE - remain;
-    assert(CXL_HC_RANGE > cxl_hc_off);
-    cxlhc_pool_initialize(cxl_hc_buf + cxl_hc_off, CXL_HC_RANGE - cxl_hc_off);
-    cxlnhc_pool_initialize(cxl_nhc_pool_buf, cxl_nhc_buf, CXL_NHC_RANGE);
+    assert(cxl_hc_range > cxl_hc_off);
+    cxlhc_pool_initialize(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
+    cxlnhc_pool_initialize(cxl_nhc_pool_buf, cxl_nhc_buf, cxl_nhc_range);
     cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[nid], nid, curr_tid.fetch_add(1, std::memory_order_relaxed));
     init_memory_ops();
