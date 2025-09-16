@@ -22,7 +22,7 @@ void rac_store64(void * addr, uint64_t val, const char *);
 
 int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg);
 
-int rac_thread_join(unsigned /*nid*/, pthread_t thread, void **thread_ret);
+int rac_thread_join(unsigned nid, pthread_t thread, void **thread_ret);
 
 void rac_init(unsigned nid, size_t cxl_hc_range, size_t cxl_nhc_range);
 

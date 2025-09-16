@@ -9,11 +9,18 @@
 #include "dlmalloc.h"
 mspace cxlhc_space;
 #else
+
+namespace RACoherence {
+
 using CXLHCPool = MemoryPool<64, 128>;
 CXLHCPool *cxlhc_pool;
 #endif
 unsigned cxlnhc_arena_index;
 ExtentPool *cxlnhc_extent_pool;
+
+} // RACoherence
+
+using namespace RACoherence;
 
 inline void* cxlnhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              void* /*new_addr*/, size_t size, size_t alignment,

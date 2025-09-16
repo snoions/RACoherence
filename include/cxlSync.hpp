@@ -10,6 +10,8 @@
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
+namespace RACoherence {
+
 extern thread_local ThreadOps *thread_ops;
 
 template<typename T>
@@ -201,5 +203,6 @@ public:
     }
 };
 
+} // RACoherence
 
 #endif

@@ -11,6 +11,8 @@
 #define FLUSH_INST 3
 #define INVALIDATE_INST 2 //may not be CLWB
 
+namespace RACoherence {
+
 constexpr long WRITE_LATENCY_IN_NS = 0;
 constexpr long CPU_FREQ_MHZ = 2100;
 
@@ -91,4 +93,7 @@ static inline void invalidate_fence()
     __asm__ volatile("mfence":::"memory");
 #endif
 }
+
+} // RACoherence
+
 #endif

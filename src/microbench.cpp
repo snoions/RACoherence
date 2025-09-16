@@ -1,6 +1,8 @@
 #include "microbench.hpp"
 #include "logger.hpp"
 
+namespace RACoherence {
+
 constexpr unsigned SEQ_OP_FACTOR = 3;
 // ratio of plain operations to acq/rel operations, needs to be power of two
 constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;
@@ -159,3 +161,5 @@ void Microbench::run() {
         cxl_pool.mutexes[locked_offset].unlock();
     LOG_INFO("node " << node_id << " thread " << thread_id << " done")
 }
+
+} // RACoherence

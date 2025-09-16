@@ -3,6 +3,8 @@
 
 #include <mutex>
 
+namespace RACoherence {
+
 extern std::mutex LoggerMutex; 
 
 #define __FILENAME__ (__builtin_strrchr(__FILE__, '/') ? __builtin_strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -31,5 +33,6 @@ extern std::mutex LoggerMutex;
 #define LOG_ERROR(msg) // Empty macro, effectively removes debug logs
 #endif
 
+} // RACoherence
 
 #endif

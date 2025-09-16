@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+namespace RACoherence {
+
 constexpr uintptr_t PAGE_SIZE = 1ull << 12; // 4KB
 constexpr uintptr_t CACHE_LINE_SIZE = 64;
 constexpr uintptr_t CACHE_LINE_SHIFT = 6; // log(CACHE_LINE_SIZE)
@@ -55,5 +57,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define WORKLOAD_TYPE SeqWorkLoad
 // random workload
 //#define WORKLOAD_TYPE RandWorkLoad
+
+} // RACoherence
 
 #endif

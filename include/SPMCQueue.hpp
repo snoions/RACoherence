@@ -5,6 +5,9 @@
 #include <cstring>
 
 // code adapted from Dmitry Vyukov. https://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue
+
+namespace RACoherence {
+
 template<typename T, size_t S>
 class spmc_bounded_queue
 {
@@ -91,3 +94,5 @@ private:
   spmc_bounded_queue(spmc_bounded_queue const&);
   void operator = (spmc_bounded_queue const&);
 };
+
+} // RACoherence

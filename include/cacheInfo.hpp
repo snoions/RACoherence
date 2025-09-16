@@ -8,6 +8,8 @@
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
+namespace RACoherence {
+
 using AtomicClock = std::atomic<VectorClock::clock_t>[NODE_COUNT];
 
 struct CacheInfo {
@@ -51,5 +53,7 @@ struct CacheInfo {
         return clock[i].load(std::memory_order_relaxed);
     }
 };
+
+} // RACoherence
 
 #endif

@@ -9,6 +9,8 @@
 #include "config.hpp"
 #include "CLGroup.hpp"
 
+namespace RACoherence {
+
 constexpr int TABLE_ENTRIES = 1ull << 6;
 constexpr int SEARCH_ITERS = 6; // only look 6 places
 constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
@@ -234,4 +236,7 @@ public:
 //  TableEntry table[TABLE_ENTRIES] = {};
 //}
 //
+
+} // RACoherence
+
 #endif

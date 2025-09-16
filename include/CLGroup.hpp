@@ -4,6 +4,7 @@
 #include <cstddef>
 #include "config.hpp"
 
+namespace RACoherence {
 // representation for a group of cache lines
 // there are two variants: length and bitmask-based
 // length-based represents contiguous groups of cl 
@@ -14,6 +15,7 @@ using cl_group_t = uint64_t;
 using cl_group_index_t = uint64_t;
 
 namespace cl_group {
+
     constexpr uint64_t TYPE_MASK = 1ull << 63;
     constexpr uint64_t GROUP_SIZE_SHIFT = 4; //group of 16 CLs
     constexpr size_t GROUP_SIZE = 1ull << GROUP_SIZE_SHIFT;
@@ -130,6 +132,7 @@ inline void process_cl_group(cl_group_t cg, F f) {
             f(cl_group_addr, cl_group::FULL_MASK);
     } else
         f(cl_group::get_ptr(cg), cl_group::get_mask16(cg));
-}
+} // clgroup
 
+} // RACoherence
 #endif

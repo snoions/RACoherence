@@ -29,6 +29,8 @@ void cxlhc_free(void *ptr, size_t size);
 #if __cplusplus
 #include <cassert>
 
+namespace RACoherence {
+
 template <typename T> 
 class cxlhc_allocator { 
 public:// type definitions
@@ -93,7 +95,8 @@ public:// type definitions
         cxlhc_free(p, n);
     }
 };
+
+} // RACoherence
+
 #endif
-
-
 #endif

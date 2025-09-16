@@ -35,6 +35,7 @@
 #include <pthread.h>
 #include <sched.h>
 
+namespace RACoherence {
 
 typedef struct clh_mutex_node_ clh_mutex_node_t;
 
@@ -75,5 +76,7 @@ struct CLHMutex: private clh_mutex_t {
     }
 
 };
+
+} // RACoherence
 
 #endif /* _CLH_MUTEX_H_ */

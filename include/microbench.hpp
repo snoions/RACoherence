@@ -4,6 +4,8 @@
 #include "cxlSync.hpp"
 #include "config.hpp"
 
+namespace RACoherence {
+
 enum OpType {
     OP_STORE,
     OP_STORE_RLS,
@@ -53,5 +55,7 @@ public:
 
     void run();
 };
+
+} // RACoherence
 
 #endif

@@ -10,6 +10,8 @@
 #include <cassert>
 #include <type_traits>
 
+namespace RACoherence {
+
 class AlignUtil {
 public:
     static size_t align_up(size_t n, size_t align) {
@@ -238,5 +240,6 @@ private:
     }
 };
 
-#endif
+} // RACoherence
 
+#endif

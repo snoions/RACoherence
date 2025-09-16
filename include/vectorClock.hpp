@@ -8,7 +8,8 @@
 
 #include "config.hpp"
 
-//TODO: tree clocks could be faster for merges
+namespace RACoherence {
+
 class VectorClock {
 public:
     using clock_t = unsigned;
@@ -83,5 +84,7 @@ public:
     // Optional: Expose for debugging or testing
     const std::array<clock_t, NODE_COUNT>& get() const { return vc; }
 };
+
+} // RACoherence
 
 #endif

@@ -17,6 +17,8 @@
 #include "clh_mutex.hpp"
 #include "cxlMalloc.hpp"
 
+namespace RACoherence {
+
 template<typename K, typename T>
 using cxlhc_map = std::map<K, T, std::less<K>,  cxlhc_allocator<std::pair<const K, T>>> ;
 template<typename T>
@@ -223,5 +225,7 @@ private:
         }
     }
 };
+
+} // RACoherence
 
 #endif

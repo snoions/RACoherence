@@ -6,6 +6,8 @@
 
 #include "config.hpp" 
 
+namespace RACoherence {
+
 template<typename T>
 using PerNode = std::array<T, NODE_COUNT>;
 
@@ -53,5 +55,7 @@ public:
         return t;
     }
 };
+
+} // RACoherence
 
 #endif

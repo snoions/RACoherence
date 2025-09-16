@@ -8,6 +8,8 @@
 #include "logManager.hpp"
 #include "localCLTable.hpp"
 
+namespace RACoherence {
+
 class ThreadOps {
     //CXL mem shared data
     LogManager *log_mgrs;
@@ -147,4 +149,7 @@ inline bool check_range_invalidate(char *begin, char *end) {
 inline bool check_invalidate(char *addr) {
         return cache_infos[thread_ops->get_node_id()].inv_cls.invalidate_if_dirty((uintptr_t)addr);
 }
+
+} // RACoherence
+
 #endif

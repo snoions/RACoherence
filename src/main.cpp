@@ -7,6 +7,8 @@
 #include "numaUtils.hpp"
 #include "runtime.hpp"
 
+using namespace RACoherence;
+
 CXLPool *cxl_pool;
 
 void *run_microbench(void *) {
@@ -46,4 +48,3 @@ int main() {
     rac_shutdown();
     return 0;
 }
-

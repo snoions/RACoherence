@@ -68,6 +68,8 @@
 #include "clh_mutex.hpp"
 #include "cxlMalloc.hpp"
 
+namespace RACoherence {
+
 static clh_mutex_node_t * clh_mutex_create_node(char islocked)
 {
     clh_mutex_node_t * new_node = (clh_mutex_node_t *)cxlhc_malloc(sizeof(clh_mutex_node_t));
@@ -153,3 +155,5 @@ void clh_mutex_unlock(clh_mutex_t * self)
     assert(self->mynode->id == std::this_thread::get_id());
     atomic_store(&self->mynode->succ_must_wait, 0);
 }
+
+} // RACoherence

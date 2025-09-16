@@ -6,6 +6,8 @@
 #include "logger.hpp"
 #include "cacheInfo.hpp"
 
+namespace RACoherence {
+
 extern std::atomic<bool> complete;
 constexpr size_t LOG_MAX_BATCH = 100;
 
@@ -23,5 +25,7 @@ public:
 
     void run();
 };
+
+} // RACoherence
 
 #endif

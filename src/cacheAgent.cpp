@@ -1,5 +1,7 @@
 #include "cacheAgent.hpp"
 
+namespace RACoherence {
+
 void CacheAgent::run() {
     while(!complete.load()) {
         for (unsigned i=0; i<NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
@@ -28,3 +30,4 @@ void CacheAgent::run() {
     LOG_INFO("node " << node_id << " cache agent done")
 }
 
+} // RACoherence

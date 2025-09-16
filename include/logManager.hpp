@@ -14,6 +14,8 @@
 #include "logger.hpp"
 #include "utils.hpp"
 
+namespace RACoherence {
+
 constexpr size_t LOG_SIZE = 1ull << 6;
 //LOG_BUF_SIZE must be power of 2
 constexpr size_t LOG_BUF_SIZE = 1ull << 8;
@@ -180,5 +182,7 @@ public:
         heads[nid].store(h+1, std::memory_order_relaxed);
     }
 };
+
+} // RACoherence
 
 #endif

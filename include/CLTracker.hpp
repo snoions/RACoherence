@@ -12,6 +12,8 @@
 #include "config.hpp"
 #include "flushUtils.hpp"
 
+namespace RACoherence {
+
 constexpr uint64_t L1_BITS = 19;                      // [38:20]
 constexpr uint64_t L2_BITS = 8;                       // [19:12]
 constexpr uint64_t L1_ENTRIES = 1ull << L1_BITS;
@@ -242,5 +244,7 @@ private:
         l1   = (va >> 20) & (L1_ENTRIES - 1);                   // 19 bits
     }
 };
+
+} // RACoherence
 
 #endif

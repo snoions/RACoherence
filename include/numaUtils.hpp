@@ -11,6 +11,8 @@
 
 #include "logger.hpp"
 
+namespace RACoherence {
+
 constexpr int LOCAL_NUMA_ID=0;
 constexpr int REMOTE_NUMA_ID=1;
 
@@ -63,5 +65,7 @@ static int run_on_local_numa() {
     }
     return 0;
 }
+
+} // RACoherence
 
 #endif

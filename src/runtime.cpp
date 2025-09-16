@@ -9,6 +9,8 @@
 #include "jemallocPool.hpp"
 #include "runtime.hpp"
 
+namespace RACoherence {
+
 thread_local ThreadOps *thread_ops;
 std::atomic<bool> complete {false};
 std::atomic<unsigned> curr_tid {0};
@@ -20,6 +22,10 @@ size_t cxl_nhc_range;
 size_t cxl_hc_range;
 CacheInfo *cache_infos;
 LogManager *log_mgrs;
+
+} // RACoherence
+
+using namespace RACoherence;
 
 inline bool in_cxl_nhc_mem(void *addr) {
     return addr >= cxl_nhc_buf && addr < cxl_nhc_buf + cxl_nhc_range && cxl_nhc_buf;
