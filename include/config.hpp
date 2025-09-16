@@ -33,7 +33,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 //#define LOCATION_CLOCK_MERGE
 
 // turn off RACoherence protocol, use raw stores and loads
-//#define PROTOCOL_OFF
+#define PROTOCOL_OFF
 
 // simulate CXL memory with remote NUMA nodes
 //#define USE_NUMA

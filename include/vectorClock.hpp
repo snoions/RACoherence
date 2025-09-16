@@ -2,7 +2,6 @@
 #define _VECTOR_CLOCK_H_
 
 #include <array>
-#include <algorithm>
 #include <cstddef>  // for std::size_t
 #include <iostream>
 
@@ -16,7 +15,7 @@ public:
     using sized_t = std::size_t;
 
 private:
-    std::array<clock_t, NODE_COUNT> vc{};
+    clock_t vc[NODE_COUNT] = {};
 
 public:
     VectorClock() = default;
@@ -34,13 +33,13 @@ public:
 
     // Merge this vector clock with with a new clock value at a given index
     void merge(size_t index, clock_t clk_val) {
-        vc[index] = std::max(vc[index], clk_val);
+        vc[index] = vc[index] > clk_val? vc[index] : clk_val;
     }
 
     // Merge this vector clock with another (element-wise max)
     void merge(const VectorClock& other) {
         for (sized_t i = 0; i < NODE_COUNT; ++i) {
-            vc[i] = std::max(vc[i], other.vc[i]);
+            vc[i] = vc[i] > other.vc[i]? vc[i] : other.vc[i];
         }
     }
 
@@ -80,9 +79,6 @@ public:
         os << "]";
         return os;
     }
-
-    // Optional: Expose for debugging or testing
-    const std::array<clock_t, NODE_COUNT>& get() const { return vc; }
 };
 
 } // RACoherence

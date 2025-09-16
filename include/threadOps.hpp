@@ -124,10 +124,10 @@ public:
     }
 
     inline void log_store(char *addr) {
-    //    uintptr_t cl_addr = (uintptr_t)addr & ~CACHE_LINE_MASK;
+        uintptr_t cl_addr = (uintptr_t)addr & ~CACHE_LINE_MASK;
 
-    //    while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)
-    //        write_to_log(false);
+        while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)
+            write_to_log(false);
     }
 
     inline void log_range_store(char *begin, char *end) {
