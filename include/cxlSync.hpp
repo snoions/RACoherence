@@ -18,7 +18,8 @@ template<typename T>
 class CXLAtomic {
     struct InnerData {
         std::atomic<T> atomic_data;
-        Monitor<VectorClock> clock;
+        VectorClock clock;
+        CLHMutex mtx;
     };
 
     InnerData *inner;
@@ -42,15 +43,15 @@ public:
             LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
 
 #ifdef LOCATION_CLOCK_MERGE
-            inner->clock.mod([&](auto &self) {
-                self.merge(thread_clock);
-            });
+            inner->mtx.lock();
+            clock.merge(thread_clock);
+            inner->mtx.unlock();
             inner->atomic_data.store(desired, order);
 #else
-            inner->clock.mod([&](auto &self) {
-                self = thread_clock;
-                inner->atomic_data.store(desired, order);
-            });
+            inner->mtx.lock();
+            inner->clock = thread_clock;
+            inner->atomic_data.store(desired, order);
+            inner->mtx.unlock();
 #endif
 #endif
         }
@@ -61,11 +62,10 @@ public:
     inline T load(std::memory_order order) {
 #ifndef PROTOCOL_OFF
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire) { 
-            char ret;
-            auto clock = inner->clock.get([&](auto &self) {
-                ret = inner->atomic_data.load(order);
-                return self;
-            });
+            inner->mtx.lock();
+            char ret = inner->atomic_data.load(order);
+            auto clock = inner->clock;
+            inner->mtx.unlock();
 
             LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<clock)
 
@@ -88,16 +88,16 @@ public:
                 auto thread_clock = thread_ops->thread_release();
 
                 LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
-                clock = inner->clock.mod([&](auto &self) {
-                    ret = inner->atomic_data.fetch_add(arg, order);
-                    self.merge(thread_clock);
-                    return &self;
-                });
+                inner->mtx.lock();
+                ret = inner->atomic_data.fetch_add(arg, order);
+                inner->clock.merge(thread_clock);
+                clock = &inner->clock;
+                inner->mtx.unlock();
             } else {
-                clock = inner->clock.get([&](auto &self) {
-                    ret = inner->atomic_data.fetch_add(arg, order);
-                    return &self;
-                });
+                inner->mtx.lock();
+                ret = inner->atomic_data.fetch_add(arg, order);
+                clock = &inner->clock;
+                inner->mtx.unlock();
             }
 
             if (order == std::memory_order_seq_cst || order == std::memory_order_acquire || order == std::memory_order_acq_rel) { 
