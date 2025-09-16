@@ -104,6 +104,7 @@ struct RACThreadRet {
 
 //TODO: only need a full thread_acquire/release if parent and child threads are on different nodes, only need to merge clocks
 void *rac_thread_func_wrapper(void *arg) {
+    cxlnhc_thread_init();
     auto rac_arg = (RACThreadArg *)arg;
     unsigned tid = curr_tid.fetch_add(1, std::memory_order_relaxed);
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
@@ -432,8 +433,8 @@ void rac_init(unsigned nid, size_t cxl_hc_rng, size_t cxl_nhc_rng) {
     if (uintptr_t remain = (uintptr_t)(cxl_hc_buf + cxl_hc_off) & (CACHE_LINE_SIZE-1))
         cxl_hc_off += CACHE_LINE_SIZE - remain;
     assert(cxl_hc_range > cxl_hc_off);
-    cxlhc_pool_initialize(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
-    cxlnhc_pool_initialize(cxl_nhc_pool_buf, cxl_nhc_buf, cxl_nhc_range);
+    cxlhc_pool_init(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
+    cxlnhc_pool_init(cxl_nhc_pool_buf, cxl_nhc_buf, cxl_nhc_range);
     cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[nid], nid, curr_tid.fetch_add(1, std::memory_order_relaxed));
     init_memory_ops();

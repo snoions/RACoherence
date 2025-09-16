@@ -6,7 +6,9 @@
 extern "C" {
 #endif
 
-void cxlnhc_pool_initialize(char *hc_buf, char *buf, size_t size);
+void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size);
+
+void cxlnhc_thread_init();
 
 void *cxlnhc_malloc(size_t size);
 
@@ -14,7 +16,7 @@ void *cxlnhc_cl_aligned_malloc(size_t size);
 
 void cxlnhc_free(void *ptr, size_t size);
 
-void cxlhc_pool_initialize(char *buf, size_t size);
+void cxlhc_pool_init(char *buf, size_t size);
 
 void *cxlhc_malloc(size_t size);
 
