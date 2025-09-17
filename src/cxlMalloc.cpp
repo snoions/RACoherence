@@ -12,7 +12,7 @@ mspace cxlhc_space;
 
 namespace RACoherence {
 
-using CXLHCPool = MemoryPool<64, 128>;
+using CXLHCPool = MemoryPool<8, 128, 256>;
 CXLHCPool *cxlhc_pool;
 #endif
 unsigned cxlnhc_arena_index;

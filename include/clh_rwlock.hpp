@@ -1,3 +1,4 @@
+
 /******************************************************************************
  * Copyright (c) 2014, Pedro Ramalhete, Andreia Correia
  * All rights reserved.
@@ -25,55 +26,41 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ******************************************************************************
  */
-#ifndef _CLH_MUTEX_H_
-#define _CLH_MUTEX_H_
+#ifndef _CLH_RWLOCK_H_
+#define _CLH_RWLOCK_H_
 
 #include <atomic>
 #include <stdlib.h>
+#include <stdio.h>
 #include <pthread.h>
 #include <sched.h>
 
 namespace RACoherence {
 
-typedef struct clh_mutex_node_ clh_mutex_node_t;
+typedef struct clh_rwlock_node_ clh_rwlock_node_t;
 
-struct clh_mutex_node_
+struct clh_rwlock_node_
 {
     std::atomic<char> succ_must_wait;
 };
 
 typedef struct
 {
-    clh_mutex_node_t * mynode;
-    char padding[64];  // To avoid false sharing with the tail
-    std::atomic<clh_mutex_node_t *> tail;
-} clh_mutex_t;
+    clh_rwlock_node_t * mynode;
+    char padding1[64];  // To avoid false sharing with the tail
+    std::atomic<clh_rwlock_node_t *> tail;
+    char padding2[64];  // No point in having false-sharing with the tail
+    std::atomic<long> readers_counter;
+} clh_rwlock_t;
 
 
-void clh_mutex_init(clh_mutex_t * self);
-void clh_mutex_destroy(clh_mutex_t * self);
-void clh_mutex_lock(clh_mutex_t * self);
-void clh_mutex_unlock(clh_mutex_t * self);
-
-struct CLHMutex: private clh_mutex_t {
-    CLHMutex() {
-        clh_mutex_init(this);
-    }
-
-    ~CLHMutex() {
-        clh_mutex_destroy(this);
-    }
-
-    void lock() {
-        clh_mutex_lock(this);
-    }
-
-    void unlock() {
-        clh_mutex_unlock(this);
-    }
-
-};
+void clh_rwlock_init(clh_rwlock_t * self);
+void clh_rwlock_destroy(clh_rwlock_t * self);
+void clh_rwlock_readlock(clh_rwlock_t * self);
+void clh_rwlock_readunlock(clh_rwlock_t * self);
+void clh_rwlock_writelock(clh_rwlock_t * self);
+void clh_rwlock_writeunlock(clh_rwlock_t * self);
 
 } // RACoherence
 
-#endif /* _CLH_MUTEX_H_ */
+#endif /* _CLH_RWLOCK_H_ */

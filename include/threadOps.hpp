@@ -102,7 +102,6 @@ public:
     unsigned get_node_id() { return node_id; }
     unsigned get_thread_id() { return thread_id; }
     const VectorClock &get_clock() {return thread_clock; }
-    void merge_clock(const VectorClock &other) { thread_clock.merge(other); }
 
     inline const VectorClock &thread_release() {
 #ifdef LOCAL_CL_TABLE_BUFFER

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <thread>
 #include "clh_mutex.hpp"
+#include "clh_rwlock.hpp"
 #include "cxlMalloc.hpp"
 #include "flushUtils.hpp"
 #include "threadOps.hpp"
@@ -166,6 +167,84 @@ public:
 #endif
 #endif
         clh_mutex_unlock(&inner->mutex);
+    };
+};
+
+class CXLSharedMutex {
+    struct InnerData{
+        clh_rwlock_t mutex;
+        VectorClock clock;
+
+        InnerData(): clock() {
+            clh_rwlock_init(&mutex);
+        }
+        ~InnerData() {
+            clh_rwlock_destroy(&mutex);
+        }
+    };
+
+    InnerData *inner;
+
+public:
+    CXLSharedMutex(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+
+    ~CXLSharedMutex() {
+        inner->~InnerData();
+        cxlhc_free(inner, sizeof(InnerData));
+    }
+
+    inline void lock() {
+        clh_rwlock_writelock(&inner->mutex);
+
+#ifndef PROTOCOL_OFF
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " lock at " << this << std::dec << ", loc clock=" << inner->clock)
+
+        thread_ops->thread_acquire(inner->clock);
+#endif
+    };
+
+    inline void lock_shared() {
+        clh_rwlock_readlock(&inner->mutex);
+
+#ifndef PROTOCOL_OFF
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " lock at " << this << std::dec << ", loc clock=" << inner->clock)
+
+        thread_ops->thread_acquire(inner->clock);
+#endif
+    };
+
+    inline void unlock() {
+#ifdef PROTOCOL_OFF
+        flush_fence();
+#else
+        auto thread_clock = thread_ops->thread_release();
+
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " unlock at " << this << std::dec << ", thread clock=" << thread_clock)
+
+#ifdef LOCATION_CLOCK_MERGE
+        inner->clock.merge(thread_clock);
+#else
+        inner->clock = thread_clock;
+#endif
+#endif
+        clh_rwlock_writeunlock(&inner->mutex);
+    };
+
+    inline void unlock_shared() {
+#ifdef PROTOCOL_OFF
+        flush_fence();
+#else
+        auto thread_clock = thread_ops->get_clock();
+
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " unlock at " << this << std::dec << ", thread clock=" << thread_clock)
+
+#ifdef LOCATION_CLOCK_MERGE
+        inner->clock.merge(thread_clock);
+#else
+        inner->clock = thread_clock;
+#endif
+#endif
+        clh_rwlock_readunlock(&inner->mutex);
     };
 };
 

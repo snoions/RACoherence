@@ -74,7 +74,6 @@ static clh_mutex_node_t * clh_mutex_create_node(char islocked)
 {
     clh_mutex_node_t * new_node = (clh_mutex_node_t *)cxlhc_malloc(sizeof(clh_mutex_node_t));
     atomic_store_explicit(&new_node->succ_must_wait, islocked, std::memory_order_relaxed);
-    new_node->id = std::this_thread::get_id();
     return new_node;
 }
 
@@ -152,7 +151,6 @@ void clh_mutex_unlock(clh_mutex_t * self)
         assert(false && "unlock without lock");
         return;
     }
-    assert(self->mynode->id == std::this_thread::get_id());
     atomic_store(&self->mynode->succ_must_wait, 0);
 }
 
