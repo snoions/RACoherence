@@ -82,14 +82,14 @@ inline void do_range_invalidate(char *data, int len)
 
 static inline void flush_fence()
 {
-#if FLUSH_INST == CLFLUSHOPT || FLUSH_ISNT == CLWB
+#if FLUSH_INST == CLFLUSHOPT || FLUSH_INST == CLWB
     __asm__ volatile("sfence":::"memory");
 #endif
 }
 
 static inline void invalidate_fence()
 {
-#if FLUSH_INST == CLFLUSHOPT || FLUSH_ISNT == CLFLUSH
+#if INVALIDATE_INST == CLFLUSHOPT || INVALIDATE_INST == CLFLUSH
     __asm__ volatile("mfence":::"memory");
 #endif
 }
