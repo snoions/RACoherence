@@ -234,7 +234,7 @@ public:
 #ifdef PROTOCOL_OFF
         flush_fence();
 #else
-        auto thread_clock = thread_ops->get_clock();
+        auto thread_clock = thread_ops->thread_release();
 
         LOG_DEBUG("thread " << std::this_thread::get_id() << " unlock at " << this << std::dec << ", thread clock=" << thread_clock)
 

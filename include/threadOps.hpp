@@ -22,7 +22,8 @@ class ThreadOps {
     //thread local data
     VectorClock thread_clock;
     LocalCLTable dirty_cls;
-    //maybe should support taking multiple heads for more flexibility
+    bool has_new_log;
+
     clock_t write_to_log(bool is_release) {
         Log *curr_log;
         while(!(curr_log = log_mgrs[node_id].get_new_log())) {
@@ -96,7 +97,7 @@ class ThreadOps {
 
 public:
     ThreadOps() = default;
-    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid) {}
+    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid), has_new_log(false) {}
     ThreadOps &operator=(const ThreadOps &other) = default;
 
     unsigned get_node_id() { return node_id; }
@@ -104,6 +105,9 @@ public:
     const VectorClock &get_clock() {return thread_clock; }
 
     inline const VectorClock &thread_release() {
+        if (!has_new_log)
+            return thread_clock;
+        has_new_log = false;
 #ifdef LOCAL_CL_TABLE_BUFFER
         while (dirty_cls.dump_buffer_to_table())
             write_to_log(false);
@@ -123,6 +127,7 @@ public:
     }
 
     inline void log_store(char *addr) {
+        has_new_log = true;
         uintptr_t cl_addr = (uintptr_t)addr & ~CACHE_LINE_MASK;
 
         while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)

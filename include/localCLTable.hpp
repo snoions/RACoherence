@@ -19,8 +19,7 @@ class LocalCLTable {
   /** Each entry here can store 16 cache lines. */
 
     cl_group_t table[TABLE_ENTRIES] = {};
-
-    int length_entry_count = 0; //TODO: change to group count
+    int length_entry_count = 0; //TODO: temporary hack, improve later
     struct EntryBuffer {
         cl_group_index_t begin_index = 0;
         uint64_t begin_mask = 0;

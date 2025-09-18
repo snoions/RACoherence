@@ -19,7 +19,7 @@ constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
 // Should be power of two
 constexpr uintptr_t CXL_NHC_RANGE = 1ull << 30;
-constexpr uintptr_t CXL_HC_RANGE = 4ull << 20;
+constexpr uintptr_t CXL_HC_RANGE = 1ull << 22;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // whether to collect statistics
