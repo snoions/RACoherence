@@ -9,7 +9,7 @@
 #include <iostream>
 #include <mutex>
 
-#include "SPMCQueue.hpp"
+#include "spmcQueue.hpp"
 #include "config.hpp"
 #include "logger.hpp"
 #include "utils.hpp"

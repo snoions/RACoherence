@@ -1,8 +1,8 @@
 #ifndef _CACHE_INFO_H_
 #define _CACHE_INFO_H_
 
-#include "CLGroup.hpp"
-#include "CLTracker.hpp"
+#include "clGroup.hpp"
+#include "clTracker.hpp"
 #include "flushUtils.hpp"
 #include "logManager.hpp"
 #include "utils.hpp"

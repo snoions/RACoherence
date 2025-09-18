@@ -7,7 +7,7 @@
 #include <cstring>
 
 #include "config.hpp"
-#include "CLGroup.hpp"
+#include "clGroup.hpp"
 
 namespace RACoherence {
 
@@ -21,7 +21,7 @@ class LocalCLTable {
     cl_group_t table[TABLE_ENTRIES] = {};
     int length_entry_count = 0; //TODO: temporary hack, improve later
     struct EntryBuffer {
-        cl_group_index_t begin_index = 0;
+        cl_group_idx begin_index = 0;
         uint64_t begin_mask = 0;
         size_t mid_length = 0;
         uint64_t end_mask = 0;
@@ -29,7 +29,7 @@ class LocalCLTable {
         // returns true when ptr cannot be inserted into buffer
         inline bool insert(uintptr_t ptr) {
             using namespace cl_group;
-            cl_group_index_t index = ptr >> GROUP_SHIFT;
+            cl_group_idx index = ptr >> GROUP_SHIFT;
             if (!begin_index)
                 begin_index = index;
             if (index == begin_index) {
@@ -59,36 +59,44 @@ class LocalCLTable {
         }
     } buffer;
 
-    inline bool insert_length(cl_group_index_t group_index, size_t length) {
+    // returns true if full
+    inline bool insert_length(cl_group_idx group_index, size_t length) {
         using namespace cl_group;
         assert(length <= GROUP_LEN_MAX);
         cl_group_t entry = group_index | (length << GROUP_INDEX_SHIFT) | TYPE_MASK;
 
         //scan table for overlaps
         bool inserted = false;
+        int insert_pos = -1;
         for(int i = 0; i < TABLE_ENTRIES; i++) {
-          cl_group_t val = table[i];
-          uint64_t val_index = val & GROUP_INDEX_MASK;
-          if (!val && !inserted) {
-              table[i] = entry;
-              inserted = true;
-          } else if (val && val_index >= group_index && val_index < group_index + length) {
-            //TODO: deal with the case when val is length-based
-                assert(!is_length_based(val));
-                if (inserted)
+            cl_group_t val = table[i];
+            uint64_t val_index = get_index(val);
+            if (!val) {
+                if (insert_pos == -1)
+                    insert_pos = i;
+            } else if (is_length_based(val)) {
+                size_t val_length = get_length(val);
+                if (auto new_entry = try_coalesce(val_index, val_length, group_index, length)) {
+                    entry = new_entry;
                     table[i] = 0;
-                else {
-                    table[i] = entry;
-                    inserted = true;
+                    if (insert_pos == -1)
+                        insert_pos = i;
                 }
+          } else if (val_index >= group_index && val_index < group_index + length) {
+                table[i] = 0;
+                if (insert_pos == -1)
+                    insert_pos = i;
           }
         }
 
-        if (inserted)
+        if (insert_pos != -1) {
+            table[insert_pos] = entry; 
             length_entry_count++;
-        return !inserted;
+        }
+        return insert_pos == -1;
     }
 
+    // returns true if full
     inline bool insert_mask(uintptr_t group_index, uint64_t mask) {
         using namespace cl_group;
         //alternatively starting searching from 0
@@ -126,7 +134,7 @@ public:
         }
         return false;
 #else
-        cl_group_index_t index = ptr >> GROUP_SHIFT;
+        cl_group_idx index = ptr >> GROUP_SHIFT;
         int pos = (ptr >> CACHE_LINE_SHIFT) & GROUP_POS_MASK;
         uint64_t mask = 1ull << pos;
         return insert_mask(index, mask);

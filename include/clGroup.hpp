@@ -12,7 +12,7 @@ namespace RACoherence {
 // length-based: 1 + 25 bit length + 38 bit group index
 // bitmask-based: 0 + 9 bit padding + 16 bit mask + 38 bit group index
 using cl_group_t = uint64_t;
-using cl_group_index_t = uint64_t;
+using cl_group_idx = uint64_t;
 
 namespace cl_group {
 
@@ -35,7 +35,7 @@ namespace cl_group {
         return (cg & ~TYPE_MASK) >> GROUP_INDEX_SHIFT;
     }
 
-    inline cl_group_index_t get_index(cl_group_t cg) {
+    inline cl_group_idx get_index(cl_group_t cg) {
         return cg & GROUP_INDEX_MASK;
     }
 
@@ -51,6 +51,18 @@ namespace cl_group {
         uint8_t diff = cg & 2; //2 = 1 << log(64/16)
         uint8_t mask_shift = 16 * diff;
         return get_mask16(cg) << mask_shift;
+    }
+
+    inline cl_group_t try_coalesce(cl_group_idx index1, cl_group_idx index2, size_t len1, size_t len2) {
+        cl_group_idx end1 = index1 + len1;
+        cl_group_idx end2 = index2 + len2;
+        // try to coalesce overlapping ranges
+        if (end1 >  index2 || end2 > index1) {
+            cl_group_idx new_index = index1 > index2? index1: index2;
+            size_t new_len = (end1 > end2? end1: end2) - new_index;
+            return new_index | (new_len << GROUP_INDEX_SHIFT) | TYPE_MASK;
+        }
+        return 0;
     }
 }
 
