@@ -66,7 +66,6 @@ class LocalCLTable {
         cl_group_t entry = group_index | (length << GROUP_INDEX_SHIFT) | TYPE_MASK;
 
         //scan table for overlaps
-        bool inserted = false;
         int insert_pos = -1;
         for(int i = 0; i < TABLE_ENTRIES; i++) {
             cl_group_t val = table[i];

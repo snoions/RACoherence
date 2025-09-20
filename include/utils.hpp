@@ -9,9 +9,6 @@
 namespace RACoherence {
 
 template<typename T>
-using PerNode = std::array<T, NODE_COUNT>;
-
-template<typename T>
 struct alignas(CACHE_LINE_SIZE) CacheAligned: public T {
     using T::T;
 };
