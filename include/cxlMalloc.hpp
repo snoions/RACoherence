@@ -28,6 +28,10 @@ void cxlhc_free(void *ptr, size_t size);
 
 #if __cplusplus
 #include <cassert>
+#include <map>
+#include <set>
+#include <unordered_map>
+#include <vector>
 
 namespace RACoherence {
 
@@ -95,6 +99,15 @@ public:// type definitions
         cxlhc_free(p, n);
     }
 };
+
+template<typename K, typename T>
+using cxlhc_map = std::map<K, T, std::less<K>,  cxlhc_allocator<std::pair<const K, T>>> ;
+template<typename T>
+using cxlhc_set = std::set<T, std::less<T>, cxlhc_allocator<T>> ;
+template<typename K, typename T>
+using cxlhc_unordered_map = std::unordered_map<K, T, std::hash<K>,  std::equal_to<K>, cxlhc_allocator<std::pair<const K, T>>> ;
+template<typename T>
+using cxlhc_vector = std::vector<T, cxlhc_allocator<T>>;
 
 } // RACoherence
 

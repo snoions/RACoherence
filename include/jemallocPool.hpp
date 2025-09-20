@@ -19,16 +19,7 @@
 
 namespace RACoherence {
 
-template<typename K, typename T>
-using cxlhc_map = std::map<K, T, std::less<K>,  cxlhc_allocator<std::pair<const K, T>>> ;
-template<typename T>
-using cxlhc_set = std::set<T, std::less<T>, cxlhc_allocator<T>> ;
-template<typename K, typename T>
-using cxlhc_unordered_map = std::unordered_map<K, T, std::hash<K>,  std::equal_to<K>, cxlhc_allocator<std::pair<const K, T>>> ;
-template<typename T>
-using cxlhc_vector = std::vector<T, cxlhc_allocator<T>>;
-
-/* ExtentPool + jemalloc extent hooks can be used to allocate from a custom pool. 
+    /* ExtentPool + jemalloc extent hooks can be used to allocate from a custom pool. 
  * Though has to make sure jemalloc is compiled with --without-export to not override
  * the default allocator, mainly because tcache can only come from one arena, causing pool memory to be used for normal allocation as well. 
  */

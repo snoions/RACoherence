@@ -4,7 +4,6 @@
 #include "cxlMalloc.hpp"
 #include "stdint.h"
 #include "pthread.h"
-#include "config.hpp"
 
 #if __cplusplus
 extern "C" {
@@ -29,6 +28,8 @@ void rac_init(unsigned nid, size_t cxl_hc_range, size_t cxl_nhc_range);
 void rac_shutdown();
 
 unsigned rac_get_node_id();
+
+unsigned rac_get_node_count();
 
 #if __cplusplus
 }
