@@ -45,7 +45,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define CACHE_AGENT_AFFINITY
 
 // use buffer in local cl tables
-//#define LOCAL_CL_TABLE_BUFFER
+#define LOCAL_CL_TABLE_BUFFER
 
 // use dlmalloc for as allocator for CXL hardware coherent memory
 //#define HC_USE_DLMALLOC

@@ -61,6 +61,32 @@ void clh_rwlock_readunlock(clh_rwlock_t * self);
 void clh_rwlock_writelock(clh_rwlock_t * self);
 void clh_rwlock_writeunlock(clh_rwlock_t * self);
 
+struct CLHSharedMutex: private clh_rwlock_t {
+    CLHSharedMutex() {
+        clh_rwlock_init(this);
+    }
+
+    ~CLHSharedMutex() {
+        clh_rwlock_destroy(this);
+    }
+
+    void lock() {
+        clh_rwlock_writelock(this);
+    }
+
+    void unlock() {
+        clh_rwlock_writeunlock(this);
+    }
+
+    void shared_lock() {
+        clh_rwlock_readlock(this);
+    }
+
+    void shared_unlock() {
+        clh_rwlock_readunlock(this);
+    }
+};
+
 } // RACoherence
 
 #endif /* _CLH_RWLOCK_H_ */

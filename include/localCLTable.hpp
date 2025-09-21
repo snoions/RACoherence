@@ -169,7 +169,7 @@ public:
                         return true;
                 }
             } else {
-                unsigned length = std::max(buffer.mid_length, GROUP_LEN_MAX);
+                unsigned length = std::min(buffer.mid_length, GROUP_LEN_MAX);
                 if (insert_length(buffer.begin_index + 1, buffer.mid_length))
                     return true;
                 buffer.mid_length -= length;

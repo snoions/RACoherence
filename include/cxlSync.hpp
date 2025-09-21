@@ -65,7 +65,7 @@ public:
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire) { 
             inner->mtx.lock();
             char ret = inner->atomic_data.load(order);
-            auto clock = inner->clock;
+            VectorClock clock = inner->clock;
             inner->mtx.unlock();
 
             LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<clock)
