@@ -272,7 +272,7 @@ public:
         int local_arrived = arrived.fetch_add(1, std::memory_order_seq_cst) + 1;
 
         if (local_arrived == target.load(std::memory_order_seq_cst)) {
-            target.store(0, std::memory_order_seq_cst);
+            arrived.store(0, std::memory_order_seq_cst);
             phase.fetch_add(1, std::memory_order_seq_cst);
         } else {
             while (phase.load(std::memory_order_seq_cst) == local_phase) {
