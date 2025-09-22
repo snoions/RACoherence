@@ -75,7 +75,6 @@ public:// type definitions
 
 	// Allocate memory for n objects of type T 
     pointer allocate(size_t n) {
-        //mspace_malloc_stats(cxlhc_space);
         void *addr = cxlhc_malloc(n * sizeof(T));
         if (!addr)
             assert(false && "bad alloc");

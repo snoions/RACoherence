@@ -33,7 +33,7 @@ public:
         cxlhc_free(inner, sizeof(InnerData));
     }
 
-    inline void store(T desired, std::memory_order order) {
+    inline void store(T desired, std::memory_order order=std::memory_order_seq_cst) {
         if (order == std::memory_order_seq_cst || order == std::memory_order_release) { 
 #ifdef PROTOCOL_OFF
             flush_fence();
@@ -60,7 +60,7 @@ public:
             inner->atomic_data.store(desired, order);
     };
 
-    inline T load(std::memory_order order) {
+    inline T load(std::memory_order order=std::memory_order_seq_cst) {
 #ifndef PROTOCOL_OFF
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire) { 
             inner->mtx.lock();
@@ -80,7 +80,7 @@ public:
 #endif
     };
 
-    inline T fetch_add(T arg, std::memory_order order) {
+    inline T fetch_add(T arg, std::memory_order order=std::memory_order_seq_cst) {
 #ifndef PROTOCOL_OFF
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire || order == std::memory_order_release || order == std::memory_order_acq_rel) { 
             char ret;

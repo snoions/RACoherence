@@ -43,20 +43,21 @@ inline void* cxlnhc_extent_alloc(extent_hooks_t* /*hooks*/,
 
 inline bool cxlnhc_extent_dalloc(extent_hooks_t* /*hooks*/,
                              void* addr, size_t size, bool /*committed*/, unsigned /*arena_ind*/) {
-    if (!cxlnhc_extent_pool) return true; // claim we handled it
+    if (!cxlnhc_extent_pool) return true;
     cxlnhc_extent_pool->dealloc_extent(addr, size);
-    return true;
+    return false;
 }
 
 extent_hooks_t cxlnhc_hooks = {
-    .alloc = cxlnhc_extent_alloc,
-    .dalloc = cxlnhc_extent_dalloc,
-    .commit = nullptr,
-    .decommit = nullptr,
-    .purge_lazy = nullptr,
-    .purge_forced = nullptr,
-    .split = nullptr,
-    .merge = nullptr
+    .alloc         = cxlnhc_extent_alloc,
+    .dalloc        = cxlnhc_extent_dalloc,
+    .destroy       = nullptr,
+    .commit        = nullptr,
+    .decommit      = nullptr,
+    .purge_lazy    = nullptr,
+    .purge_forced  = nullptr,
+    .split         = nullptr,
+    .merge         = nullptr
 };
 
 void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {

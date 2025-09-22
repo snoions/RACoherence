@@ -125,7 +125,11 @@ public:
     // Deallocate an extent previously allocated (exact ptr and size)
     void dealloc_extent(void* ptr, size_t size) {
         if (!ptr || size == 0) return;
+        assert(ptr != nullptr);
         uintptr_t start = reinterpret_cast<uintptr_t>(ptr);
+        assert(start >= reinterpret_cast<uintptr_t>(base_));
+        assert(start + size <= reinterpret_cast<uintptr_t>(base_) + size_);
+        assert(free_by_addr_.find(start) == free_by_addr_.end() && "double free: region already free!");
         std::lock_guard lg(meta_mtx_);
 
         // Coalesce with neighbors if present
@@ -148,27 +152,27 @@ public:
             }
         }
 
+         hi = free_by_addr_.lower_bound(region_start + region_size);
         // check right neighbor (hi might be the right neighbor)
         if (hi != free_by_addr_.end()) {
             uintptr_t hi_start = hi->first;
             size_t hi_size = hi->second;
-            if (start + size == hi_start) {
+            if (region_start + region_size == hi_start) {
                 // merge right neighbor
                 region_size += hi_size;
                 remove_free_region_locked(hi_start, hi_size);
             }
         }
 
-        // insert the coalesced region
-        insert_free_region_locked(region_start, region_size);
 
         // Additionally, if this region exactly matches a "common" size, push it to per_size_buckets_
         auto it_bucket = per_size_buckets_.find(region_size);
         if (it_bucket != per_size_buckets_.end()) {
             // pull region out of free_by_addr/free_by_size and put into bucket
-            remove_free_region_locked(region_start, region_size);
             it_bucket->second.push_back(reinterpret_cast<void*>(region_start));
-        }
+        } else
+            // insert the coalesced region
+            insert_free_region_locked(region_start, region_size);
     }
 
     // Register a per-size bucket (call before using pool if you expect many repeats of that size)
@@ -188,7 +192,6 @@ private:
 
     // metadata protected by meta_mtx_
     CLHMutex meta_mtx_;
-    //std::mutex meta_mtx_;
 
     // map from start_address -> size (free regions), ordered by start address for coalescing
     cxlhc_map<uintptr_t, size_t> free_by_addr_;
