@@ -132,8 +132,7 @@ public:
         uintptr_t cl_addr = (uintptr_t)addr & ~CACHE_LINE_MASK;
         if (cl_addr == recent_cl)
             return;
-        else 
-            recent_cl = cl_addr;
+        recent_cl = cl_addr;
 
         while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)
             write_to_log(false);

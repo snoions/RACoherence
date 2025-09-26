@@ -81,11 +81,11 @@ class LocalCLTable {
                     if (insert_pos == -1)
                         insert_pos = i;
                 }
-          } else if (val_index >= group_index && val_index < group_index + length) {
+            } else if (val_index >= group_index && val_index < group_index + length) {
                 table[i] = 0;
                 if (insert_pos == -1)
                     insert_pos = i;
-          }
+            }
         }
 
         if (insert_pos != -1) {

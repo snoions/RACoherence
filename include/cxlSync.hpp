@@ -41,11 +41,9 @@ public:
 #else
             auto thread_clock = thread_ops->thread_release();
 
-            LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
-
 #ifdef LOCATION_CLOCK_MERGE
             inner->mtx.lock();
-            clock.merge(thread_clock);
+            inner->clock.merge(thread_clock);
             inner->mtx.unlock();
             inner->atomic_data.store(desired, order);
 #else
@@ -68,8 +66,6 @@ public:
             VectorClock clock = inner->clock;
             inner->mtx.unlock();
 
-            LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<clock)
-
             thread_ops->thread_acquire(clock);
             return ret;
         }
@@ -88,7 +84,6 @@ public:
             if (order == std::memory_order_seq_cst || order == std::memory_order_release || order == std::memory_order_acq_rel) { 
                 auto thread_clock = thread_ops->thread_release();
 
-                LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
                 inner->mtx.lock();
                 ret = inner->atomic_data.fetch_add(arg, order);
                 inner->clock.merge(thread_clock);
@@ -102,8 +97,6 @@ public:
             }
 
             if (order == std::memory_order_seq_cst || order == std::memory_order_acquire || order == std::memory_order_acq_rel) { 
-                LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<  *clock)
-
                 thread_ops->thread_acquire(*clock);
             }
             return ret;
@@ -146,8 +139,6 @@ public:
         clh_mutex_lock(&inner->mutex);
 
 #ifndef PROTOCOL_OFF
-        LOG_DEBUG("thread " << std::this_thread::get_id() << " lock at " << this << std::dec << ", loc clock=" << inner->clock)
-
         thread_ops->thread_acquire(inner->clock);
 #endif
     };
@@ -157,8 +148,6 @@ public:
         flush_fence();
 #else
         auto thread_clock = thread_ops->thread_release();
-
-        LOG_DEBUG("thread " << std::this_thread::get_id() << " unlock at " << this << std::dec << ", thread clock=" << thread_clock)
 
 #ifdef LOCATION_CLOCK_MERGE
         inner->clock.merge(thread_clock);
@@ -197,8 +186,6 @@ public:
         clh_rwlock_writelock(&inner->mutex);
 
 #ifndef PROTOCOL_OFF
-        LOG_DEBUG("thread " << std::this_thread::get_id() << " lock at " << this << std::dec << ", loc clock=" << inner->clock)
-
         thread_ops->thread_acquire(inner->clock);
 #endif
     };
@@ -207,8 +194,6 @@ public:
         clh_rwlock_readlock(&inner->mutex);
 
 #ifndef PROTOCOL_OFF
-        LOG_DEBUG("thread " << std::this_thread::get_id() << " lock at " << this << std::dec << ", loc clock=" << inner->clock)
-
         thread_ops->thread_acquire(inner->clock);
 #endif
     };
@@ -218,8 +203,6 @@ public:
         flush_fence();
 #else
         auto thread_clock = thread_ops->thread_release();
-
-        LOG_DEBUG("thread " << std::this_thread::get_id() << " unlock at " << this << std::dec << ", thread clock=" << thread_clock)
 
 #ifdef LOCATION_CLOCK_MERGE
         inner->clock.merge(thread_clock);
@@ -282,6 +265,7 @@ public:
     }
 };
 
+//TODO: node local barrier
 } // RACoherence
 
 #endif

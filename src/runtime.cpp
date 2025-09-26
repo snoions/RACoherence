@@ -12,6 +12,8 @@
 namespace RACoherence {
 
 thread_local ThreadOps *thread_ops;
+thread_local uintptr_t recent_cl;
+
 std::atomic<bool> complete {false};
 std::atomic<unsigned> curr_tid {0};
 pthread_t cacheAgent_group[NODE_COUNT];

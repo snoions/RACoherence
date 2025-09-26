@@ -37,7 +37,6 @@ inline void* cxlnhc_extent_alloc(extent_hooks_t* /*hooks*/,
         *zero = false; // we satisfied zero
     }
     if (commit) *commit = true;
-
     return p;
 }
 
@@ -63,7 +62,7 @@ extent_hooks_t cxlnhc_hooks = {
 void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
     int ret;
     size_t sz = sizeof(cxlnhc_arena_index);
-    if ((ret = mallctl("arenas.create", &cxlnhc_arena_index, &sz, nullptr, 0)))
+    if ((ret = je_mallctl("arenas.create", &cxlnhc_arena_index, &sz, nullptr, 0)))
         LOG_ERROR("mallctl arena.create returned " << strerror(ret))
     cxlnhc_extent_pool = new (hc_buf) ExtentPool(buf, size);
     extent_hooks_t* new_hooks = &cxlnhc_hooks;
@@ -71,27 +70,27 @@ void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
     size_t olen = sizeof(old_hooks);
     std::stringstream ss;
     ss << "arena." << cxlnhc_arena_index << ".extent_hooks";
-    if ((ret = mallctl(ss.str().c_str(), &old_hooks, &olen, &new_hooks, sizeof(new_hooks)))) {
+    if ((ret = je_mallctl(ss.str().c_str(), &old_hooks, &olen, &new_hooks, sizeof(new_hooks)))) {
         LOG_ERROR("mallctl arena.extent_hooks returned " << strerror(ret))
     }
     cxlnhc_thread_init();
 }
 
 void cxlnhc_thread_init() {
-    if (int ret = mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index)) != 0)
+    if (int ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index)) != 0)
         LOG_ERROR("mallctl thread.arena returned " << strerror(ret))
 }
 
 void *cxlnhc_malloc(size_t size) {
-    return mallocx(size, MALLOCX_ARENA(cxlnhc_arena_index));
+    return je_mallocx(size, MALLOCX_ARENA(cxlnhc_arena_index));
 }
 
 void *cxlnhc_cl_aligned_malloc(size_t size) {
-    return mallocx(size,  MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE));
+    return je_mallocx(size,  MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE));
 }
 
 void cxlnhc_free(void *ptr, size_t size) {
-    dallocx(ptr, MALLOCX_ARENA(cxlnhc_arena_index));
+    je_dallocx(ptr, MALLOCX_ARENA(cxlnhc_arena_index));
 }
 
 void cxlhc_pool_init(char *buf, size_t size) {

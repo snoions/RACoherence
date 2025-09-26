@@ -10,6 +10,11 @@ if (NOT CMAKE_BUILD_TYPE)
     message(STATUS "CMAKE_BUILD_TYPE default:" ${CMAKE_BUILD_TYPE})
 endif()
 
+add_compile_options(
+    -ftls-model=initial-exec
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
+)
+
 set(RUNTIME_LIB
       src/cacheAgent.cpp
       src/clh_mutex.cpp
@@ -17,27 +22,18 @@ set(RUNTIME_LIB
       src/cxlMalloc.cpp
       src/dlmalloc.c
       src/logger.cpp
-      src/main.cpp
-      src/microbench.cpp
       src/runtime.cpp
     )
 set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
-add_library(racoherence_object OBJECT ${RUNTIME_LIB})
-set_property(TARGET racoherence_object PROPERTY POSITION_INDEPENDENT_CODE ON)
-add_library(racoherence SHARED)
-target_link_libraries(racoherence PRIVATE racoherence_object)
-add_library(racoherence_static STATIC)
-target_link_libraries(racoherence_static PRIVATE racoherence_object)
-add_executable(main src/main.cpp)
+add_library(racoherence SHARED ${RUNTIME_LIB})
+set_property(TARGET racoherence PROPERTY POSITION_INDEPENDENT_CODE ON)
+add_library(racoherence_static STATIC ${RUNTIME_LIB})
+add_executable(main src/main.cpp src/microbench.cpp)
 target_link_libraries(main PRIVATE racoherence_static)
 
 include_directories(include)
 # Compile options to improve TLS efficiency
-add_compile_options(
-    -ftls-model=initial-exec
-    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
-)
 
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 if (ENABLE_ASAN)
@@ -56,30 +52,35 @@ include(ExternalProject)
 ExternalProject_Add(jemalloc_proj
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps/jemalloc
     INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/install
-    CONFIGURE_COMMAND ./autogen.sh --without-export --disable-cxx --prefix=<INSTALL_DIR>
+    CONFIGURE_COMMAND ./autogen.sh --with-jemalloc-prefix=je_ --disable-cxx --prefix=<INSTALL_DIR>
     BUILD_COMMAND make
     INSTALL_COMMAND make install
     BUILD_IN_SOURCE 1
 )
 ExternalProject_Get_Property(jemalloc_proj INSTALL_DIR)
-add_library(jemalloc STATIC IMPORTED)
-add_dependencies(racoherence_object jemalloc_proj)
-target_link_libraries(racoherence_object PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
-target_include_directories(racoherence_object PRIVATE ${INSTALL_DIR}/include) 
+add_dependencies(racoherence jemalloc_proj)
+target_link_libraries(racoherence PRIVATE ${INSTALL_DIR}/lib/libjemalloc.so)
+target_include_directories(racoherence PRIVATE ${INSTALL_DIR}/include)
+add_dependencies(racoherence_static jemalloc_proj)
+target_link_libraries(racoherence_static PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
+target_include_directories(racoherence_static PRIVATE ${INSTALL_DIR}/include)
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-target_link_libraries(racoherence_object PRIVATE Threads::Threads)
+target_link_libraries(racoherence PRIVATE Threads::Threads)
+target_link_libraries(racoherence_static PRIVATE Threads::Threads)
 
 # Other libraries
-target_link_libraries(racoherence_object PRIVATE ${CMAKE_DL_LIBS})
+target_link_libraries(racoherence PRIVATE ${CMAKE_DL_LIBS})
+target_link_libraries(racoherence_static PRIVATE ${CMAKE_DL_LIBS})
 
 # NUMA library
 find_library(NUMA_LIB NAMES numa)
 if(NUMA_LIB)
     message(STATUS "Found libnuma at: ${NUMA_LIB}")
-    target_link_libraries(racoherence_object PUBLIC ${NUMA_LIB})
+    target_link_libraries(racoherence PUBLIC ${NUMA_LIB})
+    target_link_libraries(racoherence_static PUBLIC ${NUMA_LIB})
 else()
     message(FATAL_ERROR "libnuma not found!")
 endif()
