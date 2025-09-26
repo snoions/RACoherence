@@ -22,7 +22,7 @@ class ThreadOps {
     //thread local data
     VectorClock thread_clock;
     LocalCLTable dirty_cls;
-    bool has_new_log;
+    uintptr_t recent_cl;
 
     clock_t write_to_log(bool is_release) {
         Log *curr_log;
@@ -97,7 +97,7 @@ class ThreadOps {
 
 public:
     ThreadOps() = default;
-    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid), has_new_log(false) {}
+    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid), recent_cl(0) {}
     ThreadOps &operator=(const ThreadOps &other) = default;
 
     unsigned get_node_id() { return node_id; }
@@ -105,9 +105,10 @@ public:
     const VectorClock &get_clock() {return thread_clock; }
 
     inline const VectorClock &thread_release() {
-        if (!has_new_log)
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
+        if (!recent_cl)
             return thread_clock;
-        has_new_log = false;
+        recent_cl = 0;
 #ifdef LOCAL_CL_TABLE_BUFFER
         while (dirty_cls.dump_buffer_to_table())
             write_to_log(false);
@@ -118,6 +119,7 @@ public:
     }
 
     inline void thread_acquire(const VectorClock &clock) {
+        LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<clock)
         thread_clock.merge(clock);
 #ifdef USER_HELP_CONSUME
         help_consume(clock);
@@ -127,8 +129,11 @@ public:
     }
 
     inline void log_store(char *addr) {
-        has_new_log = true;
         uintptr_t cl_addr = (uintptr_t)addr & ~CACHE_LINE_MASK;
+        if (cl_addr == recent_cl)
+            return;
+        else 
+            recent_cl = cl_addr;
 
         while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)
             write_to_log(false);
@@ -137,6 +142,7 @@ public:
     inline void log_range_store(char *begin, char *end) {
         uintptr_t begin_addr = (uintptr_t)begin & ~CACHE_LINE_MASK;
         uintptr_t end_addr = (uintptr_t)end & ~CACHE_LINE_MASK;
+        recent_cl = end_addr;
 
         while (dirty_cls.range_insert(begin_addr, end_addr) || dirty_cls.get_length_entry_count() != 0)
             write_to_log(false);
