@@ -1,8 +1,10 @@
 #include "cacheAgent.hpp"
+#include "flushUtils.hpp"
 
 namespace RACoherence {
 
 void CacheAgent::run() {
+    int idle_rounds = 0;
     while(!complete.load()) {
         for (unsigned i=0; i<NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
 #ifdef USER_HELP_CONSUME
@@ -13,9 +15,15 @@ void CacheAgent::run() {
 
             for (unsigned j=0; j<LOG_MAX_BATCH; j++) {
                 Log* log = log_mgrs[i].take_head(node_id);
-                if (!log)
+                if (!log) {
+                    if (idle_rounds >= NODE_COUNT -1) {
+                        cpu_pause();
+                    } else
+                        idle_rounds ++;
                     break;
+                }
 
+                idle_rounds = 0;
                 cache_info.process_log(*log);
 
                 if (log->is_release()) {

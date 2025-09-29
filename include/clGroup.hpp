@@ -24,7 +24,7 @@ namespace cl_group {
     constexpr uint64_t GROUP_MASK = (1ull << GROUP_SHIFT) - 1ull; // group of 16 CLs
     constexpr uint64_t GROUP_INDEX_SHIFT = VIRTUAL_ADDRESS_BITS - GROUP_SHIFT;
     constexpr uint64_t GROUP_INDEX_MASK = (1ull << GROUP_INDEX_SHIFT) - 1ull;
-    constexpr uint64_t GROUP_POS_MASK = 15; // 1111b
+    constexpr uint64_t GROUP_SIZE_MASK = GROUP_SIZE-1;
     constexpr size_t GROUP_LEN_MAX = (1 << 25)-1;
 
     inline bool is_length_based(cl_group_t cg) {

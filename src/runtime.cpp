@@ -116,8 +116,9 @@ void *rac_thread_func_wrapper(void *arg) {
     auto rac_arg = (RACThreadArg *)arg;
     unsigned tid = curr_tid.fetch_add(1, std::memory_order_relaxed);
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
-    if (rac_arg->parent_clock)
-        thread_ops->thread_acquire(*rac_arg->parent_clock);
+#ifndef PROTOCOL_OFF
+    thread_ops->thread_acquire(*rac_arg->parent_clock);
+#endif
     void* ret = rac_arg->func(rac_arg->arg);
 #ifndef PROTOCOL_OFF
     thread_ops->thread_release();

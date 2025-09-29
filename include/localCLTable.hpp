@@ -12,7 +12,7 @@
 namespace RACoherence {
 
 constexpr int TABLE_ENTRIES = 1ull << 6;
-constexpr int SEARCH_ITERS = 6; // only look 6 places
+constexpr int SEARCH_ITERS = 6; // only look a limited number of iterations
 constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
 
 class LocalCLTable {
@@ -21,41 +21,24 @@ class LocalCLTable {
     cl_group_t table[TABLE_ENTRIES] = {};
     int length_entry_count = 0; //TODO: temporary hack, improve later
     struct EntryBuffer {
-        cl_group_idx begin_index = 0;
-        uint64_t begin_mask = 0;
-        size_t mid_length = 0;
-        uint64_t end_mask = 0;
+        uintptr_t cl_addr = 0;
+        size_t len = 0;
 
         // returns true when ptr cannot be inserted into buffer
         inline bool insert(uintptr_t ptr) {
-            using namespace cl_group;
-            cl_group_idx index = ptr >> GROUP_SHIFT;
-            if (!begin_index)
-                begin_index = index;
-            if (index == begin_index) {
-                int pos = (ptr >> CACHE_LINE_SHIFT) & GROUP_POS_MASK;
-                uint64_t mask = 1ull << pos;
-                begin_mask |= mask;
-                if (begin_mask == FULL_MASK) {
-                    begin_index--;
-                    mid_length++;
-                    begin_mask = 0;
-                    assert(begin_index);
-                }
+            uintptr_t cl_ptr = ptr >> CACHE_LINE_SHIFT;
+            if (cl_ptr == cl_addr + len) {
+                len++;
                 return false;
-            } else if (index == begin_index + mid_length + 1) {
-                int pos = (ptr >> CACHE_LINE_SHIFT) & GROUP_POS_MASK;
-                uint64_t mask = 1ull << pos;
-                end_mask |= mask;
-                if (end_mask == FULL_MASK) {
-                    mid_length++;
-                    end_mask = 0;
-                }
+            }
+            if (cl_ptr >= cl_addr && cl_ptr < cl_addr + len)
                 return false;
-            } else if (index > begin_index && index < begin_index + mid_length + 1)
+            if (len == 0) {
+                cl_addr = cl_ptr;
+                len = 1;
                 return false;
-            else
-                return true;
+            }
+            return true;
         }
     } buffer;
 
@@ -134,7 +117,7 @@ public:
         return false;
 #else
         cl_group_idx index = ptr >> GROUP_SHIFT;
-        int pos = (ptr >> CACHE_LINE_SHIFT) & GROUP_POS_MASK;
+        int pos = (ptr >> CACHE_LINE_SHIFT) & GROUP_SIZE_MASK;
         uint64_t mask = 1ull << pos;
         return insert_mask(index, mask);
 #endif
@@ -152,31 +135,50 @@ public:
     // returns whether table is full
     inline bool dump_buffer_to_table() {
         using namespace cl_group;
-        if (buffer.begin_mask) {
-            if (insert_mask(buffer.begin_index, buffer.begin_mask))
-                return true;
-            buffer.begin_mask = 0;
-        }
-        if (buffer.end_mask) {
-            if (insert_mask(buffer.begin_index + buffer.mid_length + 1, buffer.end_mask))
-                return true;
-            buffer.end_mask = 0;
-        }
-        if (buffer.mid_length) {
-            if (buffer.mid_length < GROUP_LEN_MIN) {
-                for (;buffer.mid_length > 0; buffer.mid_length--) {
-                    if (insert_mask(buffer.begin_index + buffer.mid_length, FULL_MASK))
-                        return true;
-                }
-            } else {
-                unsigned length = std::min(buffer.mid_length, GROUP_LEN_MAX);
-                if (insert_length(buffer.begin_index + 1, buffer.mid_length))
+        if (buffer.len == 0)
+            return false;
+
+        cl_group_idx end_index = (buffer.cl_addr + buffer.len) >> GROUP_SIZE_SHIFT;
+        unsigned begin_pos = buffer.cl_addr & GROUP_SIZE_MASK;
+        unsigned end_pos = (buffer.cl_addr + buffer.len) & GROUP_SIZE_MASK;
+        if(begin_pos) {
+            cl_group_idx begin_index = buffer.cl_addr >> GROUP_SIZE_SHIFT;
+            uint64_t begin_mask = (FULL_MASK << begin_pos) & FULL_MASK;
+            if (begin_index == end_index) {
+                uint64_t end_mask = 1ull << end_pos;
+                if (insert_mask(begin_index, begin_mask & end_mask))
                     return true;
-                buffer.mid_length -= length;
+                buffer.len = 0;
+                return false;
             }
+            if (insert_mask(begin_index, begin_mask))
+                return true;
+            buffer.cl_addr += GROUP_SIZE;
+            buffer.len -= GROUP_SIZE - begin_pos;
         }
-        if (buffer.begin_index)
-            buffer.begin_index = 0;
+        if (end_pos) {
+            uint64_t end_mask = 1ull << end_pos;
+            if (insert_mask(end_index, end_mask))
+                return true;
+            buffer.len -= end_pos;
+        }
+        assert(buffer.len % GROUP_SIZE == 0);
+        cl_group_idx begin_index = buffer.cl_addr >> GROUP_SIZE_SHIFT;
+        size_t len = buffer.len >> GROUP_SIZE_SHIFT;
+        if (len < GROUP_LEN_MIN) {
+            for (; len > 0; len--) {
+                if (insert_mask(begin_index + len, FULL_MASK)) {
+                    buffer.len = len << GROUP_SIZE_SHIFT;
+                    return true;
+                }
+            }
+            buffer.len = 0;
+        } else {
+            unsigned l = len & GROUP_LEN_MAX;
+            if (insert_length(begin_index + len - l, l))
+                return true;
+            buffer.len = (len - l) << GROUP_SIZE_SHIFT;
+        }
         return false;
     }
 
