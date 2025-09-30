@@ -61,7 +61,8 @@ inline bool in_cxl_nhc_mem(void *addr) {
 #define RACSTORE(size) \
     inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
         bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-        if (in_cxl_nhc_mem(addr)) { \
+        if (in_cxl_nhc) { \
+            asm volatile("nop");\
             do_invalidate((char *)addr); \
             invalidate_fence(); \
         } \
@@ -424,8 +425,8 @@ void rac_init(unsigned nid, size_t cxl_hc_rng, size_t cxl_nhc_rng) {
     cxl_nhc_range = cxl_nhc_rng;
 #ifdef USE_NUMA
     run_on_local_numa();
-    cxl_nhc_buf = (char *)remote_numa_alloc(sizeof(CXLPool));
-    cxl_hc_buf = (char *)remote_numa_alloc(sizeof(PerNode<LogManager>) + cxl_hc_range);
+    cxl_nhc_buf = (char *)remote_numa_alloc(cxl_nhc_range);
+    cxl_hc_buf = (char *)remote_numa_alloc(sizeof(cxl_hc_range));
 #else 
     cxl_nhc_buf = new char[cxl_nhc_range];
     cxl_hc_buf = new char[cxl_hc_range];

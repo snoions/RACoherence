@@ -14,7 +14,7 @@ constexpr uintptr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 
 constexpr unsigned NODE_COUNT = 4;
-constexpr unsigned WORKER_PER_NODE = 4;
+constexpr unsigned WORKER_PER_NODE = 3;
 constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
 
 // Should be power of two
@@ -33,7 +33,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 //#define LOCATION_CLOCK_MERGE
 
 // turn off RACoherence protocol, use raw stores and loads
-//#define PROTOCOL_OFF
+#define PROTOCOL_OFF
 
 // simulate CXL memory with remote NUMA nodes
 //#define USE_NUMA
@@ -45,7 +45,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define CACHE_AGENT_AFFINITY
 
 // use buffer in local cl tables
-#define LOCAL_CL_TABLE_BUFFER
+//#define LOCAL_CL_TABLE_BUFFER
 
 // use dlmalloc for as allocator for CXL hardware coherent memory
 //#define HC_USE_DLMALLOC

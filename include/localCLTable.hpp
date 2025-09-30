@@ -85,11 +85,9 @@ class LocalCLTable {
         int tableindex = group_index & (TABLE_ENTRIES - 1);
         for(int i = 0; i < SEARCH_ITERS; i++) {
             uint64_t value = table[tableindex];
+            value = value ? value : group_index;
             assert(!is_length_based(value));
-            if (value == 0) {
-                table[tableindex] = group_index | (mask << GROUP_INDEX_SHIFT);
-                return false;
-            } else if ((value & GROUP_INDEX_MASK) == group_index) {
+            if ((value & GROUP_INDEX_MASK) == group_index) {
                 table[tableindex] = value | (mask << GROUP_INDEX_SHIFT); // add this bit
                 return false;
             }

@@ -18,6 +18,7 @@ void CacheAgent::run() {
                 if (!log) {
                     if (idle_rounds >= NODE_COUNT -1) {
                         cpu_pause();
+
                     } else
                         idle_rounds ++;
                     break;

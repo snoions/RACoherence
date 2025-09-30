@@ -28,7 +28,15 @@ set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_
 
 add_library(racoherence SHARED ${RUNTIME_LIB})
 set_property(TARGET racoherence PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_compile_options(racoherence PUBLIC
+    -ftls-model=initial-exec
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
+)
 add_library(racoherence_static STATIC ${RUNTIME_LIB})
+target_compile_options(racoherence_static PUBLIC
+    -ftls-model=local-exec
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
+)
 add_executable(main src/main.cpp src/microbench.cpp)
 target_link_libraries(main PRIVATE racoherence_static)
 
