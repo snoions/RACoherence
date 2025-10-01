@@ -151,6 +151,7 @@ public:
 //TODO: use a non-thread-local node_id to access cache info when running multiple processes/machines, move these definitions to CacheInfo
 extern thread_local ThreadOps *thread_ops;
 extern CacheInfo *cache_infos;
+
 inline bool check_range_invalidate(char *begin, char *end) {
         return cache_infos[thread_ops->get_node_id()].inv_cls.invalidate_range_if_dirty((uintptr_t)begin, (uintptr_t)end);
 }

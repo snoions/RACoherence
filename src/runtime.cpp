@@ -3,7 +3,6 @@
 #include <pthread.h>
 #include "cacheAgent.hpp"
 #include "cxlSync.hpp"
-#include "flushUtils.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"
 #include "jemallocPool.hpp"
@@ -12,92 +11,18 @@
 namespace RACoherence {
 
 thread_local ThreadOps *thread_ops;
-thread_local uintptr_t recent_cl;
-
 std::atomic<bool> complete {false};
 std::atomic<unsigned> curr_tid {0};
 pthread_t cacheAgent_group[NODE_COUNT];
 char *cxl_nhc_buf;
-char *cxl_hc_buf;
-char *node_local_buf;
 size_t cxl_nhc_range;
+char *cxl_hc_buf;
 size_t cxl_hc_range;
+char *node_local_buf;
 CacheInfo *cache_infos;
 LogManager *log_mgrs;
 
 } // RACoherence
-
-using namespace RACoherence;
-
-inline bool in_cxl_nhc_mem(void *addr) {
-    return addr >= cxl_nhc_buf && addr < cxl_nhc_buf + cxl_nhc_range && cxl_nhc_buf;
-}
-
-#ifdef PROTOCOL_OFF
-#define RACLOAD(size) \
-    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        if (in_cxl_nhc_mem(addr)) { \
-            do_invalidate((char *)addr); \
-            invalidate_fence(); \
-        } \
-        return *((uint ## size ## _t*)addr); \
-    }
-#elif defined(EAGER_INVALIDATE)
-#define RACLOAD(size) \
-    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        return *((uint ## size ## _t*)addr); \
-    }
-#else
-#define RACLOAD(size) \
-    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        if (in_cxl_nhc_mem(addr)) { \
-            check_invalidate((char *)addr); \
-        } \
-        return *((uint ## size ## _t*)addr); \
-    }
-#endif
-
-#ifdef PROTOCOL_OFF
-#define RACSTORE(size) \
-    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-        if (in_cxl_nhc) { \
-            asm volatile("nop");\
-            do_invalidate((char *)addr); \
-            invalidate_fence(); \
-        } \
-        *((uint ## size ## _t*)addr) = val; \
-        if (in_cxl_nhc) \
-            do_flush((char *)addr); \
-    }
-#elif defined(EAGER_INVALIDATE)
-#define RACSTORE(size) \
-    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        if (in_cxl_nhc_mem(addr)) { \
-            thread_ops->log_store((char *)addr); \
-        } \
-        *((uint ## size ## _t*)addr) = val; \
-    }
-#else 
-#define RACSTORE(size) \
-    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        if (in_cxl_nhc_mem(addr)) { \
-            check_invalidate((char *)addr); \
-            thread_ops->log_store((char *)addr); \
-        } \
-        *((uint ## size ## _t*)addr) = val; \
-    }
-#endif
-
-RACSTORE(8)
-RACSTORE(16)
-RACSTORE(32)
-RACSTORE(64)
-
-RACLOAD(8)
-RACLOAD(16)
-RACLOAD(32)
-RACLOAD(64)
 
 struct RACThreadArg {
     const VectorClock *parent_clock;

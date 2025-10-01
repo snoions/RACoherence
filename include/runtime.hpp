@@ -1,9 +1,9 @@
 #ifndef _USER_H_
 #define _USER_H_
 
-#include "cxlMalloc.hpp"
 #include "stdint.h"
-#include "pthread.h"
+#include "flushUtils.hpp"
+#include "threadOps.hpp"
 
 #if __cplusplus
 extern "C" {
@@ -34,5 +34,83 @@ unsigned rac_get_node_count();
 #if __cplusplus
 }
 #endif
+
+namespace RACoherence {
+
+extern char *cxl_nhc_buf;
+extern size_t cxl_nhc_range;
+
+inline bool in_cxl_nhc_mem(void *addr) {
+    return addr >= cxl_nhc_buf && addr < cxl_nhc_buf + cxl_nhc_range;
+}
+
+}
+
+using namespace RACoherence;
+
+#ifdef PROTOCOL_OFF
+#define RACLOAD(size) \
+    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
+        if (in_cxl_nhc_mem(addr)) { \
+            do_invalidate((char *)addr); \
+            invalidate_fence(); \
+        } \
+        return *((uint ## size ## _t*)addr); \
+    }
+#elif defined(EAGER_INVALIDATE)
+#define RACLOAD(size) \
+    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
+        return *((uint ## size ## _t*)addr); \
+    }
+#else
+#define RACLOAD(size) \
+    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
+        if (in_cxl_nhc_mem(addr)) { \
+            check_invalidate((char *)addr); \
+        } \
+        return *((uint ## size ## _t*)addr); \
+    }
+#endif
+
+#ifdef PROTOCOL_OFF
+#define RACSTORE(size) \
+    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+        bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
+        if (in_cxl_nhc) { \
+            do_invalidate((char *)addr); \
+            invalidate_fence(); \
+        } \
+        *((uint ## size ## _t*)addr) = val; \
+        if (in_cxl_nhc) \
+            do_flush((char *)addr); \
+    }
+#elif defined(EAGER_INVALIDATE)
+#define RACSTORE(size) \
+    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+        if (in_cxl_nhc_mem(addr)) { \
+            thread_ops->log_store((char *)addr); \
+        } \
+        *((uint ## size ## _t*)addr) = val; \
+    }
+#else 
+#define RACSTORE(size) \
+    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+        if (in_cxl_nhc_mem(addr)) { \
+            check_invalidate((char *)addr); \
+            thread_ops->log_store((char *)addr); \
+        } \
+        *((uint ## size ## _t*)addr) = val; \
+    }
+#endif
+
+RACSTORE(8)
+RACSTORE(16)
+RACSTORE(32)
+RACSTORE(64)
+
+RACLOAD(8)
+RACLOAD(16)
+RACLOAD(32)
+RACLOAD(64)
 
 #endif
