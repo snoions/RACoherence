@@ -14,7 +14,7 @@ thread_local ThreadOps *thread_ops;
 std::atomic<bool> complete {false};
 std::atomic<unsigned> curr_tid {0};
 pthread_t cacheAgent_group[NODE_COUNT];
-char *cxl_nhc_buf;
+char *cxl_nhc_buf = (char *) ~0;// initailize to invalid address
 size_t cxl_nhc_range;
 char *cxl_hc_buf;
 size_t cxl_hc_range;
@@ -128,7 +128,7 @@ inline void invalidate_boundaries(char *begin, char *end) {
         check_invalidate(begin);
 #endif
     if (eptr & CACHE_LINE_MASK &&
-        (bptr >> CACHE_LINE_SHIFT) != (eptr >> CACHE_LINE_SHIFT))
+        (bptr & CACHE_LINE_MASK) != (eptr & CACHE_LINE_MASK))
 #ifdef PROTOCOL_OFF
         do_invalidate(end);
 #else 
@@ -138,21 +138,22 @@ inline void invalidate_boundaries(char *begin, char *end) {
 
 void * memcpy(void * dst, const void * src, size_t n) {
     void *ret;
-    bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)src) || in_cxl_nhc_mem((char *)dst);
+    bool is_in_cxl_nhc_src = in_cxl_nhc_mem((char *)src);
+    bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
 #ifdef PROTOCOL_OFF
-    if (is_in_cxl_nhc) {
+    if (is_in_cxl_nhc_src)
         do_range_invalidate((char *)src, n);
+    if (is_in_cxl_nhc_dst)
         invalidate_boundaries(dst_begin, dst_end); 
-    }
 #elif !defined(EAGER_INVALIDATE)
     char *src_begin = (char *)src;
     char *src_end = src_begin + n;
-    if (is_in_cxl_nhc) {
+    if (is_in_cxl_nhc_src)
         check_range_invalidate(src_begin, src_end);
+    if (is_in_cxl_nhc_dst)
         invalidate_boundaries(dst_begin, dst_end); 
-    }
 #endif
     if (((uintptr_t)memcpy_real) < 2) {
         for(unsigned i=0;i<n;i++) {
@@ -162,10 +163,10 @@ void * memcpy(void * dst, const void * src, size_t n) {
     } else
         ret = memcpy_real(dst, src, n);
 #ifdef PROTOCOL_OFF
-    if (is_in_cxl_nhc)
+    if (is_in_cxl_nhc_dst)
         do_range_flush((char *)dst, n);
 #else
-    if (is_in_cxl_nhc)
+    if (is_in_cxl_nhc_dst)
         thread_ops->log_range_store(dst_begin, dst_end);
 #endif
     return ret;
@@ -173,19 +174,21 @@ void * memcpy(void * dst, const void * src, size_t n) {
 
 void * memmove(void *dst, const void *src, size_t n) {
     void *ret;
-    bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)src) || in_cxl_nhc_mem((char *)dst);
+    bool is_in_cxl_nhc_src = in_cxl_nhc_mem((char *)src);
+    bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
 #ifdef PROTOCOL_OFF
-    if (is_in_cxl_nhc) {
+    if (is_in_cxl_nhc_src)
         do_range_invalidate((char *)src, n);
+    if (is_in_cxl_nhc_dst)
         invalidate_boundaries(dst_begin, dst_end); 
-    }
 #elif !defined(EAGER_INVALIDATE)
     char *src_begin = (char *)src;
     char *src_end = src_begin + n;
-    if (is_in_cxl_nhc) {
+    if (is_in_cxl_nhc_src)
         check_range_invalidate(src_begin, src_end);
+    if (is_in_cxl_nhc_dst)
         invalidate_boundaries(dst_begin, dst_end); 
     }
 #endif
@@ -203,10 +206,10 @@ void * memmove(void *dst, const void *src, size_t n) {
     } else
         ret = memmove_real(dst, src, n);
 #ifdef PROTOCOL_OFF
-    if (is_in_cxl_nhc)
+    if (is_in_cxl_nhc_dst)
         do_range_flush((char *)dst, n);
 #else
-    if (is_in_cxl_nhc)
+    if (is_in_cxl_nhc_dst)
         thread_ops->log_range_store(dst_begin, dst_end);
 #endif
     return ret;
@@ -218,13 +221,11 @@ void * memset(void *dst, int c, size_t n) {
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
 #ifdef PROTOCOL_OFF
-    if (is_in_cxl_nhc) {
-        invalidate_boundaries(dst_begin, dst_end); 
-    }
+    if (is_in_cxl_nhc)
+        invalidate_boundaries(dst_begin, dst_end);
 #elif !defined(EAGER_INVALIDATE)
-    if(is_in_cxl_nhc) {
-        invalidate_boundaries(dst_begin, dst_end); 
-    }
+    if(is_in_cxl_nhc)
+        invalidate_boundaries(dst_begin, dst_end);
 #endif
     if (((uintptr_t)memset_real) < 2) {
         for(unsigned i=0;i<n;i++) {
@@ -249,13 +250,11 @@ void bzero(void *dst, size_t n) {
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
 #ifdef PROTOCOL_OFF
-    if (is_in_cxl_nhc) {
-        invalidate_boundaries(dst_begin, dst_end); 
-    }
+    if (is_in_cxl_nhc)
+        invalidate_boundaries(dst_begin, dst_end);
 #elif !defined(EAGER_INVALIDATE)
-    if(is_in_cxl_nhc) {
-        invalidate_boundaries(dst_begin, dst_end); 
-     }
+    if(is_in_cxl_nhc)
+        invalidate_boundaries(dst_begin, dst_end);
 #endif
     if (((uintptr_t)bzero_real) < 2) {
         for(size_t s=0;s<n;s++) {
@@ -274,9 +273,9 @@ void bzero(void *dst, size_t n) {
 
 char * strcpy(char *dst, const char *src) {
     char *ret;
-    bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)src) || in_cxl_nhc_mem((char *)dst);
+    bool is_in_cxl_nhc_src = in_cxl_nhc_mem((char *)src);
+    bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     size_t n = 0;
-    size_t m = 0;
     // we cannot invalidate ahead-of-time because the length is unknown
 #if defined(PROTOCOL_OFF) || !defined(EAGER_INVALIDATE)
     bool need_invalidate = true;
@@ -286,45 +285,42 @@ char * strcpy(char *dst, const char *src) {
     if (((uintptr_t)strcpy_real) < 2 || need_invalidate) {
         while (true) {
 #ifdef PROTOCOL_OFF
-            if (is_in_cxl_nhc) {
+            if (is_in_cxl_nhc_src)
                 do_invalidate((char *)&src[n]);
-            }
 #elif !defined(EAGER_INVALIDATE)
-            if (is_in_cxl_nhc) {
+            if (is_in_cxl_nhc_src)
                 check_invalidate((char *)&src[n]);
-            }
 #endif
             bool end = false;
             for(;((uintptr_t)&src[n] & CACHE_LINE_MASK); n++) {
                 if (src[n] == '\0') {
+                    n++;
                     end = true;
                     break;
                 }
             }
-#ifdef PROTOCOL_OFF
-            if (is_in_cxl_nhc && (end || m==0) && ((uintptr_t)&dst[n] & CACHE_LINE_MASK)) {
-                do_invalidate((char *)&dst[n]);
-            }
-#elif !defined(EAGER_INVALIDATE)
-            if (is_in_cxl_nhc && (end || m==0) && ((uintptr_t)&dst[n] & CACHE_LINE_MASK)) {
-                check_invalidate((char *)&dst[n]);
-            }
-#endif
-            for (; m < n; m++)
-                ((volatile char *)dst)[m] = ((char *)src)[m];
             if (end)
                 break;
         }
+#ifdef PROTOCOL_OFF
+        if (is_in_cxl_nhc_dst))
+            invalidate_boundaries(dst, (char *)&dst[n]);
+#elif !defined(EAGER_INVALIDATE)
+        if (is_in_cxl_nhc_dst)
+            invalidate_boundaries(dst, (char *)&dst[n]);
+#endif
+        for (int i; i < n; i++)
+            ((volatile char *)dst)[i] = ((char *)src)[i];
         ret = dst;
     } else {
         ret = strcpy_real(dst, src);
         while (src[n]!= '\0') n++;
     }
 #ifdef PROTOCOL_OFF
-    if (is_in_cxl_nhc)
+    if (is_in_cxl_nhc_dst)
         do_range_flush((char *)dst, n);
 #else
-    if (is_in_cxl_nhc)
+    if (is_in_cxl_nhc_dst)
         thread_ops->log_range_store((char *)dst, ((char *)dst + n));
 #endif
     return ret;
@@ -345,15 +341,20 @@ void *run_cache_agent(void *arg) {
     return arg;
 }
 
-void rac_init(unsigned nid, size_t cxl_hc_rng, size_t cxl_nhc_rng) {
-    cxl_hc_range = cxl_hc_rng;
-    cxl_nhc_range = cxl_nhc_rng;
+void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
+    cxl_hc_range = cxl_hc_rg;
+    cxl_nhc_range = cxl_nhc_rg;
 #ifdef USE_NUMA
     run_on_local_numa();
     cxl_nhc_buf = (char *)remote_numa_alloc(cxl_nhc_range);
     cxl_hc_buf = (char *)remote_numa_alloc(sizeof(cxl_hc_range));
-#else 
-    cxl_nhc_buf = new char[cxl_nhc_range];
+#else
+    //cxl_nhc_buf = new char[cxl_nhc_range];
+    cxl_nhc_buf = (char *)mmap((void*)CXL_NHC_START, cxl_nhc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+    if ((uintptr_t)cxl_nhc_buf == -1) {
+        perror("mmap");
+        exit(1);
+    }
     cxl_hc_buf = new char[cxl_hc_range];
 #endif
     node_local_buf = new char[sizeof(CacheInfo) * NODE_COUNT];
@@ -361,8 +362,6 @@ void rac_init(unsigned nid, size_t cxl_hc_rng, size_t cxl_nhc_rng) {
     size_t cxl_hc_off = 0;
     assert(cxl_hc_range > sizeof(LogManager[NODE_COUNT]));
     log_mgrs = (LogManager *) cxl_hc_buf;
-    for (int i = 0; i < NODE_COUNT; i++)
-        new (&log_mgrs[i]) LogManager(i);
     cxl_hc_off += sizeof(LogManager[NODE_COUNT]);
 
     // reserve space for cxl nhc pool as it needs to be initialized after cxl hc pool
@@ -374,6 +373,8 @@ void rac_init(unsigned nid, size_t cxl_hc_rng, size_t cxl_nhc_rng) {
     assert(cxl_hc_range > cxl_hc_off);
     cxlhc_pool_init(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
     cxlnhc_pool_init(cxl_nhc_pool_buf, cxl_nhc_buf, cxl_nhc_range);
+    for (int i = 0; i < NODE_COUNT; i++)
+        new (&log_mgrs[i]) LogManager(i);
     cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[nid], nid, curr_tid.fetch_add(1, std::memory_order_relaxed));
     init_memory_ops();
@@ -412,7 +413,8 @@ void rac_shutdown() {
     delete thread_ops;
 #ifndef USE_NUMA
     delete[] cxl_hc_buf;
-    delete[] cxl_nhc_buf;
+    //delete[] cxl_nhc_buf;
+    munmap(cxl_nhc_buf, cxl_nhc_range);
 #endif
     delete[] node_local_buf;
 }

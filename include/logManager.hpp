@@ -7,18 +7,18 @@
 #include <cstdint>
 #include <cstddef>
 #include <iostream>
-#include <mutex>
 
-#include "spmcQueue.hpp"
 #include "config.hpp"
+#include "clh_mutex.hpp"
 #include "logger.hpp"
+#include "spmcQueue.hpp"
 #include "utils.hpp"
 
 namespace RACoherence {
 
-constexpr size_t LOG_SIZE = 1ull << 6;
+constexpr size_t LOG_SIZE = 1ull << 10;
 //LOG_BUF_SIZE must be power of 2
-constexpr size_t LOG_BUF_SIZE = 1ull << 8;
+constexpr size_t LOG_BUF_SIZE = 1ull << 7;
 
 class LogManager;
 
@@ -94,7 +94,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     CacheAligned<std::mutex> head_mtxs[NODE_COUNT];
 
     alignas(CACHE_LINE_SIZE)
-    std::mutex gc_mtx;
+    CLHMutex gc_mtx;
 
     inline void perform_gc() {
         idx_t new_b = flip(bound);
@@ -133,20 +133,18 @@ public:
          Log *log;
          auto ok = freelist.dequeue(log);
          if (!ok) {
-             if (gc_mtx.try_lock()) {
+             gc_mtx.lock();
                  //check again after locking
-                ok = freelist.dequeue(log);
-                if (ok) {
-                    gc_mtx.unlock();
-                    return new(log) Log();
-                }
-                perform_gc();
-                gc_mtx.unlock();
-                ok = freelist.dequeue(log);
-                if(!ok)
-                    return NULL;
-            } else
-                return NULL;
+             ok = freelist.dequeue(log);
+             if (ok) {
+                 gc_mtx.unlock();
+                 return new(log) Log();
+             }
+             perform_gc();
+             gc_mtx.unlock();
+             ok = freelist.dequeue(log);
+             if(!ok)
+                 return NULL;
          }
          return new(log) Log();
     }

@@ -1,4 +1,5 @@
 #include "microbench.hpp"
+#include "runtime.hpp"
 #include "logger.hpp"
 
 namespace RACoherence {
@@ -72,36 +73,6 @@ public:
     }
 };
 
-inline void Microbench::handle_store(char *addr, char val) {
-#ifdef PROTOCOL_OFF
-    do_invalidate(addr);
-    invalidate_fence();
-    STATS(invalidate_count++)
-    *((volatile char *)addr) = val;
-    do_flush((char *)addr);
-#else
-    if (check_invalidate(addr)) {
-        STATS(invalidate_count++)
-    }
-    thread_ops->log_store(addr);
-    *((volatile char *)addr) = val;
-#endif
-}
-
-inline char Microbench::handle_load(char *addr) {
-#ifdef PROTOCOL_OFF
-    do_invalidate(addr);
-    invalidate_fence();
-    STATS(invalidate_count++)
-    return *((volatile char *)addr);
-#else
-    if (check_invalidate(addr)) {
-        STATS(invalidate_count++)
-    }
-    return *((volatile char *)addr);
-#endif
-}
-
 inline void Microbench::use_locks(UserOp &op) {
     if (op.type != OP_STORE_RLS && op.type != OP_LOAD_ACQ)
         return;
@@ -131,7 +102,7 @@ void Microbench::run() {
             }
              case OP_STORE: {
                 STATS(write_count++)
-                handle_store(&cxl_pool.data[op.offset], 0);
+                rac_store8(&cxl_pool.data[op.offset], 0, nullptr);
                 break;
             }
             case OP_LOAD_ACQ: {
@@ -141,7 +112,7 @@ void Microbench::run() {
             }
             case OP_LOAD: {
                 STATS(read_count++)
-                handle_load(&cxl_pool.data[op.offset]);
+                rac_load8(&cxl_pool.data[op.offset], nullptr);
                 break;
             }
             case OP_LOCK: {

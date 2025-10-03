@@ -17,7 +17,7 @@ void *run_microbench(void *) {
 }
 
 int main() {
-    rac_init(0, CXL_HC_RANGE, sizeof(CXLPool)  + (4ull << 30));
+    rac_init(0, CXL_HC_RANGE, CXL_NHC_RANGE);
     cxl_pool = new (cxlnhc_malloc(sizeof(CXLPool))) CXLPool(); // new (cxl_nhc_buf) CXLPool();
 
     int worker_count = NODE_COUNT * WORKER_PER_NODE;

@@ -7,19 +7,23 @@ namespace RACoherence {
 
 constexpr uintptr_t PAGE_SIZE = 1ull << 12; // 4KB
 constexpr uintptr_t CACHE_LINE_SIZE = 64;
-constexpr uintptr_t CACHE_LINE_SHIFT = 6; // log(CACHE_LINE_SIZE)
+constexpr uintptr_t CACHE_LINE_SHIFT = 6;
 constexpr uintptr_t CACHE_LINE_MASK = CACHE_LINE_SIZE-1;
+constexpr uintptr_t CL_UNIT_GRANULARITY_SHIFT = 1; // reasonable range is 1 to 5
+constexpr uintptr_t CL_UNIT_GRANULARITY = 1ull << CL_UNIT_GRANULARITY_SHIFT;
+constexpr uintptr_t CL_UNIT_SIZE = CACHE_LINE_SIZE * CL_UNIT_GRANULARITY;
+constexpr uintptr_t CL_UNIT_SHIFT = CACHE_LINE_SHIFT + CL_UNIT_GRANULARITY_SHIFT; // log(CL_UNIT_SIZE)
+constexpr uintptr_t CL_UNIT_MASK = CL_UNIT_SIZE-1;
 constexpr uintptr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
 // assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 
 constexpr unsigned NODE_COUNT = 4;
 constexpr unsigned WORKER_PER_NODE = 3;
-constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6);
-
-// Should be power of two
-constexpr uintptr_t CXL_NHC_RANGE = 1ull << 30;
-constexpr uintptr_t CXL_HC_RANGE = 1ull << 22;
+constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6); // Should be power of two
+constexpr uintptr_t CXL_NHC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should start at the highest virtual bit for easy comparison
+constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
+constexpr uintptr_t CXL_HC_RANGE = 1ull << 24;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // whether to collect statistics
@@ -45,7 +49,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define CACHE_AGENT_AFFINITY
 
 // use buffer in local cl tables
-//#define LOCAL_CL_TABLE_BUFFER
+#define LOCAL_CL_TABLE_BUFFER
 
 // use dlmalloc for as allocator for CXL hardware coherent memory
 //#define HC_USE_DLMALLOC

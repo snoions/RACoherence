@@ -24,21 +24,28 @@ struct CacheInfo {
     CacheInfo(): clock(), inv_cls(), consumed_count{}, produced_count{0} {};
 
     void process_log(Log &log) {
-        struct InvalidateOp {
-            CacheInfo &self;
-
-            inline void operator() (uintptr_t ptr, uint64_t mask) {
+        using namespace cl_group;
+        for (auto cg: log) {
+            if (is_length_based(cg)) {
+                for (auto cl_addr: LengthCLRange(cg)) {
 #ifdef EAGER_INVALIDATE
-                for (auto cl_addr: MaskCLRange(ptr, mask))
-                    do_invalidate((char *)cl_addr);
+                    // should be unrolled, manually unroll if not
+                    for (unsigned i = 0; i < GROUP_SIZE * CL_UNIT_GRANULARITY; i++)
+                        do_invalidate((char *)cl_addr + (i * CACHE_LINE_SIZE));
 #else
-                self.inv_cls.mark_range_dirty(ptr, mask);
+                    self.inv_cls.mark_range_dirty(cl_addr, FULL_MASK << get_mask16_to_64_shift(cl_addr));
+#endif
+                }
+            } else {
+#ifdef EAGER_INVALIDATE
+                for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
+                    // should be unrolled, manually unroll if not
+                    for (unsigned i = 0; i < CL_UNIT_GRANULARITY; i++)
+                        do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
+#else
+                self.inv_cls.mark_range_dirty(get_ptr(cg),  get_mask16(cg) << get_mask16_to_64_shift(cg));
 #endif
             }
-        };
-
-        for (auto invalid_cg: log) {
-            process_cl_group(invalid_cg, InvalidateOp{*this});
         }
 #ifdef EAGER_INVALIDATE
         invalidate_fence();

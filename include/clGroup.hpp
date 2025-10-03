@@ -20,12 +20,12 @@ namespace cl_group {
     constexpr uint64_t GROUP_SIZE_SHIFT = 4; //group of 16 CLs
     constexpr size_t GROUP_SIZE = 1ull << GROUP_SIZE_SHIFT;
     constexpr size_t FULL_MASK = (1ull << GROUP_SIZE) - 1ull;
-    constexpr uint64_t GROUP_SHIFT = CACHE_LINE_SHIFT + GROUP_SIZE_SHIFT;
+    constexpr uint64_t GROUP_SHIFT = CL_UNIT_SHIFT + GROUP_SIZE_SHIFT;
     constexpr uint64_t GROUP_MASK = (1ull << GROUP_SHIFT) - 1ull; // group of 16 CLs
     constexpr uint64_t GROUP_INDEX_SHIFT = VIRTUAL_ADDRESS_BITS - GROUP_SHIFT;
     constexpr uint64_t GROUP_INDEX_MASK = (1ull << GROUP_INDEX_SHIFT) - 1ull;
     constexpr uint64_t GROUP_SIZE_MASK = GROUP_SIZE-1;
-    constexpr size_t GROUP_LEN_MAX = (1 << 25)-1;
+    constexpr size_t GROUP_LEN_MAX = (1ull << (63 - GROUP_INDEX_SHIFT))-1; // top bit marks type
 
     inline bool is_length_based(cl_group_t cg) {
         return cg & TYPE_MASK;
@@ -47,10 +47,9 @@ namespace cl_group {
         return cg >> GROUP_INDEX_SHIFT;
     }
 
-    inline uint64_t get_mask64(cl_group_t cg) {
-        uint8_t diff = cg & 2; //2 = 1 << log(64/16)
-        uint8_t mask_shift = 16 * diff;
-        return get_mask16(cg) << mask_shift;
+    inline uint64_t get_mask16_to_64_shift(cl_group_t cg) {
+        uint8_t diff = cg & 2; //2 = 1 << (log(64/16)-1)
+        return GROUP_SIZE_SHIFT * diff;
     }
 
     inline cl_group_t try_coalesce(cl_group_idx index1, cl_group_idx index2, size_t len1, size_t len2) {
@@ -111,7 +110,7 @@ public:
         inline iterator(uintptr_t p, uint64_t m): ptr(p), mask(m) {}
         inline uintptr_t operator*() const {
             int p = __builtin_ctzl(mask);
-            return ptr + (p << CACHE_LINE_SHIFT);
+            return ptr + (p << CL_UNIT_SHIFT);
         }
 
         inline iterator operator++() {

@@ -16,9 +16,8 @@ namespace RACoherence {
 constexpr long WRITE_LATENCY_IN_NS = 0;
 constexpr long CPU_FREQ_MHZ = 2100;
 
-static inline void do_flush(char *addr)
+static inline void do_flush(volatile char *ptr)
 {
-    volatile char *ptr = (char *)((uintptr_t)addr & ~CACHE_LINE_MASK);
 #if FLUSH_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
 #elif FLUSH_INST == CLFLUSHOPT
@@ -28,9 +27,8 @@ static inline void do_flush(char *addr)
 #endif
 }
 
-static inline void do_invalidate(char *addr)
+static inline void do_invalidate(char *ptr)
 {
-    volatile char *ptr = (char *)((uintptr_t)addr & ~CACHE_LINE_MASK);
 #if INVALIDATE_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
 #elif INVALIDATE_INST == CLFLUSHOPT

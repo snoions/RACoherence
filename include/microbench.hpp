@@ -25,7 +25,7 @@ struct UserOp {
 struct CXLPool {
     alignas(CACHE_LINE_SIZE) CXLMutex mutexes[CXL_SYNC_RANGE];
     alignas(CACHE_LINE_SIZE) CXLAtomic<char> atomic_data[CXL_SYNC_RANGE];
-    alignas(CACHE_LINE_SIZE) char data[CXL_NHC_RANGE];
+    alignas(CACHE_LINE_SIZE) char data[CXL_NHC_RANGE >> 4];
 
     CXLPool(): mutexes{}, atomic_data{} {}
 };

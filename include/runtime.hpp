@@ -3,6 +3,7 @@
 
 #include "stdint.h"
 #include "flushUtils.hpp"
+#include "cxlMalloc.hpp"
 #include "threadOps.hpp"
 
 #if __cplusplus
@@ -41,13 +42,15 @@ extern char *cxl_nhc_buf;
 extern size_t cxl_nhc_range;
 
 inline bool in_cxl_nhc_mem(void *addr) {
-    return addr >= cxl_nhc_buf && addr < cxl_nhc_buf + cxl_nhc_range;
+    //return (addr >= cxl_nhc_buf) & (addr < (cxl_nhc_buf + cxl_nhc_range));
+    return ((uintptr_t)addr & CXL_NHC_START);
 }
 
 }
 
 using namespace RACoherence;
 
+//TODO: handle rare unaligned accesses for sizes larger than 8
 #ifdef PROTOCOL_OFF
 #define RACLOAD(size) \
     inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \

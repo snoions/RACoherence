@@ -11,7 +11,7 @@
 
 namespace RACoherence {
 
-constexpr int TABLE_ENTRIES = 1ull << 6;
+constexpr int TABLE_ENTRIES = 1ull << 10;
 constexpr int SEARCH_ITERS = 6; // only look a limited number of iterations
 constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
 
@@ -26,7 +26,7 @@ class LocalCLTable {
 
         // returns true when ptr cannot be inserted into buffer
         inline bool insert(uintptr_t ptr) {
-            uintptr_t cl_ptr = ptr >> CACHE_LINE_SHIFT;
+            uintptr_t cl_ptr = ptr >> CL_UNIT_SHIFT;
             if (cl_ptr == cl_addr + len) {
                 len++;
                 return false;
@@ -103,9 +103,11 @@ public:
      * The insert function returns true if the table was full and
      * insertion was not possible.
      */
+
     inline bool insert(uintptr_t ptr) {
         using namespace cl_group;
 #ifdef LOCAL_CL_TABLE_BUFFER
+        //TODO: handle possible straddling
         if (buffer.insert(ptr)) {
             if (dump_buffer_to_table())
                 return true;
@@ -114,17 +116,50 @@ public:
         }
         return false;
 #else
+        uintptr_t cl_addr = ptr >> CL_UNIT_SHIFT;
         cl_group_idx index = ptr >> GROUP_SHIFT;
-        int pos = (ptr >> CACHE_LINE_SHIFT) & GROUP_SIZE_MASK;
+        int pos = cl_addr & GROUP_SIZE_MASK;
         uint64_t mask = 1ull << pos;
         return insert_mask(index, mask);
 #endif
     }
 
+//    inline bool insert_may_straddle(uintptr_t ptr, size_t byte_offset) {
+//        using namespace cl_group;
+//#ifdef LOCAL_CL_TABLE_BUFFER
+//        //TODO: handle possible straddling
+//        if (buffer.insert(ptr)) {
+//            if (dump_buffer_to_table())
+//                return true;
+//            bool full = buffer.insert(ptr);
+//            assert(!full);
+//        }
+//        return false;
+//#else
+//        uintptr_t cl_addr = ptr >> CL_UNIT_SHIFT;
+//        uintptr_t cl_addr_end = (ptr + byte_offset) >> CL_UNIT_SHIFT;
+//        cl_group_idx index = ptr >> GROUP_SHIFT;
+//        int pos = cl_addr & GROUP_SIZE_MASK;
+//        uint64_t mask;
+//        if (cl_addr < cl_addr_end) {
+//            if (pos == GROUP_SIZE - 1) {
+//                if (insert_mask(index + 1, 1ull))
+//                   return true;
+//                mask = 1ull << (GROUP_SIZE-1);
+//            }
+//            else
+//                mask = 2ull << pos;
+//        } else {
+//            mask = 1ull << pos;
+//        }
+//        return insert_mask(index, mask);
+//#endif
+//    }
+
     inline bool range_insert(uintptr_t &begin, uintptr_t end) {
         //TODO: optimize
         assert(begin <=end);
-        for (; begin < end + CACHE_LINE_SIZE; begin+= CACHE_LINE_SIZE)
+        for (; begin < end + CL_UNIT_SIZE; begin+= CL_UNIT_SIZE)
             if (insert(begin))
                 return true;
         return false;

@@ -28,20 +28,24 @@ class ThreadOps {
         Log *curr_log;
         while(!(curr_log = log_mgrs[node_id].get_new_log())) {
             STATS(blocked_count++)
-            sleep(0);
+            sched_yield();
         }
-
-        struct FlushOp {
-            inline void operator() (uintptr_t ptr, uint64_t mask) {
-                for (auto cl_addr: MaskCLRange(ptr, mask))
-                    do_flush((char *)cl_addr);
-            }
-        };
+        using namespace cl_group;
 
         for(auto cg: dirty_cls) {
-            if (cg) {
-                curr_log->write(cg);
-                process_cl_group(cg, FlushOp());
+            if (!cg)
+                continue;
+            curr_log->write(cg);
+            if (is_length_based(cg)) {
+                for (auto cl_addr: LengthCLRange(cg))
+                    // should be unrolled, manually unroll if not
+                    for (unsigned i = 0; i < GROUP_SIZE * CL_UNIT_GRANULARITY; i++)
+                        do_flush((char *)cl_addr + (i * CACHE_LINE_SIZE));
+            } else {
+                for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
+                    // should be unrolled, manually unroll if not
+                    for (unsigned i = 0; i < CL_UNIT_GRANULARITY; i++)
+                        do_flush((char *)cl_addr + i * CACHE_LINE_SIZE);
             }
         }
 
@@ -91,7 +95,7 @@ class ThreadOps {
             }
             if (uptodate)
                 break;
-            sleep(0);
+            sched_yield();
         }
     }
 
@@ -129,21 +133,41 @@ public:
     }
 
     inline void log_store(char *addr) {
-        uintptr_t cl_addr = (uintptr_t)addr & ~CACHE_LINE_MASK;
+        uintptr_t cl_addr = (uintptr_t)addr & ~CL_UNIT_MASK;
         if (cl_addr == recent_cl)
             return;
         recent_cl = cl_addr;
 
-        while (dirty_cls.insert(cl_addr) || dirty_cls.get_length_entry_count() != 0)
+        while (dirty_cls.insert((uintptr_t)addr))
             write_to_log(false);
+#ifdef LOCAL_CL_TABLE_BUFFER
+        if (dirty_cls.get_length_entry_count()!=0)
+            write_to_log(false);
+#endif
     }
 
+//    inline void log_store_may_straddle(char *addr, size_t byte_offset) {
+//        uintptr_t cl_addr = (uintptr_t)addr & ~CL_UNIT_MASK;
+//        if (cl_addr == recent_cl)
+//            return;
+//        recent_cl = cl_addr;
+//
+//        while (dirty_cls.insert_may_straddle((uintptr_t)addr, byte_offset))
+//            write_to_log(false);
+//#ifdef LOCAL_CL_TABLE_BUFFER
+//        if (dirty_cls.get_length_entry_count()!=0)
+//            write_to_log(false);
+//#endif
+//    }
+
     inline void log_range_store(char *begin, char *end) {
-        uintptr_t begin_addr = (uintptr_t)begin & ~CACHE_LINE_MASK;
-        uintptr_t end_addr = (uintptr_t)end & ~CACHE_LINE_MASK;
+        uintptr_t begin_addr = (uintptr_t)begin & ~CL_UNIT_MASK;
+        uintptr_t end_addr = (uintptr_t)end & ~CL_UNIT_MASK;
         recent_cl = end_addr;
 
-        while (dirty_cls.range_insert(begin_addr, end_addr) || dirty_cls.get_length_entry_count() != 0)
+        while (dirty_cls.range_insert(begin_addr, end_addr))
+            write_to_log(false);
+        if (dirty_cls.get_length_entry_count() !=0)
             write_to_log(false);
     }
 };

@@ -12,6 +12,7 @@
 #include "config.hpp"
 #include "flushUtils.hpp"
 
+//TODO: track cl unit instead of cache line
 namespace RACoherence {
 
 constexpr uint64_t L1_BITS = 19;                      // [38:20]
