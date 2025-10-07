@@ -303,7 +303,7 @@ char * strcpy(char *dst, const char *src) {
                 break;
         }
 #ifdef PROTOCOL_OFF
-        if (is_in_cxl_nhc_dst))
+        if (is_in_cxl_nhc_dst)
             invalidate_boundaries(dst, (char *)&dst[n]);
 #elif !defined(EAGER_INVALIDATE)
         if (is_in_cxl_nhc_dst)

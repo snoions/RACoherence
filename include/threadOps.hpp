@@ -138,8 +138,10 @@ public:
             return;
         recent_cl = cl_addr;
 
-        while (dirty_cls.insert((uintptr_t)addr))
+        if (dirty_cls.insert((uintptr_t)addr)) {
             write_to_log(false);
+            dirty_cls.insert((uintptr_t)addr);
+        }
 #ifdef LOCAL_CL_TABLE_BUFFER
         if (dirty_cls.get_length_entry_count()!=0)
             write_to_log(false);
@@ -167,8 +169,10 @@ public:
 
         while (dirty_cls.range_insert(begin_addr, end_addr))
             write_to_log(false);
+#ifdef LOCAL_CL_TABLE_BUFFER
         if (dirty_cls.get_length_entry_count() !=0)
             write_to_log(false);
+#endif
     }
 };
 

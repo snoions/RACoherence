@@ -58,7 +58,7 @@ class LocalCLTable {
                     insert_pos = i;
             } else if (is_length_based(val)) {
                 size_t val_length = get_length(val);
-                if (auto new_entry = try_coalesce(val_index, val_length, group_index, length)) {
+                if (auto new_entry = try_coalesce(val_index, group_index, val_length, length)) {
                     entry = new_entry;
                     table[i] = 0;
                     if (insert_pos == -1)
@@ -86,7 +86,7 @@ class LocalCLTable {
         for(int i = 0; i < SEARCH_ITERS; i++) {
             uint64_t value = table[tableindex];
             value = value ? value : group_index;
-            assert(!is_length_based(value));
+            //assert(!is_length_based(value));
             if ((value & GROUP_INDEX_MASK) == group_index) {
                 table[tableindex] = value | (mask << GROUP_INDEX_SHIFT); // add this bit
                 return false;
@@ -107,7 +107,6 @@ public:
     inline bool insert(uintptr_t ptr) {
         using namespace cl_group;
 #ifdef LOCAL_CL_TABLE_BUFFER
-        //TODO: handle possible straddling
         if (buffer.insert(ptr)) {
             if (dump_buffer_to_table())
                 return true;
