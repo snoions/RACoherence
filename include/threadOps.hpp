@@ -133,14 +133,14 @@ public:
     }
 
     inline void log_store(char *addr) {
-        uintptr_t cl_addr = (uintptr_t)addr & ~CL_UNIT_MASK;
+        uintptr_t cl_addr = (uintptr_t)addr >> CL_UNIT_SHIFT;
         if (cl_addr == recent_cl)
             return;
         recent_cl = cl_addr;
 
-        if (dirty_cls.insert((uintptr_t)addr)) {
+        if (dirty_cls.insert((uintptr_t)cl_addr)) {
             write_to_log(false);
-            dirty_cls.insert((uintptr_t)addr);
+            dirty_cls.insert((uintptr_t)cl_addr);
         }
 #ifdef LOCAL_CL_TABLE_BUFFER
         if (dirty_cls.get_length_entry_count()!=0)
@@ -163,8 +163,8 @@ public:
 //    }
 
     inline void log_range_store(char *begin, char *end) {
-        uintptr_t begin_addr = (uintptr_t)begin & ~CL_UNIT_MASK;
-        uintptr_t end_addr = (uintptr_t)end & ~CL_UNIT_MASK;
+        uintptr_t begin_addr = (uintptr_t)begin >> CL_UNIT_SHIFT;
+        uintptr_t end_addr = (uintptr_t)end >> CL_UNIT_SHIFT;
         recent_cl = end_addr;
 
         while (dirty_cls.range_insert(begin_addr, end_addr))

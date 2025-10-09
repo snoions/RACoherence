@@ -22,8 +22,6 @@ char *node_local_buf;
 CacheInfo *cache_infos;
 LogManager *log_mgrs;
 
-} // RACoherence
-
 struct RACThreadArg {
     const VectorClock *parent_clock;
     unsigned nid;
@@ -349,7 +347,6 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
     cxl_nhc_buf = (char *)remote_numa_alloc(cxl_nhc_range);
     cxl_hc_buf = (char *)remote_numa_alloc(sizeof(cxl_hc_range));
 #else
-    //cxl_nhc_buf = new char[cxl_nhc_range];
     cxl_nhc_buf = (char *)mmap((void*)CXL_NHC_START, cxl_nhc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
     if ((uintptr_t)cxl_nhc_buf == -1) {
         perror("mmap");
@@ -413,8 +410,9 @@ void rac_shutdown() {
     delete thread_ops;
 #ifndef USE_NUMA
     delete[] cxl_hc_buf;
-    //delete[] cxl_nhc_buf;
     munmap(cxl_nhc_buf, cxl_nhc_range);
 #endif
     delete[] node_local_buf;
 }
+
+} // RACoherence

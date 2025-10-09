@@ -12,7 +12,7 @@
 namespace RACoherence {
 
 constexpr int TABLE_ENTRIES = 1ull << 10;
-constexpr int SEARCH_ITERS = 6; // only look a limited number of iterations
+constexpr int SEARCH_ITERS = 5; // only look a limited number of iterations
 constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
 
 class LocalCLTable {
@@ -25,8 +25,7 @@ class LocalCLTable {
         size_t len = 0;
 
         // returns true when ptr cannot be inserted into buffer
-        inline bool insert(uintptr_t ptr) {
-            uintptr_t cl_ptr = ptr >> CL_UNIT_SHIFT;
+        inline bool insert(uintptr_t cl_ptr) {
             if (cl_ptr == cl_addr + len) {
                 len++;
                 return false;
@@ -82,8 +81,8 @@ class LocalCLTable {
     inline bool insert_mask(uintptr_t group_index, uint64_t mask) {
         using namespace cl_group;
         //alternatively starting searching from 0
-        int tableindex = group_index & (TABLE_ENTRIES - 1);
         for(int i = 0; i < SEARCH_ITERS; i++) {
+            int tableindex = (group_index + i) & (TABLE_ENTRIES - 1);
             uint64_t value = table[tableindex];
             value = value ? value : group_index;
             //assert(!is_length_based(value));
@@ -91,7 +90,6 @@ class LocalCLTable {
                 table[tableindex] = value | (mask << GROUP_INDEX_SHIFT); // add this bit
                 return false;
             }
-            tableindex = (tableindex + 1) & (TABLE_ENTRIES -1);
         }
         //Table is full...clear and restart
         return true;
@@ -104,19 +102,18 @@ public:
      * insertion was not possible.
      */
 
-    inline bool insert(uintptr_t ptr) {
+    inline bool insert(uintptr_t cl_addr) {
         using namespace cl_group;
 #ifdef LOCAL_CL_TABLE_BUFFER
-        if (buffer.insert(ptr)) {
+        if (buffer.insert(cl_addr)) {
             if (dump_buffer_to_table())
                 return true;
-            bool full = buffer.insert(ptr);
+            bool full = buffer.insert(cl_addr);
             assert(!full);
         }
         return false;
 #else
-        uintptr_t cl_addr = ptr >> CL_UNIT_SHIFT;
-        cl_group_idx index = ptr >> GROUP_SHIFT;
+        cl_group_idx index = cl_addr >> GROUP_SIZE_SHIFT;
         int pos = cl_addr & GROUP_SIZE_MASK;
         uint64_t mask = 1ull << pos;
         return insert_mask(index, mask);
@@ -155,63 +152,69 @@ public:
 //#endif
 //    }
 
-    inline bool range_insert(uintptr_t &begin, uintptr_t end) {
-        //TODO: optimize
+    inline bool range_insert(uintptr_t &begin, uintptr_t &end) {
         assert(begin <=end);
-        for (; begin < end + CL_UNIT_SIZE; begin+= CL_UNIT_SIZE)
+        for (; begin <= end; begin++)
             if (insert(begin))
                 return true;
+        begin--;
         return false;
+        //using namespace cl_group;
+
+        //cl_group_idx end_index = end >> GROUP_SIZE_SHIFT;
+        //unsigned begin_pos = begin & GROUP_SIZE_MASK;
+        //unsigned end_pos = end & GROUP_SIZE_MASK;
+        //if(begin_pos) {
+        //    cl_group_idx begin_index = begin >> GROUP_SIZE_SHIFT;
+        //    uint64_t begin_mask = (FULL_MASK << begin_pos) & FULL_MASK;
+        //    if (begin_index == end_index) {
+        //        uint64_t end_mask = 1ull << end_pos;
+        //        if (insert_mask(begin_index, begin_mask & end_mask))
+        //            return true;
+        //        begin = end;
+        //        return false;
+        //    }
+        //    if (insert_mask(begin_index, begin_mask))
+        //        return true;
+        //    begin += GROUP_SIZE - begin_pos;
+        //}
+        //if (end_pos) {
+        //    uint64_t end_mask = 1ull << end_pos;
+        //    if (insert_mask(end_index, end_mask))
+        //        return true;
+        //    end -= end_pos;
+        //}
+        //cl_group_idx begin_index = begin >> GROUP_SIZE_SHIFT;
+        //end_index = end >> GROUP_SIZE_SHIFT;
+        //size_t len = end_index - begin_index;
+        //if (len < GROUP_LEN_MIN) {
+        //    for (; begin_index < end_index; begin_index++) {
+        //        if (insert_mask(begin_index, FULL_MASK)) {
+        //            begin = begin_index << GROUP_SIZE_SHIFT;
+        //            return true;
+        //        }
+        //    }
+        //} else {
+        //    while(len) {
+        //        unsigned l = len & GROUP_LEN_MAX;
+        //        if (insert_length(begin_index, l)) {
+        //            begin = begin_index << GROUP_SIZE_SHIFT;
+        //            return true;
+        //        }
+        //        len -= l;
+        //        begin_index += l;
+        //    }
+        //}
+        //begin = end;
+        //return false;
     }
 
     // returns whether table is full
     inline bool dump_buffer_to_table() {
-        using namespace cl_group;
-        if (buffer.len == 0)
-            return false;
-
-        cl_group_idx end_index = (buffer.cl_addr + buffer.len) >> GROUP_SIZE_SHIFT;
-        unsigned begin_pos = buffer.cl_addr & GROUP_SIZE_MASK;
-        unsigned end_pos = (buffer.cl_addr + buffer.len) & GROUP_SIZE_MASK;
-        if(begin_pos) {
-            cl_group_idx begin_index = buffer.cl_addr >> GROUP_SIZE_SHIFT;
-            uint64_t begin_mask = (FULL_MASK << begin_pos) & FULL_MASK;
-            if (begin_index == end_index) {
-                uint64_t end_mask = 1ull << end_pos;
-                if (insert_mask(begin_index, begin_mask & end_mask))
-                    return true;
-                buffer.len = 0;
-                return false;
-            }
-            if (insert_mask(begin_index, begin_mask))
-                return true;
-            buffer.cl_addr += GROUP_SIZE;
-            buffer.len -= GROUP_SIZE - begin_pos;
-        }
-        if (end_pos) {
-            uint64_t end_mask = 1ull << end_pos;
-            if (insert_mask(end_index, end_mask))
-                return true;
-            buffer.len -= end_pos;
-        }
-        assert(buffer.len % GROUP_SIZE == 0);
-        cl_group_idx begin_index = buffer.cl_addr >> GROUP_SIZE_SHIFT;
-        size_t len = buffer.len >> GROUP_SIZE_SHIFT;
-        if (len < GROUP_LEN_MIN) {
-            for (; len > 0; len--) {
-                if (insert_mask(begin_index + len, FULL_MASK)) {
-                    buffer.len = len << GROUP_SIZE_SHIFT;
-                    return true;
-                }
-            }
-            buffer.len = 0;
-        } else {
-            unsigned l = len & GROUP_LEN_MAX;
-            if (insert_length(begin_index + len - l, l))
-                return true;
-            buffer.len = (len - l) << GROUP_SIZE_SHIFT;
-        }
-        return false;
+         uintptr_t end = buffer.cl_addr + buffer.len;
+         bool ret = range_insert(buffer.cl_addr, end);
+         buffer.len = end - buffer.cl_addr;
+         return ret;
     }
 
     inline int get_length_entry_count() {
@@ -232,50 +235,6 @@ public:
     }
 
 };
-
-//constexpr unsigned GROUP_SHIFT = CACHELINE_SHIFT + 6; //group of 64
-//constexpr unsigned GROUP_INTERNAL_INDEX_MASK = 63;
-//struct LocalCLTable {
-//  /**
-//   * The insert function returns true if the table was full and
-//   * insertion was not possible.
-//   */
-//  
-//  bool insert(void *address) {
-//    uintptr_t ptr = ((uintptr_t) address) >> CACHELINE_SHIFT;
-//    uint32_t val = ptr & GROUP_INDEX_MASK;
-//    uint64_t valmask = 1ULL << val;
-//    uintptr_t tablevalue = ((uintptr_t) address) >> GROUP_SHIFT;
-//    int tableindex = tablevalue & (TABLE_ENTRIES - 1);
-//    for(int i = 0; i < SEARCH_ITERS; i++) {
-//      uint64_t value = table[tableindex].key;
-//      uint64_t masked = value & GROUP_INDEX_MASK;
-//      if (value == 0) {
-//        table[tableindex] = { tablevalue, valmask };
-//        return false;
-//      } else if (masked == tablevalue) {
-//        table[tableindex].value |= valmask; // add this bit
-//        return false;
-//      }
-//      tableindex++;
-//    }
-//    //Table is full...clear and restart
-//    return true;
-//  }
-//
-//  void iterate() {
-//    //Todo
-//  }
-//  
-//  void reset() {
-//    memset(table, 0, sizeof(table));
-//  }
-//
-//  /** Each entry here can store 16 cache lines. */
-//  
-//  TableEntry table[TABLE_ENTRIES] = {};
-//}
-//
 
 } // RACoherence
 
