@@ -8,8 +8,10 @@
 #define CLFLUSHOPT 2
 #define CLWB 3
 
+#ifndef NO_FLUSH
 #define FLUSH_INST 3
 #define INVALIDATE_INST 2 //may not be CLWB
+#endif
 
 namespace RACoherence {
 

@@ -26,6 +26,9 @@ constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 24;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
+constexpr int LOCAL_NUMA_ID=0;
+constexpr int REMOTE_NUMA_ID=1;
+
 // whether to collect statistics
 //#define STATS(s) {s;}
 #define STATS(s)
@@ -39,8 +42,11 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 // turn off RACoherence protocol, use raw stores and loads
 //#define PROTOCOL_OFF
 
+// remove all flush instructions
+//#define NO_FLUSH
+
 // simulate CXL memory with remote NUMA nodes
-//#define USE_NUMA
+#define CXL_NUMA_MODE
 
 // consumers invalidate eagerly
 #define EAGER_INVALIDATE

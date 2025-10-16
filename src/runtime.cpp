@@ -1,5 +1,6 @@
 #include <atomic>
 #include <dlfcn.h>
+#include <numaif.h>
 #include <pthread.h>
 #include "cacheAgent.hpp"
 #include "cxlSync.hpp"
@@ -113,25 +114,6 @@ void init_memory_ops() {
         bzero_real = (void (*)(void * dst, size_t len)) 1;
         bzero_real = (void (*)(void * dst, size_t len))dlsym(RTLD_NEXT, "bzero");
     }
-}
-
-//invalidate part of dst that partially covers cache lines
-inline void invalidate_boundaries(char *begin, char *end) {
-    uintptr_t bptr = (uintptr_t) begin;
-    uintptr_t eptr = (uintptr_t) end;
-    if (bptr & CACHE_LINE_MASK)
-#ifdef PROTOCOL_OFF
-        do_invalidate(begin);
-#else 
-        check_invalidate(begin);
-#endif
-    if (eptr & CACHE_LINE_MASK &&
-        (bptr & CACHE_LINE_MASK) != (eptr & CACHE_LINE_MASK))
-#ifdef PROTOCOL_OFF
-        do_invalidate(end);
-#else 
-        check_invalidate(begin);
-#endif
 }
 
 void * memcpy(void * dst, const void * src, size_t n) {
@@ -339,22 +321,42 @@ void *run_cache_agent(void *arg) {
     return arg;
 }
 
-void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
-    cxl_hc_range = cxl_hc_rg;
-    cxl_nhc_range = cxl_nhc_rg;
-#ifdef USE_NUMA
-    run_on_local_numa();
-    cxl_nhc_buf = (char *)remote_numa_alloc(cxl_nhc_range);
-    cxl_hc_buf = (char *)remote_numa_alloc(sizeof(cxl_hc_range));
-#else
+void alloc_cxl_memory() {
     cxl_nhc_buf = (char *)mmap((void*)CXL_NHC_START, cxl_nhc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+    cxl_hc_buf = (char *)mmap(NULL, cxl_hc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if ((uintptr_t)cxl_nhc_buf == -1) {
         perror("mmap");
         exit(1);
     }
-    cxl_hc_buf = new char[cxl_hc_range];
+    if ((uintptr_t)cxl_hc_buf == -1) {
+        perror("mmap");
+        exit(1);
+    }
+#ifdef CXL_NUMA_MODE
+    if(numa_run_on_node(LOCAL_NUMA_ID)) {
+        perror("numa_run_on_node");
+        exit(1);
+    }
+    unsigned long nodemask = 0;
+    nodemask |= 1 << REMOTE_NUMA_ID;
+    if(mbind(cxl_nhc_buf, cxl_nhc_range, MPOL_BIND, &nodemask, sizeof(nodemask) * 8, 0) < 0) {
+        perror("mbind");
+        exit(1);
+    }
+
+    if(mbind(cxl_hc_buf, cxl_hc_range, MPOL_BIND, &nodemask, sizeof(nodemask) * 8, 0) < 0) {
+        perror("mbind");
+        exit(1);
+    }
 #endif
+}
+
+void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
+    cxl_hc_range = cxl_hc_rg;
+    cxl_nhc_range = cxl_nhc_rg;
+    alloc_cxl_memory();
     node_local_buf = new char[sizeof(CacheInfo) * NODE_COUNT];
+
 
     size_t cxl_hc_off = 0;
     assert(cxl_hc_range > sizeof(LogManager[NODE_COUNT]));
@@ -380,7 +382,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
     unsigned cpu_id = 0;
     for (unsigned i=0; i<NODE_COUNT; i++) {
         int ret;
-#if defined(CACHE_AGENT_AFFINITY) && defined(USE_NUMA)
+#if defined(CACHE_AGENT_AFFINITY) && defined(CXL_NUMA_MODE)
         ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_ID);
         assert(!ret);
 #elif defined(CACHE_AGENT_AFFINITY)
@@ -408,10 +410,8 @@ void rac_shutdown() {
     for (int i = 0; i < NODE_COUNT; i++)
         cache_infos[i].~CacheInfo();
     delete thread_ops;
-#ifndef USE_NUMA
-    delete[] cxl_hc_buf;
+    munmap(cxl_hc_buf, cxl_hc_range);
     munmap(cxl_nhc_buf, cxl_nhc_range);
-#endif
     delete[] node_local_buf;
 }
 

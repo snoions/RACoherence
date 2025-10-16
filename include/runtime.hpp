@@ -55,6 +55,25 @@ inline void rac_post_flush(void *begin, void *end) {
 #endif
 }
 
+//invalidate part of dst that partially covers cache lines
+inline void invalidate_boundaries(char *begin, char *end) {
+    uintptr_t bptr = (uintptr_t) begin;
+    uintptr_t eptr = (uintptr_t) end;
+    if (bptr & CACHE_LINE_MASK)
+#ifdef PROTOCOL_OFF
+        do_invalidate(begin);
+#else
+        check_invalidate(begin);
+#endif
+    if (eptr & CACHE_LINE_MASK &&
+        (bptr & CACHE_LINE_MASK) != (eptr & CACHE_LINE_MASK))
+#ifdef PROTOCOL_OFF
+        do_invalidate(end);
+#else
+        check_invalidate(begin);
+#endif
+}
+
 inline void rac_store_pre_invalidate(void *begin, void *end) {
 #ifdef PROTOCOL_OFF
     if (in_cxl_nhc_mem((char*)begin))
