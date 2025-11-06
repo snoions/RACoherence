@@ -16,6 +16,35 @@ namespace RACoherence {
 extern thread_local ThreadOps *thread_ops;
 
 template<typename T>
+class CXLRelaxedAtomic {
+    struct InnerData {
+        std::atomic<T> atomic_data;
+    };
+
+    InnerData *inner;
+
+public:
+    CXLRelaxedAtomic(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+
+    ~CXLRelaxedAtomic() {
+        inner->~InnerData();
+        cxlhc_free(inner, sizeof(InnerData));
+    }
+
+    inline void store(T desired) {
+        inner->atomic_data.store(desired, std::memory_order_relaxed);
+    };
+
+    inline T load() {
+        return inner->atomic_data.load(std::memory_order_relaxed);
+    };
+
+    inline T fetch_add(T arg) {
+        return inner->atomic_data.fetch_add(arg, std::memory_order_relaxed);
+    };
+};
+
+template<typename T>
 class CXLAtomic {
     struct InnerData {
         std::atomic<T> atomic_data;
