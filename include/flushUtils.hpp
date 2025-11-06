@@ -1,6 +1,5 @@
 #ifndef _CACHE_OPS_H_
 #define _CACHE_OPS_H_
-#include <emmintrin.h>
 
 #include "config.hpp"
 

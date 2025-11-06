@@ -78,8 +78,6 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
     idx_t bound = flip(0);
 
-    clock_t rel_clk = 0;
-
     alignas(CACHE_LINE_SIZE)
     std::atomic<Log *>pub[LOG_BUF_SIZE];
 
