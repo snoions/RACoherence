@@ -11,15 +11,15 @@ using namespace RACoherence;
 
 CXLPool *cxl_pool;
 
-void *run_microbench(void *) {
-    Microbench(*cxl_pool).run();
+void *run_microbench(void *arg) {
+    Microbench(*cxl_pool, *(WORKLOAD_TYPE*)arg).run();
     return nullptr;
 }
 
 int main() {
     rac_init(0, CXL_HC_RANGE, CXL_NHC_RANGE);
     cxl_pool = new (cxlnhc_malloc(sizeof(CXLPool))) CXLPool(); // new (cxl_nhc_buf) CXLPool();
-
+    WORKLOAD_TYPE workload;
     int worker_count = NODE_COUNT * WORKER_PER_NODE;
     pthread_t microbench_group[worker_count];
 
@@ -27,7 +27,7 @@ int main() {
     for (unsigned i=0; i<NODE_COUNT; i++) {
         for (int j=0; j<WORKER_PER_NODE;j++) {
             int index = i * WORKER_PER_NODE + j;
-            int ret = rac_thread_create(i, &microbench_group[index], run_microbench, nullptr);
+            int ret = rac_thread_create(i, &microbench_group[index], run_microbench, &workload);
             assert(!ret);
         }
     }
