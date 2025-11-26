@@ -18,7 +18,6 @@ constexpr uintptr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
 // assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 
-constexpr unsigned NODE_COUNT = 4;
 constexpr unsigned WORKER_PER_NODE = 3;
 constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6); // Should be power of two
 constexpr uintptr_t CXL_NHC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should start at the highest virtual bit for easy comparison
@@ -29,6 +28,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 constexpr int LOCAL_NUMA_ID=0;
 constexpr int REMOTE_NUMA_ID=1;
 
+#define NODE_COUNT 4
 // whether to collect statistics
 //#define STATS(s) {s;}
 #define STATS(s)
@@ -45,7 +45,7 @@ constexpr int REMOTE_NUMA_ID=1;
 // remove all flush instructions
 //#define NO_FLUSH
 
-// simulate CXL memory with remote NUMA nodes
+// allocate CXL memory from remote NUMA node
 #define CXL_NUMA_MODE
 
 // consumers invalidate eagerly

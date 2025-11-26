@@ -29,11 +29,13 @@ set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_
 add_library(racoherence SHARED ${RUNTIME_LIB})
 set_property(TARGET racoherence PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_compile_options(racoherence PUBLIC
+    ${RAC_CONFIG_FLAGS}
     -ftls-model=initial-exec
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
 )
 add_library(racoherence_static STATIC ${RUNTIME_LIB})
 target_compile_options(racoherence_static PUBLIC
+    ${RAC_CONFIG_FLAGS}
     -ftls-model=local-exec
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
 )
@@ -70,7 +72,7 @@ add_dependencies(racoherence jemalloc_proj)
 target_link_libraries(racoherence PRIVATE ${INSTALL_DIR}/lib/libjemalloc.so)
 target_include_directories(racoherence PRIVATE ${INSTALL_DIR}/include)
 add_dependencies(racoherence_static jemalloc_proj)
-target_link_libraries(racoherence_static PRIVATE ${INSTALL_DIR}/lib/libjemalloc.a)
+target_link_libraries(racoherence_static PRIVATE ${INSTALL_DIR}/lib/libjemalloc.so)
 target_include_directories(racoherence_static PRIVATE ${INSTALL_DIR}/include)
 
 # Threads library
