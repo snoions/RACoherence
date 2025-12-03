@@ -33,7 +33,7 @@ struct CacheInfo {
                     for (unsigned i = 0; i < GROUP_SIZE * CL_UNIT_GRANULARITY; i++)
                         do_invalidate((char *)cl_addr + (i * CACHE_LINE_SIZE));
 #else
-                    self.inv_cls.mark_range_dirty(cl_addr, FULL_MASK << get_mask16_to_64_shift(cl_addr));
+                    inv_cls.mark_dirty(cl_addr, FULL_MASK << get_mask16_to_64_shift(cl_addr));
 #endif
                 }
             } else {
@@ -43,7 +43,7 @@ struct CacheInfo {
                     for (unsigned i = 0; i < CL_UNIT_GRANULARITY; i++)
                         do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
 #else
-                self.inv_cls.mark_range_dirty(get_ptr(cg),  get_mask16(cg) << get_mask16_to_64_shift(cg));
+                inv_cls.mark_dirty(get_ptr(cg),  get_mask16(cg) << get_mask16_to_64_shift(cg));
 #endif
             }
         }

@@ -15,7 +15,7 @@ thread_local ThreadOps *thread_ops;
 std::atomic<bool> complete {false};
 std::atomic<unsigned> curr_tid {0};
 pthread_t cacheAgent_group[NODE_COUNT];
-char *cxl_nhc_buf = (char *) ~0;// initailize to invalid address
+char *cxl_nhc_buf = (char *) ~0;// set to invalid address before being initialized
 size_t cxl_nhc_range;
 char *cxl_hc_buf;
 size_t cxl_hc_range;
@@ -170,7 +170,6 @@ void * memmove(void *dst, const void *src, size_t n) {
         check_range_invalidate(src_begin, src_end);
     if (is_in_cxl_nhc_dst)
         invalidate_boundaries(dst_begin, dst_end); 
-    }
 #endif
     if (((uintptr_t)memmove_real) < 2) {
         if (((uintptr_t)dst) < ((uintptr_t)src))
@@ -356,7 +355,6 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
     cxl_nhc_range = cxl_nhc_rg;
     alloc_cxl_memory();
     node_local_buf = new char[sizeof(CacheInfo) * NODE_COUNT];
-
 
     size_t cxl_hc_off = 0;
     assert(cxl_hc_range > sizeof(LogManager[NODE_COUNT]));

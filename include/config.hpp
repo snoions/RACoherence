@@ -14,7 +14,6 @@ constexpr uintptr_t CL_UNIT_GRANULARITY = 1ull << CL_UNIT_GRANULARITY_SHIFT;
 constexpr uintptr_t CL_UNIT_SIZE = CACHE_LINE_SIZE * CL_UNIT_GRANULARITY;
 constexpr uintptr_t CL_UNIT_SHIFT = CACHE_LINE_SHIFT + CL_UNIT_GRANULARITY_SHIFT; // log(CL_UNIT_SIZE)
 constexpr uintptr_t CL_UNIT_MASK = CL_UNIT_SIZE-1;
-constexpr uintptr_t CACHE_LINES_PER_PAGE = PAGE_SIZE / CACHE_LINE_SIZE;
 // assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 

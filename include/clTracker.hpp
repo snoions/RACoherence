@@ -15,14 +15,16 @@
 //TODO: track cl unit instead of cache line
 namespace RACoherence {
 
-constexpr uint64_t L1_BITS = 19;                      // [38:20]
-constexpr uint64_t L2_BITS = 8;                       // [19:12]
+constexpr uint64_t LEAF_BITS = 6;
+constexpr uint64_t L1_BITS = 19;
+constexpr uint64_t L2_BITS = 8;
+constexpr uint64_t LEAF_ENTRIES = 1ull << LEAF_BITS;
 constexpr uint64_t L1_ENTRIES = 1ull << L1_BITS;
 constexpr uint64_t L2_ENTRIES = 1ull << L2_BITS;
 
 //class CacheLineTableLeaf {
 //public:
-//    uint8_t dirty[CACHE_LINES_PER_PAGE];
+//    uint8_t dirty[LEAF_ENTRIES];
 //
 //    void mark_range_dirty(uint64_t mask) {
 //        while(mask) {
@@ -47,7 +49,7 @@ constexpr uint64_t L2_ENTRIES = 1ull << L2_BITS;
 
 class CacheLineTableLeaf {
 public:
-    //non-atomic is safe assuming no races on cache line, so uint8_t dirty[CACHE_LINES_PER_PAGE] is another option
+    //non-atomic is safe assuming no races on cache line, so uint8_t dirty[LEAF_ENTRIES] is another option
     std::atomic<uint64_t> dirty_mask{0};
 
     inline uint64_t mark_dirty_with_mask(uint64_t mask) {
@@ -103,7 +105,7 @@ public:
         get_or_create_leaf(l1_idx, l2_idx)->mark_dirty(line);
     }
 
-    void mark_range_dirty(uintptr_t va, uint64_t mask) {
+    void mark_dirty(uintptr_t va, uint64_t mask) {
         uint64_t l1_idx, l2_idx, line;
         split_va(va, l1_idx, l2_idx, line);
         get_or_create_leaf(l1_idx, l2_idx)->mark_dirty_with_mask(mask);
@@ -139,8 +141,9 @@ public:
     bool invalidate_range_if_dirty(uintptr_t begin, uintptr_t end) {
         bool any_dirty = false;
 
-        // Align begin to cache line boundary
-        uintptr_t addr = begin & ~(CACHE_LINE_SIZE - 1);
+        // Align begin to cache unit boundary
+        uintptr_t addr = begin & ~CL_UNIT_MASK;
+	const unsigned leaf_shift = CL_UNIT_SHIFT + LEAF_BITS;
 
         while (addr < end) {
             uint64_t l1_idx, l2_idx, line_idx;
@@ -149,30 +152,30 @@ public:
             auto* l2 = l1[l1_idx].load(std::memory_order_acquire);
             if (!l2) {
                 // Jump to next leaf
-                addr = ((addr >> 12) + 1) << 12;
+                addr = ((addr >> leaf_shift) + 1) << leaf_shift;
                 continue;
             }
 
             auto* leaf = l2->leaves[l2_idx].load(std::memory_order_acquire);
             if (!leaf) {
                 // Jump to next leaf
-                addr = ((addr >> 12) + 1) << 12;
+                addr = ((addr >> leaf_shift) + 1) << leaf_shift;
                 continue;
             }
 
             // Calculate how many cache lines in this page we need to process
             uint64_t start_line = line_idx;
-            uint64_t end_line = CACHE_LINES_PER_PAGE;
+            uint64_t end_line = LEAF_ENTRIES;
 
-            uintptr_t page_end_va = ((addr >> 12) + 1) << 12; // next page boundary
+            uintptr_t page_end_va = ((addr >> leaf_shift) + 1) << leaf_shift; // next page boundary
             if (page_end_va > end) {
                 // Clamp to range end
-                end_line = (end >> 6) & (CACHE_LINES_PER_PAGE - 1);
+                end_line = (end >> LEAF_BITS) & (LEAF_ENTRIES - 1);
             }
 
             // Construct a mask of all lines in [start_line, end_line)
             uint64_t mask;
-            if (end_line == 64) {
+            if (end_line == LEAF_ENTRIES) {
                 mask = ~0ull << start_line;   // full tail mask
             } else {
                 mask = ((1ull << end_line) - 1) & ~((1ull << start_line) - 1);
@@ -190,7 +193,7 @@ public:
                 uint64_t bits = was_dirty;
                 while (bits) {
                     unsigned bit = __builtin_ctzll(bits);  // index of lowest set bit
-                    uintptr_t line_va = (addr & ~((1ull << 12) - 1)) + (bit * CACHE_LINE_SIZE);
+                    uintptr_t line_va = (addr & ~((1ull << leaf_shift) - 1)) + (bit * CL_UNIT_SIZE);
                     do_invalidate((char*)line_va);
                     bits &= bits - 1; // clear lowest set bit
                 }
@@ -240,9 +243,11 @@ private:
     }
 
     static inline void split_va(uintptr_t va, uint64_t &l1, uint64_t &l2, uint64_t &line) {
-        line = (va >> 6) & (CACHE_LINES_PER_PAGE - 1);          // 6 bits
-        l2   = (va >> 12) & (L2_ENTRIES - 1);                   // 8 bits
-        l1   = (va >> 20) & (L1_ENTRIES - 1);                   // 19 bits
+        line = (va >> CL_UNIT_SHIFT) & (LEAF_ENTRIES - 1);          // 6 bit
+	const uintptr_t shift2 = CL_UNIT_SHIFT + LEAF_BITS;
+        l2   = (va >> shift2) & (L2_ENTRIES - 1);                   // 8 bits
+	const uintptr_t shift1 = shift2 + L2_BITS;
+        l1   = (va >> shift1) & (L1_ENTRIES - 1);                   // 19 bits
     }
 };
 

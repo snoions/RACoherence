@@ -16,7 +16,7 @@ constexpr int SEARCH_ITERS = 5; // only look a limited number of iterations
 constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
 
 class LocalCLTable {
-  /** Each entry here can store 16 cache lines. */
+  /** Each entry here can store 16 cache line units. */
 
     cl_group_t table[TABLE_ENTRIES] = {};
     int length_entry_count = 0; //TODO: temporary hack, improve later
