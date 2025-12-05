@@ -47,6 +47,9 @@ constexpr int REMOTE_NUMA_ID=1;
 // allocate CXL memory from remote NUMA node
 #define CXL_NUMA_MODE
 
+// producers flush eagerly
+//#define EAGER_FLUSh
+
 // consumers invalidate eagerly
 #define EAGER_INVALIDATE
 

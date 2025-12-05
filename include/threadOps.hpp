@@ -36,6 +36,7 @@ class ThreadOps {
             if (!cg)
                 continue;
             curr_log->write(cg);
+#ifndef EAGER_FLUSH
             if (is_length_based(cg)) {
                 for (auto cl_addr: LengthCLRange(cg))
                     // should be unrolled, manually unroll if not
@@ -47,6 +48,7 @@ class ThreadOps {
                     for (unsigned i = 0; i < CL_UNIT_GRANULARITY; i++)
                         do_flush((char *)cl_addr + i * CACHE_LINE_SIZE);
             }
+#endif
         }
 
         flush_fence();

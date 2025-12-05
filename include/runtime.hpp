@@ -46,10 +46,11 @@ inline bool in_cxl_nhc_mem(void *addr) {
 }
 
 inline void rac_post_flush(void *begin, void *end) {
-#ifdef PROTOCOL_OFF
+#if defined(PROTOCOL_OFF) || defined(EAGER_FLUSH)
     if (in_cxl_nhc_mem((char*)begin))
         do_range_flush((char *)begin, (char *)end - (char *)begin);
-#else
+#endif
+#if !defined(PROTOCOL_OFF)
     if (in_cxl_nhc_mem((char*)begin))
         thread_ops->log_range_store((char *)begin, (char *)end);
 #endif
@@ -75,12 +76,20 @@ inline void invalidate_boundaries(char *begin, char *end) {
 }
 
 inline void rac_store_pre_invalidate(void *begin, void *end) {
+#if defined(PROTOCOL_OFF) || !defined(EAGER_VALIDATE)
+    if (in_cxl_nhc_mem((char*)begin))
+        invalidate_boundaries((char*)begin, (char*)end);
+#endif
+}
+
+inline void rac_load_pre_invalidate(void *begin, void *end) {
 #ifdef PROTOCOL_OFF
     if (in_cxl_nhc_mem((char*)begin))
-        invalidate_boundaries((char*)begin, (char*)end);
-#elif !defined(EAGER_INVALIDATE)
+        do_range_invalidate((char*)begin, (char*)end);
+#endif
+#ifndef EAGER_VALIDATE
     if (in_cxl_nhc_mem((char*)begin))
-        invalidate_boundaries((char*)begin, (char*)end);
+        check_range_invalidate((char*)begin, (char*)end);
 #endif
 }
 
@@ -126,22 +135,51 @@ using namespace RACoherence;
             do_flush((char *)addr); \
     }
 #elif defined(EAGER_INVALIDATE)
-#define RACSTORE(size) \
-    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        if (in_cxl_nhc_mem(addr)) { \
-            thread_ops->log_store((char *)addr); \
-        } \
-        *((uint ## size ## _t*)addr) = val; \
-    }
+    #ifdef EAGER_FLUSH
+    #define RACSTORE(size) \
+        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
+            if (in_cxl_nhc) { \
+                thread_ops->log_store((char *)addr); \
+            } \
+            *((uint ## size ## _t*)addr) = val; \
+            if (in_cxl_nhc) \
+                do_flush((char *)addr); \
+        }
+    #else
+    #define RACSTORE(size) \
+        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
+            if (in_cxl_nhc) { \
+                thread_ops->log_store((char *)addr); \
+            } \
+            *((uint ## size ## _t*)addr) = val; \
+        }
+    #endif
 #else 
-#define RACSTORE(size) \
-    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        if (in_cxl_nhc_mem(addr)) { \
-            check_invalidate((char *)addr); \
-            thread_ops->log_store((char *)addr); \
-        } \
-        *((uint ## size ## _t*)addr) = val; \
-    }
+    #ifdef EAGER_FLUSH
+    #define RACSTORE(size) \
+        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
+            if (in_cxl_nhc) { \
+                check_invalidate((char *)addr); \
+                thread_ops->log_store((char *)addr); \
+            } \
+            *((uint ## size ## _t*)addr) = val; \
+            if (in_cxl_nhc) \
+                 do_flush((char *)addr); \
+        }
+    #else
+    #define RACSTORE(size) \
+        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
+            if (in_cxl_nhc) { \
+                check_invalidate((char *)addr); \
+                thread_ops->log_store((char *)addr); \
+            } \
+            *((uint ## size ## _t*)addr) = val; \
+        }
+    #endif
 #endif
 
 RACSTORE(8)
