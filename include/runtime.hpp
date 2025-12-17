@@ -85,7 +85,7 @@ inline void rac_store_pre_invalidate(void *begin, void *end) {
 inline void rac_load_pre_invalidate(void *begin, void *end) {
 #ifdef PROTOCOL_OFF
     if (in_cxl_nhc_mem((char*)begin))
-        do_range_invalidate((char*)begin, (char*)end);
+        do_range_invalidate((char*)begin, (char*)end-(char*)begin);
 #endif
 #ifndef EAGER_VALIDATE
     if (in_cxl_nhc_mem((char*)begin))
