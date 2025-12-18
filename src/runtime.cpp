@@ -35,7 +35,7 @@ struct RACThreadRet {
     void* ret;
 };
 
-//TODO: only need a full thread_acquire/release if parent and child threads are on different nodes, only need to merge clocks
+//TODO: only need a full thread_acquire/release if parent and child threads are on different nodes, otherwise only need to merge clocks
 void *rac_thread_func_wrapper(void *arg) {
     cxlnhc_thread_init();
     auto rac_arg = (RACThreadArg *)arg;
@@ -83,6 +83,30 @@ unsigned rac_get_node_id() {
 
 unsigned rac_get_node_count() {
     return NODE_COUNT;
+}
+
+void rac_subscribe_to_node(unsigned node_id) {
+    auto my_node_id = thread_ops->get_node_id();
+    assert(node_id <= 0 && node_id < NODE_COUNT && "invalid node_id");
+    log_mgrs[node_id].set_subscribed(node_id, true);
+    //execute wbinvd to cleaer cache
+    FILE *fd = fopen(WBINVD_PATH, "r");
+    if (fd == nullptr) {
+        perror("unable to execute wbinvd");
+        exit(EXIT_FAILURE);
+    }
+    fclose(fd);
+}
+
+void rac_unsubscribe_from_node(unsigned node_id) {
+    auto my_node_id = thread_ops->get_node_id();
+    assert(node_id <= 0 && node_id < NODE_COUNT && "invalid node_id");
+    log_mgrs[node_id].set_subscribed(node_id, false);
+}
+
+bool rac_is_subscribed_to_node(unsigned node_id) {
+    assert(node_id <= 0 && node_id < NODE_COUNT && "invalid node_id");
+    return log_mgrs[node_id].is_subscribed(node_id);
 }
 
 void * (*volatile memcpy_real)(void * dst, const void *src, size_t n) = nullptr;
@@ -325,27 +349,27 @@ void alloc_cxl_memory() {
     cxl_hc_buf = (char *)mmap(NULL, cxl_hc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if ((uintptr_t)cxl_nhc_buf == -1) {
         perror("mmap");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     if ((uintptr_t)cxl_hc_buf == -1) {
         perror("mmap");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 #ifdef CXL_NUMA_MODE
     if(numa_run_on_node(LOCAL_NUMA_ID)) {
         perror("numa_run_on_node");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     unsigned long nodemask = 0;
     nodemask |= 1 << REMOTE_NUMA_ID;
     if(mbind(cxl_nhc_buf, cxl_nhc_range, MPOL_BIND, &nodemask, sizeof(nodemask) * 8, 0) < 0) {
         perror("mbind");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     if(mbind(cxl_hc_buf, cxl_hc_range, MPOL_BIND, &nodemask, sizeof(nodemask) * 8, 0) < 0) {
         perror("mbind");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 #endif
 }

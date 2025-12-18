@@ -27,6 +27,9 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 constexpr int LOCAL_NUMA_ID=0;
 constexpr int REMOTE_NUMA_ID=1;
 
+// path to the file interface exposing wbinvd
+#define WBINVD_PATH "/proc/wbinvd"
+
 #define NODE_COUNT 4
 // whether to collect statistics
 //#define STATS(s) {s;}

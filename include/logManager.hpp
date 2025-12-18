@@ -22,10 +22,10 @@ constexpr size_t LOG_BUF_SIZE = 1ull << 7;
 
 class LogManager;
 
-//index into LogManager's pub array that does not wrap around
+//index into LogManager's pub array, monotonically increases
 using idx_t = size_t;
 
-inline idx_t flip(idx_t idx) {
+inline idx_t next_round(idx_t idx) {
     return idx + LOG_BUF_SIZE;
 }
 inline size_t get_idx(idx_t idx){
@@ -76,7 +76,8 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     unsigned node_id;
 
     spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
-    idx_t bound = flip(0);
+
+    idx_t bound = next_round(0);
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<Log *>pub[LOG_BUF_SIZE];
@@ -86,7 +87,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> tail{0};
 
-    // CacheAligned ensures each element is aligned to cache line boundary
+    // ensure atomic and mutex arrays are aligned to cache line boundaries
     CacheAligned<std::atomic<idx_t>> heads[NODE_COUNT];
 
     CacheAligned<std::mutex> head_mtxs[NODE_COUNT];
@@ -94,11 +95,17 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     alignas(CACHE_LINE_SIZE)
     CLHMutex gc_mtx;
 
+    // try aligning each bool to different cache line if contention is high
+    alignas(CACHE_LINE_SIZE)
+    std::atomic<bool> subscribers[NODE_COUNT];
+
     inline void perform_gc() {
-        idx_t new_b = flip(bound);
+        idx_t new_b = next_round(bound);
         for (unsigned i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
-            auto h = flip(heads[i].load(std::memory_order_relaxed));
-            if (new_b == flip(bound))
+            if (!subscribers[i].load(std::memory_order_acquire))
+                continue;
+            auto h = next_round(heads[i].load(std::memory_order_relaxed));
+            if (new_b == next_round(bound))
                 new_b = h;
             else if (bound <= h && h < new_b)
                 new_b = h;
@@ -111,7 +118,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
         assert(bound <= new_b);
         for (idx_t i = bound; i != new_b; i++) {
-            //handle spurious failures
+            //handle spurious failures from enqueue
             while(!freelist.enqueue(pub[get_idx(i)].load(std::memory_order_relaxed)));
         }
         bound = new_b;
@@ -120,11 +127,21 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 public:
 
     LogManager(unsigned nid): node_id(nid) {
+        for (unsigned i = 0; i < NODE_COUNT; i++)
+            subscribers[i].store(true);
         for (unsigned i = 0; i < LOG_BUF_SIZE; i++) {
             pub[i].store(&buf[i], std::memory_order_relaxed);
             auto ok = freelist.enqueue(&buf[i]);
             assert(ok);
         }
+    }
+
+    inline void set_subscribed(unsigned nid, bool subscribed) {
+        subscribers[nid].store(subscribed, std::memory_order_release);
+    }
+
+    inline bool is_subscribed(unsigned nid) {
+        return subscribers[nid].load(std::memory_order_acquire);
     }
 
     Log *get_new_log() {

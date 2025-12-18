@@ -12,6 +12,8 @@ void CacheAgent::run() {
             if (!lk.try_lock())
                 continue;
 #endif
+            if (!log_mgrs[i].is_subscribed(node_id))
+                continue;
 
             for (unsigned j=0; j<LOG_MAX_BATCH; j++) {
                 Log* log = log_mgrs[i].take_head(node_id);

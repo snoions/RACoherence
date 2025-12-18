@@ -36,6 +36,12 @@ unsigned rac_get_node_id();
 
 unsigned rac_get_node_count();
 
+void rac_subscribe_to_node(unsigned node_id);
+
+void rac_unsubscribe_from_node(unsigned node_id);
+
+bool rac_is_subscribed_to_node(unsigned node_id);
+
 int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg);
 
 int rac_thread_join(unsigned nid, pthread_t thread, void **thread_ret);

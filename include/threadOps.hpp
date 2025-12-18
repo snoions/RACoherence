@@ -85,11 +85,16 @@ class ThreadOps {
     }
 
     void wait_for_consume(const VectorClock &target) {
+        unsigned i = 0;
         while(true) {
             bool uptodate = true;
-            for (unsigned i=0; i<NODE_COUNT; i++) {
+            for (; i<NODE_COUNT; i++) {
+                if (i == node_id)
+                    continue;
+                if (!log_mgrs[i].is_subscribed(node_id))
+                    continue;
                 auto curr = cache_info->get_clock(i);
-                if (i != node_id && curr < target[i]) {
+                if (curr < target[i]) {
                     uptodate = false;
                     LOG_DEBUG("node " << node_id << " block on acquire, index=" << i << ", target=" << target[i] << ", current=" << curr)
                     break;
