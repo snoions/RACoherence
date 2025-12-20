@@ -2,3 +2,6 @@
 	path = deps/jemalloc
 	url = https://github.com/jemalloc/jemalloc.git
     ignore = all
+[submodule "deps/wbinvd"]
+	path = deps/wbinvd
+	url = https://github.com/batmac/wbinvd.git

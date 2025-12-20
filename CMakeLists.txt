@@ -81,6 +81,19 @@ find_package(Threads REQUIRED)
 target_link_libraries(racoherence PRIVATE Threads::Threads)
 target_link_libraries(racoherence_static PRIVATE Threads::Threads)
 
+set(WBINVD_NAME "wbinvd")
+# WBINVD kernel module
+add_custom_target(
+    insert_wbinvd_module
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deps/wbinvd"
+    COMMAND make
+    COMMAND sudo rmmod ${WBINVD_NAME}.ko 2>/dev/null | true
+    COMMAND sudo insmod ${WBINVD_NAME}.ko
+    COMMAND sudo chmod +r /proc/${WBINVD_NAME}
+    COMMENT "Building wbinvd module, available at /proc/${WBINVD_NAME}"
+)
+
+
 # Other libraries
 target_link_libraries(racoherence PRIVATE ${CMAKE_DL_LIBS})
 target_link_libraries(racoherence_static PRIVATE ${CMAKE_DL_LIBS})
