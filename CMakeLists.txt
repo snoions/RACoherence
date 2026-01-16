@@ -10,11 +10,6 @@ if (NOT CMAKE_BUILD_TYPE)
     message(STATUS "CMAKE_BUILD_TYPE default:" ${CMAKE_BUILD_TYPE})
 endif()
 
-add_compile_options(
-    -ftls-model=initial-exec
-    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
-)
-
 set(RUNTIME_LIB
       src/cacheAgent.cpp
       src/clh_mutex.cpp
@@ -26,16 +21,17 @@ set(RUNTIME_LIB
     )
 set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
+separate_arguments(RAC_FLAG_LIST NATIVE_COMMAND ${RAC_CONFIG_FLAGS})
 add_library(racoherence SHARED ${RUNTIME_LIB})
 set_property(TARGET racoherence PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_compile_options(racoherence PUBLIC
-    ${RAC_CONFIG_FLAGS}
+    ${RAC_FLAG_LIST}
     -ftls-model=initial-exec
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
 )
 add_library(racoherence_static STATIC ${RUNTIME_LIB})
 target_compile_options(racoherence_static PUBLIC
-    ${RAC_CONFIG_FLAGS}
+    ${RAC_FLAG_LIST}
     -ftls-model=local-exec
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
 )
@@ -51,8 +47,8 @@ if (ENABLE_ASAN)
     add_link_options(-fsanitize=address)
 endif()
 
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer")
