@@ -431,8 +431,13 @@ void rac_shutdown() {
 #endif
     for (int i = 0; i < NODE_COUNT; i++)
         log_mgrs[i].~LogManager();
-    for (int i = 0; i < NODE_COUNT; i++)
+    for (int i = 0; i < NODE_COUNT; i++) {
+        STATS(
+            std::cout << "node " << i << " statistics:" << std::endl;
+            cache_infos[i].dump_stats()
+	)
         cache_infos[i].~CacheInfo();
+    }
     delete thread_ops;
     munmap(cxl_hc_buf, cxl_hc_range);
     munmap(cxl_nhc_buf, cxl_nhc_range);

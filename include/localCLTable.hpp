@@ -11,14 +11,10 @@
 
 namespace RACoherence {
 
-constexpr int TABLE_ENTRIES = 1ull << 10;
-constexpr int SEARCH_ITERS = 5; // only look a limited number of iterations
-constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
-
 class LocalCLTable {
   /** Each entry here can store 16 cache line units. */
 
-    cl_group_t table[TABLE_ENTRIES] = {};
+    cl_group_t table[LOCAL_CL_TABLE_ENTRIES] = {};
     int length_entry_count = 0; //TODO: temporary hack, improve later
     struct EntryBuffer {
         uintptr_t cl_addr = 0;
@@ -49,7 +45,7 @@ class LocalCLTable {
 
         //scan table for overlaps
         int insert_pos = -1;
-        for(int i = 0; i < TABLE_ENTRIES; i++) {
+        for(int i = 0; i < LOCAL_CL_TABLE_ENTRIES; i++) {
             cl_group_t val = table[i];
             uint64_t val_index = get_index(val);
             if (!val) {
@@ -81,8 +77,8 @@ class LocalCLTable {
     inline bool insert_mask(uintptr_t group_index, uint64_t mask) {
         using namespace cl_group;
         //alternatively starting searching from 0
-        for(int i = 0; i < SEARCH_ITERS; i++) {
-            int tableindex = (group_index + i) & (TABLE_ENTRIES - 1);
+        for(int i = 0; i < LOCAL_CL_TABLE_SEARCH_ITERS; i++) {
+            int tableindex = (group_index + i) & (LOCAL_CL_TABLE_ENTRIES - 1);
             uint64_t value = table[tableindex];
             value = value ? value : group_index;
             //assert(!is_length_based(value));
@@ -159,7 +155,9 @@ public:
                 return true;
         begin--;
         return false;
+	// try to use insert_length if possible currently shows no speedup
         //using namespace cl_group;
+	//constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
 
         //cl_group_idx end_index = end >> GROUP_SIZE_SHIFT;
         //unsigned begin_pos = begin & GROUP_SIZE_MASK;
@@ -226,7 +224,7 @@ public:
     }
 
     inline cl_group_t *end() {
-        return &table[TABLE_ENTRIES];
+        return &table[LOCAL_CL_TABLE_ENTRIES];
     }
 
     inline void clear_table() {

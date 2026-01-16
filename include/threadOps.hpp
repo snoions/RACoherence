@@ -9,7 +9,7 @@
 #include "localCLTable.hpp"
 
 namespace RACoherence {
-
+    
 class ThreadOps {
     //CXL mem shared data
     LogManager *log_mgrs;
@@ -22,19 +22,46 @@ class ThreadOps {
     //thread local data
     VectorClock thread_clock;
     LocalCLTable dirty_cls;
-    uintptr_t recent_cl;
+    uintptr_t recent_cl = 0;
+#ifdef DELAY_PUBLISH
+    Log *curr_log = nullptr;
+#endif
 
-    clock_t write_to_log(bool is_release) {
-        Log *curr_log;
-        while(!(curr_log = log_mgrs[node_id].get_new_log())) {
-            STATS(blocked_count++)
+    inline void set_to_new_log(Log *& log) {
+        while(!(log = log_mgrs[node_id].get_new_log())) {
             sched_yield();
         }
+    }
+
+    inline clock_t publish_log(Log *log, bool is_release) {
+        flush_fence();
+        auto clk_val = log_mgrs[node_id].produce_tail(log, is_release);
+        dirty_cls.clear_table();
+	STATS(cache_info->produced_count++)
+        LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count)
+	return clk_val;
+    }
+
+    clock_t write_to_log(bool is_release) {
         using namespace cl_group;
+#ifdef DELAY_PUBLISH
+	clock_t clk_val = 0;
+	if (!curr_log)
+	    set_to_new_log(curr_log);
+#else
+        Log *curr_log;
+        set_to_new_log(curr_log);
+#endif
 
         for(auto cg: dirty_cls) {
             if (!cg)
                 continue;
+#ifdef DELAY_PUBLISH
+            if (curr_log->is_full()) {
+                clk_val = publish_log(curr_log, false);
+		set_to_new_log(curr_log);
+            }
+#endif
             curr_log->write(cg);
 #ifndef EAGER_FLUSH
             if (is_length_based(cg)) {
@@ -50,12 +77,15 @@ class ThreadOps {
             }
 #endif
         }
-
-        flush_fence();
-        clock_t clk_val = log_mgrs[node_id].produce_tail(curr_log, is_release);
-        dirty_cls.clear_table();
-        LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count++)
+#ifdef DELAY_PUBLISH
+	if (is_release) {
+             clk_val = publish_log(curr_log, true);
+             curr_log = nullptr;
+        }
         return clk_val;
+#else
+        return publish_log(curr_log, is_release);
+#endif
     }
 
     void help_consume(const VectorClock &target) {
@@ -70,7 +100,7 @@ class ThreadOps {
 
             while(val < target[i]) {
                 Log *log;
-                //log might be null here because of yet to be produced loogs before the produced target log
+                //log might be null here because of yet to be produced logs before the produced target log
                 while(!(log = log_mgrs[i].take_head(node_id)));
                 cache_info->process_log(*log);
                 if (log->is_release()) {
@@ -78,7 +108,8 @@ class ThreadOps {
                     cache_info->update_clock(i, val);
                 }
                 log_mgrs[i].consume_head(node_id);
-                LOG_DEBUG("node " << node_id << " consume log " << ++cache_info->consumed_count[i] << " from " << i)
+                STATS(cache_info->consumed_count[i]++)
+                LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
             }
 
         }
@@ -108,7 +139,7 @@ class ThreadOps {
 
 public:
     ThreadOps() = default;
-    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid), recent_cl(0) {}
+    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid) {}
     ThreadOps &operator=(const ThreadOps &other) = default;
 
     unsigned get_node_id() { return node_id; }

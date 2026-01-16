@@ -68,8 +68,21 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 // pin each cache agent to a core
 #define CACHE_AGENT_AFFINITY
 
+// delay publishing until a log is full
+//#define DELAY_PUBLISH
+
 // use buffer in local cl tables
 //#define LOCAL_CL_TABLE_BUFFER
+
+// number of entries in local cl table
+#ifndef LOCAL_CL_TABLE_ENTRIES
+#define LOCAL_CL_TABLE_ENTRIES (1 << 10)
+#endif
+
+// number of entries searched in local cl table per insertion
+#ifndef LOCAL_CL_TABLE_SEARCH_ITERS
+#define LOCAL_CL_TABLE_SEARCH_ITERS 5
+#endif
 
 // use dlmalloc for as allocator for CXL hardware coherent memory
 //#define HC_USE_DLMALLOC

@@ -47,9 +47,12 @@ class alignas(CACHE_LINE_SIZE) Log {
 
 public:
 
+    inline bool is_full() {
+	return size == LOG_SIZE;
+    }
+
     inline bool write(uintptr_t cl_addr) {
-        if (size == LOG_SIZE)
-            return false;
+        assert(size <= LOG_SIZE);
         entries[size++] = cl_addr;
         return true;
     }

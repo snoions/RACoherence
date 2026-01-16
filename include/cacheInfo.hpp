@@ -59,6 +59,12 @@ struct CacheInfo {
     inline VectorClock::clock_t get_clock(VectorClock::sized_t i) {
         return clock[i].load(std::memory_order_relaxed);
     }
+
+    void dump_stats() {
+	for (int i = 0; i < NODE_COUNT; i++)
+	    std::cout << "consumed count from node " << i << ": " << consumed_count[i].load() << std::endl;
+	std::cout << "produced count: " << produced_count.load() << std::endl;
+    }
 };
 
 } // RACoherence

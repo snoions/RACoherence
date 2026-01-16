@@ -33,7 +33,8 @@ void CacheAgent::run() {
                     auto clk = log->get_log_idx();
                     cache_info.update_clock(i, clk);
                 }
-                LOG_DEBUG("node " << node_id << " consume log " << ++cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
+                STATS(cache_info.consumed_count[i]++)
+                LOG_DEBUG("node " << node_id << " consume log " << cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
                 log_mgrs[i].consume_head(node_id);
             }
         }
