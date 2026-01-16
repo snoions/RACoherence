@@ -64,7 +64,7 @@ public:
 
     inline void store(T desired, std::memory_order order=std::memory_order_seq_cst) {
         if (order == std::memory_order_seq_cst || order == std::memory_order_release) { 
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
             flush_fence();
             inner->atomic_data.store(desired, order);
 #else
@@ -88,7 +88,7 @@ public:
     };
 
     inline T load(std::memory_order order=std::memory_order_seq_cst) {
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire) { 
             inner->mtx.lock();
             char ret = inner->atomic_data.load(order);
@@ -106,7 +106,7 @@ public:
     };
 
     inline T fetch_add(T arg, std::memory_order order=std::memory_order_seq_cst) {
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire || order == std::memory_order_release || order == std::memory_order_acq_rel) { 
             char ret;
             const VectorClock *clock;
@@ -167,13 +167,13 @@ public:
     inline void lock() {
         clh_mutex_lock(&inner->mutex);
 
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
 #endif
     };
 
     inline void unlock() {
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
         flush_fence();
 #else
         auto thread_clock = thread_ops->thread_release();
@@ -214,7 +214,7 @@ public:
     inline void lock() {
         clh_rwlock_writelock(&inner->mutex);
 
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
 #endif
     };
@@ -222,13 +222,13 @@ public:
     inline void lock_shared() {
         clh_rwlock_readlock(&inner->mutex);
 
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
 #endif
     };
 
     inline void unlock() {
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
         flush_fence();
 #else
         auto thread_clock = thread_ops->thread_release();
@@ -243,7 +243,7 @@ public:
     };
 
     inline void unlock_shared() {
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
         flush_fence();
 #else
         auto thread_clock = thread_ops->thread_release();

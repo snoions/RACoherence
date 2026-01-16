@@ -41,11 +41,11 @@ void *rac_thread_func_wrapper(void *arg) {
     auto rac_arg = (RACThreadArg *)arg;
     unsigned tid = curr_tid.fetch_add(1, std::memory_order_relaxed);
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
     thread_ops->thread_acquire(*rac_arg->parent_clock);
 #endif
     void* ret = rac_arg->func(rac_arg->arg);
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
     thread_ops->thread_release();
 #endif
     delete rac_arg;
@@ -54,7 +54,7 @@ void *rac_thread_func_wrapper(void *arg) {
 }
 
 int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg) {
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
     const VectorClock *parent_clock = &thread_ops->thread_release();
 #else
     const VectorClock *parent_clock = nullptr;
@@ -67,7 +67,7 @@ int rac_thread_join(unsigned /*nid*/, pthread_t thread, void **thread_ret) {
     RACThreadRet *rac_ret;
     int ret = pthread_join(thread, (void **)&rac_ret);
     auto child_ops = rac_ret->ops;
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
     thread_ops->thread_acquire(child_ops->get_clock());
 #endif
     if (thread_ret)
@@ -146,7 +146,7 @@ void * memcpy(void * dst, const void * src, size_t n) {
     bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc_src)
         do_range_invalidate((char *)src, n);
     if (is_in_cxl_nhc_dst)
@@ -166,7 +166,7 @@ void * memcpy(void * dst, const void * src, size_t n) {
         ret = dst;
     } else
         ret = memcpy_real(dst, src, n);
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc_dst)
         do_range_flush((char *)dst, n);
 #else
@@ -182,7 +182,7 @@ void * memmove(void *dst, const void *src, size_t n) {
     bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc_src)
         do_range_invalidate((char *)src, n);
     if (is_in_cxl_nhc_dst)
@@ -208,7 +208,7 @@ void * memmove(void *dst, const void *src, size_t n) {
         ret = dst;
     } else
         ret = memmove_real(dst, src, n);
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc_dst)
         do_range_flush((char *)dst, n);
 #else
@@ -223,7 +223,7 @@ void * memset(void *dst, int c, size_t n) {
     bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc)
         invalidate_boundaries(dst_begin, dst_end);
 #elif !defined(EAGER_INVALIDATE)
@@ -237,7 +237,7 @@ void * memset(void *dst, int c, size_t n) {
         ret = dst;
     } else
         ret = memset_real(dst, c, n);
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc)
         do_range_flush((char *)dst, n);
 #else
@@ -252,7 +252,7 @@ void bzero(void *dst, size_t n) {
     bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc)
         invalidate_boundaries(dst_begin, dst_end);
 #elif !defined(EAGER_INVALIDATE)
@@ -265,7 +265,7 @@ void bzero(void *dst, size_t n) {
         }
     } else
         bzero_real(dst, n);
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc)
         do_range_flush((char *)dst, n);
 #else
@@ -280,14 +280,14 @@ char * strcpy(char *dst, const char *src) {
     bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     size_t n = 0;
     // we cannot invalidate ahead-of-time because the length is unknown
-#if defined(PROTOCOL_OFF) || !defined(EAGER_INVALIDATE)
+#if PROTOCOL_OFF || !defined(EAGER_INVALIDATE)
     bool need_invalidate = true;
 #else
     bool need_invalidate = false;
 #endif
     if (((uintptr_t)strcpy_real) < 2 || need_invalidate) {
         while (true) {
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
             if (is_in_cxl_nhc_src)
                 do_invalidate((char *)&src[n]);
 #elif !defined(EAGER_INVALIDATE)
@@ -305,7 +305,7 @@ char * strcpy(char *dst, const char *src) {
             if (end)
                 break;
         }
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
         if (is_in_cxl_nhc_dst)
             invalidate_boundaries(dst, (char *)&dst[n]);
 #elif !defined(EAGER_INVALIDATE)
@@ -319,7 +319,7 @@ char * strcpy(char *dst, const char *src) {
         ret = strcpy_real(dst, src);
         while (src[n]!= '\0') n++;
     }
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (is_in_cxl_nhc_dst)
         do_range_flush((char *)dst, n);
 #else
@@ -337,7 +337,7 @@ struct CacheAgentArg {
 void *run_cache_agent(void *arg) {
     auto carg = (CacheAgentArg*) arg;
 #ifdef CACHE_AGENT_AFFINITY
-    set_thread_affinity(carg->cpu_id);
+    pin_to_core(carg->cpu_id);
 #endif
     unsigned nid = carg->node_id;
     CacheAgent(cache_infos[nid], log_mgrs, nid).run();
@@ -356,12 +356,14 @@ void alloc_cxl_memory() {
         exit(EXIT_FAILURE);
     }
 #ifdef CXL_NUMA_MODE
-    if(numa_run_on_node(LOCAL_NUMA_ID)) {
+    // make sure all threads use DRAM and cpu from local NUMA node
+    if(numa_run_on_node(LOCAL_NUMA_NODE_ID)) {
         perror("numa_run_on_node");
         exit(EXIT_FAILURE);
     }
+    // bind cxl memory buffers to CXL NUMA node
     unsigned long nodemask = 0;
-    nodemask |= 1 << REMOTE_NUMA_ID;
+    nodemask |= 1 << CXL_NUMA_NODE_ID;
     if(mbind(cxl_nhc_buf, cxl_nhc_range, MPOL_BIND, &nodemask, sizeof(nodemask) * 8, 0) < 0) {
         perror("mbind");
         exit(EXIT_FAILURE);
@@ -400,14 +402,14 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[nid], nid, curr_tid.fetch_add(1, std::memory_order_relaxed));
     init_memory_ops();
 
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
     unsigned cpu_id = 0;
     for (unsigned i=0; i<NODE_COUNT; i++) {
         int ret;
 #if defined(CACHE_AGENT_AFFINITY) && defined(CXL_NUMA_MODE)
-        ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_ID);
+        ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_NODE_ID);
         assert(!ret);
-#elif defined(CACHE_AGENT_AFFINITY)
+#else
         cpu_id = i;
 #endif
         auto arg = new CacheAgentArg{i, cpu_id};
@@ -418,7 +420,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
 }
 
 void rac_shutdown() {
-#ifndef PROTOCOL_OFF
+#if !PROTOCOL_OFF
     complete.store(true);
     for (unsigned i=0; i<NODE_COUNT; i++) {
         void *arg;

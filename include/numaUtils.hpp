@@ -13,7 +13,7 @@
 
 namespace RACoherence {
 
-static int set_thread_affinity(int core_id) {
+static int pin_to_core(int core_id) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(core_id, &cpuset);

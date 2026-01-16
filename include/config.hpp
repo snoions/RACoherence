@@ -24,13 +24,18 @@ constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 24;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
-constexpr int LOCAL_NUMA_ID=0;
-constexpr int REMOTE_NUMA_ID=1;
+// NUMA node that program runs on and makes normal allocations from
+#ifndef LOCAL_NUMA_NODE_ID
+#define LOCAL_NUMA_NODE_ID 1
+#endif
+// NUMA node containing CXL memory
+#define CXL_NUMA_NODE_ID 2
 
 // path to the file interface exposing wbinvd
 #define WBINVD_PATH "/proc/wbinvd"
 
 #define NODE_COUNT 4
+
 // whether to collect statistics
 //#define STATS(s) {s;}
 #define STATS(s)
@@ -41,17 +46,21 @@ constexpr int REMOTE_NUMA_ID=1;
 // thread clock merges with location clock instead of overwriting it, allows release store to be outside of location clock's critical section
 //#define LOCATION_CLOCK_MERGE
 
-// turn off RACoherence protocol, use raw stores and loads
-//#define PROTOCOL_OFF
+// whether turn off RACoherence protocol and use raw stores and loads
+#ifndef PROTOCOL_OFF
+#define PROTOCOL_OFF 0
+#endif
 
-// remove all flush instructions
-//#define NO_FLUSH
+// whether to remove all flush instructions
+#ifndef NO_FLUSH
+#define NO_FLUSH 0
+#endif
 
 // allocate CXL memory from remote NUMA node
 #define CXL_NUMA_MODE
 
 // producers flush eagerly
-//#define EAGER_FLUSh
+//#define EAGER_FLUSH
 
 // consumers invalidate eagerly
 #define EAGER_INVALIDATE

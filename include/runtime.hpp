@@ -52,11 +52,11 @@ inline bool in_cxl_nhc_mem(void *addr) {
 }
 
 inline void rac_post_flush(void *begin, void *end) {
-#if defined(PROTOCOL_OFF) || defined(EAGER_FLUSH)
+#if PROTOCOL_OFF || defined(EAGER_FLUSH)
     if (in_cxl_nhc_mem((char*)begin))
         do_range_flush((char *)begin, (char *)end - (char *)begin);
 #endif
-#if !defined(PROTOCOL_OFF)
+#if !PROTOCOL_OFF
     if (in_cxl_nhc_mem((char*)begin))
         thread_ops->log_range_store((char *)begin, (char *)end);
 #endif
@@ -67,14 +67,14 @@ inline void invalidate_boundaries(char *begin, char *end) {
     uintptr_t bptr = (uintptr_t) begin;
     uintptr_t eptr = (uintptr_t) end;
     if (bptr & CACHE_LINE_MASK)
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
         do_invalidate(begin);
 #else
         check_invalidate(begin);
 #endif
     if (eptr & CACHE_LINE_MASK &&
         (bptr & CACHE_LINE_MASK) != (eptr & CACHE_LINE_MASK))
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
         do_invalidate(end);
 #else
         check_invalidate(begin);
@@ -82,18 +82,18 @@ inline void invalidate_boundaries(char *begin, char *end) {
 }
 
 inline void rac_store_pre_invalidate(void *begin, void *end) {
-#if defined(PROTOCOL_OFF) || !defined(EAGER_VALIDATE)
+#if PROTOCOL_OFF || !defined(EAGER_INVALIDATE)
     if (in_cxl_nhc_mem((char*)begin))
         invalidate_boundaries((char*)begin, (char*)end);
 #endif
 }
 
 inline void rac_load_pre_invalidate(void *begin, void *end) {
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
     if (in_cxl_nhc_mem((char*)begin))
         do_range_invalidate((char*)begin, (char*)end-(char*)begin);
 #endif
-#ifndef EAGER_VALIDATE
+#ifndef EAGER_INVALIDATE
     if (in_cxl_nhc_mem((char*)begin))
         check_range_invalidate((char*)begin, (char*)end);
 #endif
@@ -104,7 +104,7 @@ inline void rac_load_pre_invalidate(void *begin, void *end) {
 using namespace RACoherence;
 
 //TODO: handle rare unaligned accesses for sizes larger than 8
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
 #define RACLOAD(size) \
     inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
         if (in_cxl_nhc_mem(addr)) { \
@@ -128,7 +128,7 @@ using namespace RACoherence;
     }
 #endif
 
-#ifdef PROTOCOL_OFF
+#if PROTOCOL_OFF
 #define RACSTORE(size) \
     inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
         bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
