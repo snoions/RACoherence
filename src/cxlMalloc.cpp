@@ -63,8 +63,10 @@ extent_hooks_t cxlnhc_hooks = {
 void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
     int ret;
     size_t sz = sizeof(cxlnhc_arena_index);
-    if ((ret = je_mallctl("arenas.create", &cxlnhc_arena_index, &sz, nullptr, 0)))
+    if ((ret = je_mallctl("arenas.create", &cxlnhc_arena_index, &sz, nullptr, 0))) {
         LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
+        std::exit(EXIT_FAILURE);
+    }
     cxlnhc_extent_pool = new (hc_buf) ExtentPool(buf, size);
     extent_hooks_t* new_hooks = &cxlnhc_hooks;
     extent_hooks_t* old_hooks = nullptr;
@@ -73,6 +75,7 @@ void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
     ss << "arena." << cxlnhc_arena_index << ".extent_hooks";
     if ((ret = je_mallctl(ss.str().c_str(), &old_hooks, &olen, &new_hooks, sizeof(new_hooks)))) {
         LOG_ERROR("je_mallctl arena.extent_hooks returned " << strerror(ret))
+        std::exit(EXIT_FAILURE);
     }
     cxlnhc_thread_init();
 }

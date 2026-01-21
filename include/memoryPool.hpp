@@ -10,6 +10,8 @@
 #include <cassert>
 #include <type_traits>
 
+#include "logger.hpp"
+
 namespace RACoherence {
 
 class AlignUtil {
@@ -45,7 +47,7 @@ public:
             if (block_sizes[i] < sizeof(Node)) {
                 std::cerr << "MemoryPool error: Block size " << block_sizes[i]
                           << " < sizeof(Node) (" << sizeof(Node) << ")\n";
-                std::abort();
+                std::exit(EXIT_FAILURE);
             }
         }
 
@@ -54,7 +56,7 @@ public:
         if (!pointer_fits(test_ptr)) {
             std::cerr << "MemoryPool fatal: pool base pointer " << (void*)base
                       << " does not fit into " << PTR_BITS << " bits required for tagging.\n";
-            std::abort();
+            std::exit(EXIT_FAILURE);
         }
 
         // init heads and counts
@@ -71,7 +73,10 @@ public:
 
     void* allocate(size_t size) {
         size_t idx = bucket_index_for(size);
-        if (idx == SIZE_MAX) return nullptr;
+        if (idx == SIZE_MAX) {
+            LOG_ERROR("allocate: out of memory")
+            std::exit(EXIT_FAILURE);
+        }
         Node* n = pop_tagged(idx);
         return reinterpret_cast<void*>(n);
     }
@@ -79,13 +84,13 @@ public:
     void deallocate(void* p, size_t size) {
         if (!p) return;
         if (!pointer_in_range(p)) {
-            std::cerr << "MemoryPool::deallocate: pointer " << p << " is not in pool range\n";
-            std::abort();
+            LOG_ERROR("deallocate: pointer " << p << " is not in pool range\n")
+            std::exit(EXIT_FAILURE);
         }
         size_t idx = bucket_index_for(size);
         if (idx == SIZE_MAX) {
             std::cerr << "MemoryPool::deallocate: invalid size " << size << "\n";
-            std::abort();
+            std::exit(EXIT_FAILURE);
         }
         push_tagged(idx, reinterpret_cast<Node*>(p));
     }
@@ -123,7 +128,7 @@ private:
         if (!pointer_fits(up)) {
             // will be caught earlier; but guard anyway
             std::cerr << "MemoryPool::pack: pointer too large to pack\n";
-            std::abort();
+            std::exit(EXIT_FAILURE);
         }
         uint64_t raw = (uint64_t)up | ((tag & ((uint64_t(1) << TAG_BITS) - 1)) << TAG_SHIFT);
         return raw;
@@ -158,7 +163,7 @@ private:
             size_t bytes_needed = blocks * bsize;
             if (offset + bytes_needed > base_size) {
                 std::cerr << "MemoryPool::init_buckets: computed overflow\n";
-                std::abort();
+                std::exit(EXIT_FAILURE);
             }
 
             Node* head = reinterpret_cast<Node*>(base + offset);
@@ -222,7 +227,7 @@ private:
             Node* old_ptr = unpack_ptr(old_raw);
             if (!pointer_in_range(old_ptr)) {
                 std::cerr << "MemoryPool::pop_tagged: head pointer invalid: " << old_ptr << "\n";
-                std::abort();
+                std::exit(EXIT_FAILURE);
             }
             Node* next = old_ptr->next;
             uint64_t old_tag = unpack_tag(old_raw);
