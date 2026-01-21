@@ -1,9 +1,9 @@
 #include <atomic>
-#include <dlfcn.h>
 #include <numaif.h>
 #include <pthread.h>
 #include "cacheAgent.hpp"
 #include "cxlSync.hpp"
+#include "instrumentLib.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"
 #include "jemallocPool.hpp"
@@ -109,226 +109,6 @@ bool rac_is_subscribed_to_node(unsigned node_id) {
     return log_mgrs[node_id].is_subscribed(node_id);
 }
 
-void * (*volatile memcpy_real)(void * dst, const void *src, size_t n) = nullptr;
-void * (*volatile memmove_real)(void * dst, const void *src, size_t len) = nullptr;
-void (*volatile bzero_real)(void * dst, size_t len) = nullptr;
-void * (*volatile memset_real)(void * dst, int c, size_t len) = nullptr;
-char * (*volatile strcpy_real)(char * dst, const char *src) = nullptr;
-
-void init_memory_ops() {
-    if (!memcpy_real) {
-        memcpy_real = (void * (*)(void * dst, const void *src, size_t n)) 1;
-        memcpy_real = (void * (*)(void * dst, const void *src, size_t n))dlsym(RTLD_NEXT, "memcpy");
-    }
-    if (!memmove_real) {
-        memmove_real = (void * (*)(void * dst, const void *src, size_t n)) 1;
-        memmove_real = (void * (*)(void * dst, const void *src, size_t n))dlsym(RTLD_NEXT, "memmove");
-    }
-
-    if (!memset_real) {
-        memset_real = (void * (*)(void * dst, int c, size_t n)) 1;
-        memset_real = (void * (*)(void * dst, int c, size_t n))dlsym(RTLD_NEXT, "memset");
-    }
-
-    if (!strcpy_real) {
-        strcpy_real = (char * (*)(char * dst, const char *src)) 1;
-        strcpy_real = (char * (*)(char * dst, const char *src))dlsym(RTLD_NEXT, "strcpy");
-    }
-    if (!bzero_real) {
-        bzero_real = (void (*)(void * dst, size_t len)) 1;
-        bzero_real = (void (*)(void * dst, size_t len))dlsym(RTLD_NEXT, "bzero");
-    }
-}
-
-void * memcpy(void * dst, const void * src, size_t n) {
-    void *ret;
-    bool is_in_cxl_nhc_src = in_cxl_nhc_mem((char *)src);
-    bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
-    char *dst_begin = (char *)dst;
-    char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc_src)
-        do_range_invalidate((char *)src, n);
-    if (is_in_cxl_nhc_dst)
-        invalidate_boundaries(dst_begin, dst_end); 
-#elif !defined(EAGER_INVALIDATE)
-    char *src_begin = (char *)src;
-    char *src_end = src_begin + n;
-    if (is_in_cxl_nhc_src)
-        check_range_invalidate(src_begin, src_end);
-    if (is_in_cxl_nhc_dst)
-        invalidate_boundaries(dst_begin, dst_end); 
-#endif
-    if (((uintptr_t)memcpy_real) < 2) {
-        for(unsigned i=0;i<n;i++) {
-            ((volatile char *)dst)[i] = ((char *)src)[i];
-        }
-        ret = dst;
-    } else
-        ret = memcpy_real(dst, src, n);
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc_dst)
-        do_range_flush((char *)dst, n);
-#else
-    if (is_in_cxl_nhc_dst)
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
-    return ret;
-}
-
-void * memmove(void *dst, const void *src, size_t n) {
-    void *ret;
-    bool is_in_cxl_nhc_src = in_cxl_nhc_mem((char *)src);
-    bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
-    char *dst_begin = (char *)dst;
-    char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc_src)
-        do_range_invalidate((char *)src, n);
-    if (is_in_cxl_nhc_dst)
-        invalidate_boundaries(dst_begin, dst_end); 
-#elif !defined(EAGER_INVALIDATE)
-    char *src_begin = (char *)src;
-    char *src_end = src_begin + n;
-    if (is_in_cxl_nhc_src)
-        check_range_invalidate(src_begin, src_end);
-    if (is_in_cxl_nhc_dst)
-        invalidate_boundaries(dst_begin, dst_end); 
-#endif
-    if (((uintptr_t)memmove_real) < 2) {
-        if (((uintptr_t)dst) < ((uintptr_t)src))
-            for(unsigned i=0;i<n;i++) {
-                ((volatile char *)dst)[i] = ((char *)src)[i];
-            }
-        else
-            for(unsigned i=n;i!=0; ) {
-                i--;
-                ((volatile char *)dst)[i] = ((char *)src)[i];
-            }
-        ret = dst;
-    } else
-        ret = memmove_real(dst, src, n);
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc_dst)
-        do_range_flush((char *)dst, n);
-#else
-    if (is_in_cxl_nhc_dst)
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
-    return ret;
-}
-
-void * memset(void *dst, int c, size_t n) {
-    void *ret;
-    bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)dst);
-    char *dst_begin = (char *)dst;
-    char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc)
-        invalidate_boundaries(dst_begin, dst_end);
-#elif !defined(EAGER_INVALIDATE)
-    if(is_in_cxl_nhc)
-        invalidate_boundaries(dst_begin, dst_end);
-#endif
-    if (((uintptr_t)memset_real) < 2) {
-        for(unsigned i=0;i<n;i++) {
-            ((volatile char *)dst)[i] = (char) c;
-        }
-        ret = dst;
-    } else
-        ret = memset_real(dst, c, n);
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc)
-        do_range_flush((char *)dst, n);
-#else
-    if (is_in_cxl_nhc)
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
-    return ret;
-}
-
-void bzero(void *dst, size_t n) {
-    void *ret;
-    bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)dst);
-    char *dst_begin = (char *)dst;
-    char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc)
-        invalidate_boundaries(dst_begin, dst_end);
-#elif !defined(EAGER_INVALIDATE)
-    if(is_in_cxl_nhc)
-        invalidate_boundaries(dst_begin, dst_end);
-#endif
-    if (((uintptr_t)bzero_real) < 2) {
-        for(size_t s=0;s<n;s++) {
-            ((volatile char *)dst)[s] = 0;
-        }
-    } else
-        bzero_real(dst, n);
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc)
-        do_range_flush((char *)dst, n);
-#else
-    if (is_in_cxl_nhc)
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
-}
-
-char * strcpy(char *dst, const char *src) {
-    char *ret;
-    bool is_in_cxl_nhc_src = in_cxl_nhc_mem((char *)src);
-    bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
-    size_t n = 0;
-    // we cannot invalidate ahead-of-time because the length is unknown
-#if PROTOCOL_OFF || !defined(EAGER_INVALIDATE)
-    bool need_invalidate = true;
-#else
-    bool need_invalidate = false;
-#endif
-    if (((uintptr_t)strcpy_real) < 2 || need_invalidate) {
-        while (true) {
-#if PROTOCOL_OFF
-            if (is_in_cxl_nhc_src)
-                do_invalidate((char *)&src[n]);
-#elif !defined(EAGER_INVALIDATE)
-            if (is_in_cxl_nhc_src)
-                check_invalidate((char *)&src[n]);
-#endif
-            bool end = false;
-            for(;((uintptr_t)&src[n] & CACHE_LINE_MASK); n++) {
-                if (src[n] == '\0') {
-                    n++;
-                    end = true;
-                    break;
-                }
-            }
-            if (end)
-                break;
-        }
-#if PROTOCOL_OFF
-        if (is_in_cxl_nhc_dst)
-            invalidate_boundaries(dst, (char *)&dst[n]);
-#elif !defined(EAGER_INVALIDATE)
-        if (is_in_cxl_nhc_dst)
-            invalidate_boundaries(dst, (char *)&dst[n]);
-#endif
-        for (int i; i < n; i++)
-            ((volatile char *)dst)[i] = ((char *)src)[i];
-        ret = dst;
-    } else {
-        ret = strcpy_real(dst, src);
-        while (src[n]!= '\0') n++;
-    }
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc_dst)
-        do_range_flush((char *)dst, n);
-#else
-    if (is_in_cxl_nhc_dst)
-        thread_ops->log_range_store((char *)dst, ((char *)dst + n));
-#endif
-    return ret;
-}
-
 struct CacheAgentArg {
     unsigned node_id;
     unsigned cpu_id;
@@ -400,7 +180,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
         new (&log_mgrs[i]) LogManager(i);
     cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[nid], nid, curr_tid.fetch_add(1, std::memory_order_relaxed));
-    init_memory_ops();
+    instrument_lib();
 
 #if !PROTOCOL_OFF
     unsigned cpu_id = 0;

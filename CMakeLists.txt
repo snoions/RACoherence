@@ -17,6 +17,7 @@ set(RUNTIME_LIB
       src/cxlMalloc.cpp
       src/dlmalloc.c
       src/logger.cpp
+      src/instrumentLib.cpp
       src/runtime.cpp
     )
 set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
