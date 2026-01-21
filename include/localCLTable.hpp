@@ -12,8 +12,8 @@
 namespace RACoherence {
 
 class LocalCLTable {
-  /** Each entry here can store 16 cache line units. */
-
+    constexpr static size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
+    /** Each entry here can store 16 cache line units. */
     cl_group_t table[LOCAL_CL_TABLE_ENTRIES] = {};
     int length_entry_count = 0; //TODO: temporary hack, improve later
     struct EntryBuffer {
@@ -149,62 +149,61 @@ public:
 //    }
 
     inline bool range_insert(uintptr_t &begin, uintptr_t &end) {
-        assert(begin <=end);
-        for (; begin <= end; begin++)
-            if (insert(begin))
-                return true;
-        begin--;
-        return false;
-	// try to use insert_length if possible currently shows no speedup
-        //using namespace cl_group;
-	//constexpr size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
-
-        //cl_group_idx end_index = end >> GROUP_SIZE_SHIFT;
-        //unsigned begin_pos = begin & GROUP_SIZE_MASK;
-        //unsigned end_pos = end & GROUP_SIZE_MASK;
-        //if(begin_pos) {
-        //    cl_group_idx begin_index = begin >> GROUP_SIZE_SHIFT;
-        //    uint64_t begin_mask = (FULL_MASK << begin_pos) & FULL_MASK;
-        //    if (begin_index == end_index) {
-        //        uint64_t end_mask = 1ull << end_pos;
-        //        if (insert_mask(begin_index, begin_mask & end_mask))
-        //            return true;
-        //        begin = end;
-        //        return false;
-        //    }
-        //    if (insert_mask(begin_index, begin_mask))
+        //assert(begin <=end);
+        //for (; begin <= end; begin++)
+        //    if (insert(begin))
         //        return true;
-        //    begin += GROUP_SIZE - begin_pos;
-        //}
-        //if (end_pos) {
-        //    uint64_t end_mask = 1ull << end_pos;
-        //    if (insert_mask(end_index, end_mask))
-        //        return true;
-        //    end -= end_pos;
-        //}
-        //cl_group_idx begin_index = begin >> GROUP_SIZE_SHIFT;
-        //end_index = end >> GROUP_SIZE_SHIFT;
-        //size_t len = end_index - begin_index;
-        //if (len < GROUP_LEN_MIN) {
-        //    for (; begin_index < end_index; begin_index++) {
-        //        if (insert_mask(begin_index, FULL_MASK)) {
-        //            begin = begin_index << GROUP_SIZE_SHIFT;
-        //            return true;
-        //        }
-        //    }
-        //} else {
-        //    while(len) {
-        //        unsigned l = len & GROUP_LEN_MAX;
-        //        if (insert_length(begin_index, l)) {
-        //            begin = begin_index << GROUP_SIZE_SHIFT;
-        //            return true;
-        //        }
-        //        len -= l;
-        //        begin_index += l;
-        //    }
-        //}
-        //begin = end;
+        //begin--;
         //return false;
+	    // try to use insert_length if possible currently shows no speedup
+        using namespace cl_group;
+
+        cl_group_idx end_index = end >> GROUP_SIZE_SHIFT;
+        unsigned begin_pos = begin & GROUP_SIZE_MASK;
+        unsigned end_pos = end & GROUP_SIZE_MASK;
+        if(begin_pos) {
+            cl_group_idx begin_index = begin >> GROUP_SIZE_SHIFT;
+            uint64_t begin_mask = (FULL_MASK << begin_pos) & FULL_MASK;
+            if (begin_index == end_index) {
+                uint64_t end_mask = 1ull << end_pos;
+                if (insert_mask(begin_index, begin_mask & end_mask))
+                    return true;
+                begin = end;
+                return false;
+            }
+            if (insert_mask(begin_index, begin_mask))
+                return true;
+            begin += GROUP_SIZE - begin_pos;
+        }
+        if (end_pos) {
+            uint64_t end_mask = 1ull << end_pos;
+            if (insert_mask(end_index, end_mask))
+                return true;
+            end -= end_pos;
+        }
+        cl_group_idx begin_index = begin >> GROUP_SIZE_SHIFT;
+        end_index = end >> GROUP_SIZE_SHIFT;
+        size_t len = end_index - begin_index;
+        if (len < GROUP_LEN_MIN) {
+            for (; begin_index < end_index; begin_index++) {
+                if (insert_mask(begin_index, FULL_MASK)) {
+                    begin = begin_index << GROUP_SIZE_SHIFT;
+                    return true;
+                }
+            }
+        } else {
+            while(len) {
+                unsigned l = len & GROUP_LEN_MAX;
+                if (insert_length(begin_index, l)) {
+                    begin = begin_index << GROUP_SIZE_SHIFT;
+                    return true;
+                }
+                len -= l;
+                begin_index += l;
+            }
+        }
+        begin = end;
+        return false;
     }
 
     // returns whether table is full
