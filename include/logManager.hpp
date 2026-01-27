@@ -16,9 +16,9 @@
 
 namespace RACoherence {
 
-constexpr size_t LOG_SIZE = 1ull << 10;
+constexpr size_t LOG_SIZE = 1ull << 6;
 //LOG_BUF_SIZE must be power of 2
-constexpr size_t LOG_BUF_SIZE = 1ull << 7;
+constexpr size_t LOG_BUF_SIZE = 1ull << 6;
 
 class LogManager;
 
@@ -75,17 +75,10 @@ public:
 };
 
 class alignas(CACHE_LINE_SIZE) LogManager {
-
-    unsigned node_id;
-
-    spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
-
-    idx_t bound = next_round(0);
+    Log buf[LOG_BUF_SIZE];
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<Log *>pub[LOG_BUF_SIZE];
-
-    Log buf[LOG_BUF_SIZE];
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> tail{0};
@@ -101,6 +94,13 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     // try aligning each bool to different cache line if contention is high
     alignas(CACHE_LINE_SIZE)
     std::atomic<bool> subscribers[NODE_COUNT];
+    
+    spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
+
+    unsigned node_id;
+
+    idx_t bound = next_round(0);
+
 
     inline void perform_gc() {
         idx_t new_b = next_round(bound);

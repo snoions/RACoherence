@@ -9,7 +9,8 @@ constexpr uintptr_t PAGE_SIZE = 1ull << 12; // 4KB
 constexpr uintptr_t CACHE_LINE_SIZE = 64;
 constexpr uintptr_t CACHE_LINE_SHIFT = 6;
 constexpr uintptr_t CACHE_LINE_MASK = CACHE_LINE_SIZE-1;
-constexpr uintptr_t CL_UNIT_GRANULARITY_SHIFT = 1; // reasonable range is 1 to 5
+//constexpr uintptr_t CL_UNIT_GRANULARITY_SHIFT = 1; // reasonable range is 0 to 5
+constexpr uintptr_t CL_UNIT_GRANULARITY_SHIFT = 0; // reasonable range is 0 to 5
 constexpr uintptr_t CL_UNIT_GRANULARITY = 1ull << CL_UNIT_GRANULARITY_SHIFT;
 constexpr uintptr_t CL_UNIT_SIZE = CACHE_LINE_SIZE * CL_UNIT_GRANULARITY;
 constexpr uintptr_t CL_UNIT_SHIFT = CACHE_LINE_SHIFT + CL_UNIT_GRANULARITY_SHIFT; // log(CL_UNIT_SIZE)
@@ -34,7 +35,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 // path to the file interface exposing wbinvd
 #define WBINVD_PATH "/proc/wbinvd"
 
-#define NODE_COUNT 4
+#define NODE_COUNT 8
 
 // whether to collect statistics
 //#define STATS(s) {s;}
@@ -76,7 +77,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // number of entries in local cl table
 #ifndef LOCAL_CL_TABLE_ENTRIES
-#define LOCAL_CL_TABLE_ENTRIES (1 << 10)
+#define LOCAL_CL_TABLE_ENTRIES (1 << 6)
 #endif
 
 // number of entries searched in local cl table per insertion
@@ -84,7 +85,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define LOCAL_CL_TABLE_SEARCH_ITERS 5
 #endif
 
-// use dlmalloc for as allocator for CXL hardware coherent memory
+// use dlmalloc as allocator for CXL hardware coherent memory
 //#define HC_USE_DLMALLOC
 
 // use locks instead of atomics in workload
