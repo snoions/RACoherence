@@ -37,17 +37,17 @@ class ThreadOps {
         flush_fence();
         auto clk_val = log_mgrs[node_id].produce_tail(log, is_release);
         dirty_cls.clear_table();
-	STATS(cache_info->produced_count++)
+        STATS(cache_info->produced_count++)
         LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count)
-	return clk_val;
+        return clk_val;
     }
 
     clock_t write_to_log(bool is_release) {
         using namespace cl_group;
 #ifdef DELAY_PUBLISH
-	clock_t clk_val = 0;
-	if (!curr_log)
-	    set_to_new_log(curr_log);
+        clock_t clk_val = 0;
+        if (!curr_log)
+            set_to_new_log(curr_log);
 #else
         Log *curr_log;
         set_to_new_log(curr_log);
@@ -78,7 +78,7 @@ class ThreadOps {
 #endif
         }
 #ifdef DELAY_PUBLISH
-	if (is_release) {
+        if (is_release) {
              clk_val = publish_log(curr_log, true);
              curr_log = nullptr;
         }
