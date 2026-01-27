@@ -15,7 +15,6 @@ set(RUNTIME_LIB
       src/clh_mutex.cpp
       src/clh_rwlock.cpp
       src/cxlMalloc.cpp
-      src/dlmalloc.c
       src/logger.cpp
       src/instrumentLib.cpp
       src/runtime.cpp

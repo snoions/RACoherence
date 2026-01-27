@@ -85,8 +85,8 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define LOCAL_CL_TABLE_SEARCH_ITERS 5
 #endif
 
-// use dlmalloc as allocator for CXL hardware coherent memory
-//#define HC_USE_DLMALLOC
+// use custom memory pool as allocator for CXL hardware coherent memory
+//#define HC_USE_CUSTOM_POOL
 
 // use locks instead of atomics in workload
 #define WORKLOAD_USE_LOCKS

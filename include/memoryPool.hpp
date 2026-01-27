@@ -75,7 +75,6 @@ public:
         size_t idx = bucket_index_for(size);
         if (idx == SIZE_MAX) {
             LOG_ERROR("allocate: out of memory")
-            std::exit(EXIT_FAILURE);
         }
         Node* n = pop_tagged(idx);
         return reinterpret_cast<void*>(n);
@@ -85,12 +84,10 @@ public:
         if (!p) return;
         if (!pointer_in_range(p)) {
             LOG_ERROR("deallocate: pointer " << p << " is not in pool range\n")
-            std::exit(EXIT_FAILURE);
         }
         size_t idx = bucket_index_for(size);
         if (idx == SIZE_MAX) {
             std::cerr << "MemoryPool::deallocate: invalid size " << size << "\n";
-            std::exit(EXIT_FAILURE);
         }
         push_tagged(idx, reinterpret_cast<Node*>(p));
     }
@@ -187,11 +184,8 @@ private:
         for (size_t i = 0; i < bucket_count; ++i) {
             if (size <= block_sizes[i]) return i;
         }
-        return SIZE_max(); // custom sentinel
+        return SIZE_MAX; // custom sentinel
     }
-
-    // sentinel provider replacing SIZE_MAX (so we can use it in constexpr)
-    static constexpr size_t SIZE_max() { return static_cast<size_t>(-1); }
 
     bool pointer_in_range(void* p) const {
         uintptr_t up = reinterpret_cast<uintptr_t>(p);
@@ -227,7 +221,6 @@ private:
             Node* old_ptr = unpack_ptr(old_raw);
             if (!pointer_in_range(old_ptr)) {
                 std::cerr << "MemoryPool::pop_tagged: head pointer invalid: " << old_ptr << "\n";
-                std::exit(EXIT_FAILURE);
             }
             Node* next = old_ptr->next;
             uint64_t old_tag = unpack_tag(old_raw);

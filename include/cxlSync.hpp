@@ -42,6 +42,14 @@ public:
     inline T fetch_add(T arg) {
         return inner->atomic_data.fetch_add(arg, std::memory_order_relaxed);
     };
+
+    inline T exchange(T arg) {
+        return inner->atomic_data.exchange(arg, std::memory_order_relaxed);
+    };
+
+    inline T compare_exchange_strong(T& expected, T desired) {
+        return inner->atomic_data.compare_exchange_strong(expected, desired, std::memory_order_relaxed);
+    };
 };
 
 template<typename T>
@@ -141,6 +149,58 @@ public:
     };
 };
 
+// CXLRelaxedMutex only guarantees coherence of the contained data
+template<typename T, size_t Count>
+class CXLRelaxedMutex {
+    struct InnerData {
+        clh_mutex_t mutex;
+        unsigned owner_node = NODE_COUNT+1;
+
+        InnerData() {
+            clh_mutex_init(&mutex);
+        }
+        ~InnerData() {
+            clh_mutex_destroy(&mutex);
+        }
+    };
+
+    InnerData *inner;
+    T *data;
+
+public:
+    CXLRelaxedMutex(T *d): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()), data(d) {}
+
+    ~CXLRelaxedMutex() {
+        inner->~InnerData();
+        cxlhc_free(inner, sizeof(InnerData));
+    }
+
+    inline void lock() {
+        clh_mutex_lock(&inner->mutex);
+#ifndef PROTOCOL_OFF
+        unsigned nid = thread_op->get_node_id();
+        if (inner->owner_node != nid) {
+            do_range_invalidate((char *)&inner->data, Count * sizeof(T));
+            inner->owner_node = nid;
+            invalidate_fence();
+        }
+#else
+        do_range_invalidate((char *)data, Count * sizeof(T));
+        invalidate_fence();
+#endif
+    }
+
+    inline void unlock() {
+        do_range_flush((char *)data, Count * sizeof(T));
+        flush_fence();
+        clh_mutex_unlock(&inner->mutex);
+    }
+
+    inline T* get() {
+        return data;
+    }
+};
+
 class CXLMutex {
     struct InnerData{
         clh_mutex_t mutex;
@@ -170,7 +230,7 @@ public:
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
 #endif
-    };
+    }
 
     inline void unlock() {
 #if PROTOCOL_OFF
@@ -185,7 +245,7 @@ public:
 #endif
 #endif
         clh_mutex_unlock(&inner->mutex);
-    };
+    }
 };
 
 class CXLSharedMutex {
@@ -217,7 +277,7 @@ public:
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
 #endif
-    };
+    }
 
     inline void lock_shared() {
         clh_rwlock_readlock(&inner->mutex);
@@ -225,7 +285,7 @@ public:
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
 #endif
-    };
+    }
 
     inline void unlock() {
 #if PROTOCOL_OFF
@@ -240,7 +300,7 @@ public:
 #endif
 #endif
         clh_rwlock_writeunlock(&inner->mutex);
-    };
+    }
 
     inline void unlock_shared() {
 #if PROTOCOL_OFF
@@ -257,7 +317,7 @@ public:
 #endif
 #endif
         clh_rwlock_readunlock(&inner->mutex);
-    };
+    }
 };
 
 class CXLBarrier {
