@@ -80,7 +80,7 @@ target_link_libraries(racoherence_static PRIVATE Threads::Threads)
 set(WBINVD_NAME "wbinvd")
 # WBINVD kernel module
 add_custom_target(
-    insert_wbinvd_module
+    wbinvd_module
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deps/wbinvd"
     COMMAND make
     COMMAND sudo rmmod ${WBINVD_NAME}.ko 2>/dev/null | true

@@ -34,6 +34,8 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // path to the file interface exposing wbinvd
 #define WBINVD_PATH "/proc/wbinvd"
+// number of cache line groups for which a wbinvd is faster than invalidating with clflushopt + mfence
+#define WBINVD_THRESHOLD (2 << 18)
 
 #define NODE_COUNT 8
 

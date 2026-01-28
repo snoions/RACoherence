@@ -27,15 +27,21 @@ struct CacheInfo {
         using namespace cl_group;
         for (auto cg: log) {
             if (is_length_based(cg)) {
-                for (auto cl_addr: LengthCLRange(cg)) {
-#ifdef EAGER_INVALIDATE
-                    // should be unrolled, manually unroll if not
-                    for (unsigned i = 0; i < GROUP_SIZE * CL_UNIT_GRANULARITY; i++)
-                        do_invalidate((char *)cl_addr + (i * CACHE_LINE_SIZE));
-#else
-                    inv_cls.mark_dirty(cl_addr, FULL_MASK << get_mask16_to_64_shift(cl_addr));
-#endif
+                unsigned length = get_length(cg);
+#ifdef WBINVD_PATH
+                if (length >= WBINVD_THRESHOLD) {
+                    wbinvd();
+                    return;
                 }
+#endif
+                uintptr_t cl_addr = get_ptr(cg);
+#ifdef EAGER_INVALIDATE
+                for (unsigned i = 0; i < length * GROUP_SIZE * CL_UNIT_GRANULARITY; i++)
+                    do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
+#else
+                for (unsigned i = 0; i < length; i++)
+                    inv_cls.mark_dirty((char *)cl_addr + i, FULL_MASK << get_mask16_to_64_shift(cl_addr));
+#endif
             } else {
 #ifdef EAGER_INVALIDATE
                 for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))

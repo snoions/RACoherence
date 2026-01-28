@@ -1,6 +1,8 @@
 #ifndef _CACHE_OPS_H_
 #define _CACHE_OPS_H_
 
+#include <stdio.h>
+#include <cstdlib>
 #include "config.hpp"
 
 #define CLFLUSH 1
@@ -90,6 +92,17 @@ static inline void invalidate_fence()
 {
 #if !NO_FLUSH
     __asm__ volatile("mfence":::"memory");
+#endif
+}
+
+static inline void wbinvd() {
+#if !NO_FLUSH
+    FILE *fd = fopen(WBINVD_PATH, "r");
+    if (fd == nullptr) {
+        perror("unable to execute wbinvd");
+        std::exit(EXIT_FAILURE);
+    }
+    fclose(fd);
 #endif
 }
 

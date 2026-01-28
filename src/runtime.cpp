@@ -89,13 +89,7 @@ void rac_subscribe_to_node(unsigned node_id) {
     auto my_node_id = thread_ops->get_node_id();
     assert(node_id <= 0 && node_id < NODE_COUNT && "invalid node_id");
     log_mgrs[node_id].set_subscribed(node_id, true);
-    //execute wbinvd to cleaer cache
-    FILE *fd = fopen(WBINVD_PATH, "r");
-    if (fd == nullptr) {
-        perror("unable to execute wbinvd");
-        exit(EXIT_FAILURE);
-    }
-    fclose(fd);
+    wbinvd();
 }
 
 void rac_unsubscribe_from_node(unsigned node_id) {
