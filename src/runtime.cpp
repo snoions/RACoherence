@@ -6,7 +6,7 @@
 #include "instrumentLib.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"
-#include "jemallocPool.hpp"
+#include "extentPool.hpp"
 #include "runtime.hpp"
 
 namespace RACoherence {
@@ -119,7 +119,7 @@ void *run_cache_agent(void *arg) {
 }
 
 void alloc_cxl_memory() {
-    cxl_nhc_buf = (char *)mmap((void*)CXL_NHC_START, cxl_nhc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+    cxl_nhc_buf = (char *)mmap((void*)CXL_NHC_START, cxl_nhc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS, -1, 0);
     cxl_hc_buf = (char *)mmap(NULL, cxl_hc_range, PROT_READ | PROT_WRITE,  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if ((uintptr_t)cxl_nhc_buf == -1) {
         perror("mmap");

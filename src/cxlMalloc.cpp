@@ -1,9 +1,8 @@
 #include <sstream>
-
 #include "config.hpp"
 #include "cxlMalloc.hpp"
 #include "memoryPool.hpp"
-#include "jemallocPool.hpp"
+#include "extentPool.hpp"
 
 namespace RACoherence {
 
@@ -22,7 +21,7 @@ ExtentPool *cxlnhc_extent_pool;
 
 using namespace RACoherence;
 
-const char *malloc_conf ="narenas:1";
+const char *je_malloc_conf ="narenas:1";
 
 #ifdef HC_USE_CUSTOM_POOL
 void cxlhc_pool_init(char *buf, size_t size) {
@@ -44,7 +43,7 @@ inline void* cxlhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
     if (!cxlhc_extent_pool) return nullptr;
 
-    void* p = cxlhc_extent_pool->alloc_extent(size, alignment);
+    void* p = cxlhc_extent_pool->allocate(size, alignment);
     if (!p) {
         return nullptr;
     }
@@ -59,9 +58,11 @@ inline void* cxlhc_extent_alloc(extent_hooks_t* /*hooks*/,
 
 inline bool cxlhc_extent_dalloc(extent_hooks_t* /*hooks*/,
                              void* addr, size_t size, bool /*committed*/, unsigned /*arena_ind*/) {
-    if (!cxlhc_extent_pool) return true;
-    cxlhc_extent_pool->dealloc_extent(addr, size);
-    return false;
+    // let jemalloc keep the memory
+    // if (!cxlhc_extent_pool) return true;
+    // cxlhc_extent_pool->deallocate(addr, size);
+    // return false;
+    return true;
 }
 
 bool cxlhc_extent_split(extent_hooks_t *extent_hooks, void *addr, size_t size,
@@ -88,13 +89,13 @@ extent_hooks_t cxlhc_hooks = {
 
 void cxlhc_pool_init(char *buf, size_t size) {
     int ret;
-    //TODO: use default arena, need resolve circular dependency when using extent pool lock
-    //cxlhc_arena_index = 0;
-    size_t sz = sizeof(cxlhc_arena_index);
-    if ((ret = je_mallctl("arenas.create", &cxlhc_arena_index, &sz, nullptr, 0))) {
-        LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
-        std::exit(EXIT_FAILURE);
-    }
+    //size_t sz = sizeof(cxlhc_arena_index);
+    //if ((ret = je_mallctl("arenas.create", &cxlhc_arena_index, &sz, nullptr, 0))) {
+    //    LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
+    //    std::exit(EXIT_FAILURE);
+    //}
+    // make default arena use cxlhc memory
+    cxlhc_arena_index = 0;
     cxlhc_extent_pool = new (buf) ExtentPool(buf + sizeof(ExtentPool), size - sizeof(ExtentPool));
     extent_hooks_t* new_hooks = &cxlhc_hooks;
     extent_hooks_t* old_hooks = nullptr;
@@ -102,7 +103,7 @@ void cxlhc_pool_init(char *buf, size_t size) {
     std::stringstream ss;
     ss << "arena." << cxlhc_arena_index << ".extent_hooks";
     if ((ret = je_mallctl(ss.str().c_str(), &old_hooks, &olen, &new_hooks, sizeof(new_hooks)))) {
-        LOG_ERROR("je_mallctl arena.extent_hooks returned " << strerror(ret))
+        LOG_ERROR("je_mallctl " << ss.str() << " returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
 }
@@ -121,7 +122,7 @@ inline void* cxlnhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
     if (!cxlnhc_extent_pool) return nullptr;
 
-    void* p = cxlnhc_extent_pool->alloc_extent(size, alignment);
+    void* p = cxlnhc_extent_pool->allocate(size, alignment);
     if (!p) {
         return nullptr;
     }
@@ -136,9 +137,12 @@ inline void* cxlnhc_extent_alloc(extent_hooks_t* /*hooks*/,
 
 inline bool cxlnhc_extent_dalloc(extent_hooks_t* /*hooks*/,
                              void* addr, size_t size, bool /*committed*/, unsigned /*arena_ind*/) {
-    if (!cxlnhc_extent_pool) return true;
-    cxlnhc_extent_pool->dealloc_extent(addr, size);
-    return false;
+
+    // let jemalloc keep the memory
+    // if (!cxlnhc_extent_pool) return true;
+    // cxlnhc_extent_pool->deallocate(addr, size);
+    // return false;
+    return true;
 }
 
 bool cxlnhc_extent_split(extent_hooks_t *extent_hooks, void *addr, size_t size,
@@ -180,12 +184,19 @@ void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
         LOG_ERROR("je_mallctl arena.extent_hooks returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
+    // clear extent pool from default arena
+    if ((ret = je_mallctl("arena.0.purge", NULL, NULL, NULL, 0))) {
+        LOG_ERROR("je_mallctl arena.0.purge returned " << strerror(ret))
+        std::exit(EXIT_FAILURE);
+    }
     cxlnhc_thread_init();
 }
 
 void cxlnhc_thread_init() {
-    if (int ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index)) != 0)
+    int ret;
+    if (ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index)) != 0)
         LOG_ERROR("je_mallctl thread.arena returned " << strerror(ret))
+    je_mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
 }
 
 void *cxlnhc_malloc(size_t size) {

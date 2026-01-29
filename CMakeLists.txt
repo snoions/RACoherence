@@ -65,11 +65,11 @@ ExternalProject_Add(jemalloc_proj
 )
 ExternalProject_Get_Property(jemalloc_proj INSTALL_DIR)
 add_dependencies(racoherence jemalloc_proj)
-target_link_libraries(racoherence PRIVATE ${INSTALL_DIR}/lib/libjemalloc.so)
-target_include_directories(racoherence PRIVATE ${INSTALL_DIR}/include)
+target_link_libraries(racoherence PUBLIC ${INSTALL_DIR}/lib/libjemalloc.so)
+target_include_directories(racoherence PUBLIC ${INSTALL_DIR}/include)
 add_dependencies(racoherence_static jemalloc_proj)
-target_link_libraries(racoherence_static PRIVATE ${INSTALL_DIR}/lib/libjemalloc.so)
-target_include_directories(racoherence_static PRIVATE ${INSTALL_DIR}/include)
+target_link_libraries(racoherence_static PUBLIC ${INSTALL_DIR}/lib/libjemalloc.so)
+target_include_directories(racoherence_static PUBLIC ${INSTALL_DIR}/include)
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -88,7 +88,6 @@ add_custom_target(
     COMMAND sudo chmod +r /proc/${WBINVD_NAME}
     COMMENT "Building wbinvd module, available at /proc/${WBINVD_NAME}"
 )
-
 
 # Other libraries
 target_link_libraries(racoherence PRIVATE ${CMAKE_DL_LIBS})
@@ -121,7 +120,7 @@ if(ENABLE_TESTS)
     # Add test
     enable_testing()
     add_executable(tests test/testCacheTracker.cpp test/testMemoryPool.cpp)
-    target_link_libraries(tests test_lib gtest_main ${INSTALL_DIR}/lib/libjemalloc.a)
+    target_link_libraries(tests test_lib gtest_main racoherence_static)
 
     include(GoogleTest)
     gtest_discover_tests(tests)

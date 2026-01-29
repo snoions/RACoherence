@@ -1,6 +1,8 @@
 #include "clTracker.hpp" // Updated header file name
 #include <gtest/gtest.h>
 
+using namespace RACoherence;
+
 TEST(CacheLineTrackerTest, MarkAndCheckDirty) {
     CacheLineTracker tracker;
 

@@ -1,4 +1,3 @@
-// memory_pool_tagged.h
 #ifndef _MEMORY_POOL_H_
 #define _MEMORY_POOL_H_
 

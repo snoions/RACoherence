@@ -88,7 +88,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #endif
 
 // use custom memory pool as allocator for CXL hardware coherent memory
-//#define HC_USE_CUSTOM_POOL
+#define HC_USE_CUSTOM_POOL
 
 // use locks instead of atomics in workload
 #define WORKLOAD_USE_LOCKS
