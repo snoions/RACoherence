@@ -71,13 +71,21 @@ public:
     MemoryPool& operator=(const MemoryPool&) = delete;
 
     void* allocate(size_t size) {
-        size_t idx = bucket_index_for(size);
-        if (idx == SIZE_MAX) {
-            LOG_ERROR("allocate: out of memory")
-        }
-        Node* n = pop_tagged(idx);
-        return reinterpret_cast<void*>(n);
-    }
+           size_t idx = bucket_index_for(size);
+           if (idx == SIZE_MAX) {
+               LOG_ERROR("allocate: size " << size << " exceeds max block size");
+               return nullptr;
+           }
+
+           // Try to get a block from the ideal bucket or split from a larger one
+           Node* n = split_and_pop(idx);
+
+           if (!n) {
+               LOG_ERROR("allocate: out of memory (all suitable buckets empty)");
+               return nullptr;
+           }
+           return reinterpret_cast<void*>(n);
+       }
 
     void deallocate(void* p, size_t size) {
         if (!p) return;
@@ -216,24 +224,89 @@ private:
 
     Node* pop_tagged(size_t idx) {
         uint64_t old_raw = heads_tagged[idx].load(std::memory_order_acquire);
-        while (old_raw != 0) {
-            Node* old_ptr = unpack_ptr(old_raw);
-            if (!pointer_in_range(old_ptr)) {
-                std::cerr << "MemoryPool::pop_tagged: head pointer invalid: " << old_ptr << "\n";
+        
+        // CAS loop
+        for (;;) {
+            // 1. Check if the raw value is strictly 0 (never used or reset)
+            if (old_raw == 0) {
+                return nullptr;
             }
+    
+            Node* old_ptr = unpack_ptr(old_raw);
+    
+            // 2. CRITICAL FIX: Check if the unpacked pointer is NULL.
+            // If it is NULL, the list is empty, even if the tag bits are non-zero.
+            if (old_ptr == nullptr) {
+                return nullptr;
+            }
+    
+            // 3. Now it is safe to validate the pointer
+            if (!pointer_in_range(old_ptr)) {
+                std::cerr << "MemoryPool::pop_tagged: head pointer invalid: " << old_ptr 
+                          << " (raw: " << std::hex << old_raw << ")\n";
+                std::exit(EXIT_FAILURE);
+            }
+    
             Node* next = old_ptr->next;
             uint64_t old_tag = unpack_tag(old_raw);
+            
+            // 4. Pack the next pointer with an incremented tag
             uint64_t new_raw = pack(next, old_tag + 1);
-            // attempt CAS; success must have acquire semantics to synchronize with push's release
+    
+            // 5. Attempt CAS
             if (heads_tagged[idx].compare_exchange_weak(old_raw, new_raw,
                                                         std::memory_order_acq_rel,
                                                         std::memory_order_acquire)) {
                 counts[idx].fetch_sub(1, std::memory_order_relaxed);
                 return old_ptr;
             }
-            // CAS failed; old_raw updated with current head; retry
+            
+            // On failure, old_raw is automatically updated by compare_exchange_weak
+            // The loop continues to retry with the new old_raw
         }
-        return nullptr;
+    }
+
+    Node* split_and_pop(size_t target_idx) {
+        // 1. Try a fast path: pop from the exact bucket requested
+        Node* n = pop_tagged(target_idx);
+        if (n) return n;
+    
+        // 2. Search upwards for the first non-empty larger bucket
+        size_t source_idx = target_idx + 1;
+        Node* large_block = nullptr;
+    
+        while (source_idx < bucket_count) {
+            large_block = pop_tagged(source_idx);
+            if (large_block) break; // Found a block to steal!
+            source_idx++;
+        }
+    
+        if (!large_block) {
+            return nullptr; // Total exhaustion
+        }
+    
+        // 3. Drill back down: split the block until we reach the target_idx
+        // We move from source_idx down to target_idx
+        for (size_t i = source_idx; i > target_idx; --i) {
+            size_t current_split_size = block_sizes[i - 1];
+            size_t parent_size = block_sizes[i];
+            
+            // Calculate how many smaller blocks we get from the larger one
+            size_t num_fragments = parent_size / current_split_size;
+            
+            // We keep the first fragment to continue splitting (or to return)
+            // We push the "extra" fragments (1 to n) into the free list of bucket i-1
+            uint8_t* raw_ptr = reinterpret_cast<uint8_t*>(large_block);
+            for (size_t f = 1; f < num_fragments; ++f) {
+                Node* fragment = reinterpret_cast<Node*>(raw_ptr + (f * current_split_size));
+                push_tagged(i - 1, fragment);
+            }
+            
+            // large_block now effectively "becomes" the first fragment of the smaller size
+            // and we continue the loop until we hit the target index.
+        }
+    
+        return large_block;
     }
 };
 

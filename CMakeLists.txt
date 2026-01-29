@@ -58,7 +58,7 @@ include(ExternalProject)
 ExternalProject_Add(jemalloc_proj
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps/jemalloc
     INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/install
-    CONFIGURE_COMMAND ./autogen.sh --disable-cxx --prefix=<INSTALL_DIR> --with-jemalloc-prefix=je_
+    CONFIGURE_COMMAND ./autogen.sh --enable-prof --disable-cxx --prefix=<INSTALL_DIR> --with-jemalloc-prefix=je_
     BUILD_COMMAND make
     INSTALL_COMMAND make install
     BUILD_IN_SOURCE 1

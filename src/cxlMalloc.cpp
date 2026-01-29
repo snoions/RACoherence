@@ -7,7 +7,6 @@
 namespace RACoherence {
 
 #ifdef HC_USE_CUSTOM_POOL
-//CXLRWLock may need size 256
 using CXLHCPool = MemoryPool<8, 128>;
 CXLHCPool *cxlhc_pool;
 #else
@@ -194,9 +193,13 @@ void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
 
 void cxlnhc_thread_init() {
     int ret;
-    if (ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index)) != 0)
+    ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index));
+    if (ret)
         LOG_ERROR("je_mallctl thread.arena returned " << strerror(ret))
-    je_mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
+    bool enabled = true;
+    ret = je_mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
+    if (ret)
+        LOG_ERROR("je_mallctl thread.tcache.flush returned " << strerror(ret))
 }
 
 void *cxlnhc_malloc(size_t size) {

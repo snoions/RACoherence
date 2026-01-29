@@ -47,7 +47,7 @@ struct clh_rwlock_node_
 typedef struct
 {
     clh_rwlock_node_t * mynode;
-    char padding1[64];  // To avoid false sharing with the tail
+    //char padding1[64];  // To avoid false sharing with the tail
     std::atomic<clh_rwlock_node_t *> tail;
     char padding2[64];  // No point in having false-sharing with the tail
     std::atomic<long> readers_counter;

@@ -6,12 +6,8 @@
 #include <cstdint>
 #include <cstring>
 #include <unistd.h>
-#include "config.hpp"
-
-// Removed unused headers: <map>, <mutex>, <set>, <vector>, <unordered_map>
-// Removed dependency on custom data structures: "clh_mutex.hpp", "cxlMalloc.hpp"
-
 #include "jemalloc/jemalloc.h"
+#include "config.hpp"
 
 namespace RACoherence {
 
