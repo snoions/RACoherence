@@ -67,13 +67,13 @@ class ThreadOps {
             if (is_length_based(cg)) {
                 for (auto cl_addr: LengthCLRange(cg))
                     // should be unrolled, manually unroll if not
-                    for (unsigned i = 0; i < GROUP_SIZE * CL_UNIT_GRANULARITY; i++)
-                        do_flush((char *)cl_addr + (i * CACHE_LINE_SIZE));
+                    for (unsigned i = 0; i < GROUP_SIZE * VIRTUAL_CL_GRANULARITY; i++)
+                        do_writeback((char *)cl_addr + (i * CACHE_LINE_SIZE));
             } else {
                 for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
                     // should be unrolled, manually unroll if not
-                    for (unsigned i = 0; i < CL_UNIT_GRANULARITY; i++)
-                        do_flush((char *)cl_addr + i * CACHE_LINE_SIZE);
+                    for (unsigned i = 0; i < VIRTUAL_CL_GRANULARITY; i++)
+                        do_writeback((char *)cl_addr + i * CACHE_LINE_SIZE);
             }
 #endif
         }
@@ -171,7 +171,7 @@ public:
     }
 
     inline void log_store(char *addr) {
-        uintptr_t cl_addr = (uintptr_t)addr >> CL_UNIT_SHIFT;
+        uintptr_t cl_addr = (uintptr_t)addr >> VIRTUAL_CL_SHIFT;
         if (cl_addr == recent_cl)
             return;
         recent_cl = cl_addr;
@@ -187,7 +187,7 @@ public:
     }
 
 //    inline void log_store_may_straddle(char *addr, size_t byte_offset) {
-//        uintptr_t cl_addr = (uintptr_t)addr & ~CL_UNIT_MASK;
+//        uintptr_t cl_addr = (uintptr_t)addr & ~VIRTUAL_CL_MASK;
 //        if (cl_addr == recent_cl)
 //            return;
 //        recent_cl = cl_addr;
@@ -201,8 +201,8 @@ public:
 //    }
 
     inline void log_range_store(char *begin, char *end) {
-        uintptr_t begin_addr = (uintptr_t)begin >> CL_UNIT_SHIFT;
-        uintptr_t end_addr = (uintptr_t)end >> CL_UNIT_SHIFT;
+        uintptr_t begin_addr = (uintptr_t)begin >> VIRTUAL_CL_SHIFT;
+        uintptr_t end_addr = (uintptr_t)end >> VIRTUAL_CL_SHIFT;
         recent_cl = end_addr;
 
         while (dirty_cls.range_insert(begin_addr, end_addr))

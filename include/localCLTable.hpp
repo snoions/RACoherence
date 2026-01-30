@@ -128,8 +128,8 @@ public:
 //        }
 //        return false;
 //#else
-//        uintptr_t cl_addr = ptr >> CL_UNIT_SHIFT;
-//        uintptr_t cl_addr_end = (ptr + byte_offset) >> CL_UNIT_SHIFT;
+//        uintptr_t cl_addr = ptr >> VIRTUAL_CL_SHIFT;
+//        uintptr_t cl_addr_end = (ptr + byte_offset) >> VIRTUAL_CL_SHIFT;
 //        cl_group_idx index = ptr >> GROUP_SHIFT;
 //        int pos = cl_addr & GROUP_SIZE_MASK;
 //        uint64_t mask;

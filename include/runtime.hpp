@@ -51,10 +51,10 @@ inline bool in_cxl_nhc_mem(void *addr) {
     return ((uintptr_t)addr & CXL_NHC_START);
 }
 
-inline void rac_post_flush(void *begin, void *end) {
+inline void rac_post_writeback(void *begin, void *end) {
 #if PROTOCOL_OFF || defined(EAGER_FLUSH)
     if (in_cxl_nhc_mem((char*)begin))
-        do_range_flush((char *)begin, (char *)end - (char *)begin);
+        do_range_writeback((char *)begin, (char *)end - (char *)begin);
 #endif
 #if !PROTOCOL_OFF
     if (in_cxl_nhc_mem((char*)begin))
@@ -138,7 +138,7 @@ using namespace RACoherence;
         } \
         *((uint ## size ## _t*)addr) = val; \
         if (in_cxl_nhc) \
-            do_flush((char *)addr); \
+            do_writeback((char *)addr); \
     }
 #elif defined(EAGER_INVALIDATE)
     #ifdef EAGER_FLUSH
@@ -150,7 +150,7 @@ using namespace RACoherence;
             } \
             *((uint ## size ## _t*)addr) = val; \
             if (in_cxl_nhc) \
-                do_flush((char *)addr); \
+                do_writeback((char *)addr); \
         }
     #else
     #define RACSTORE(size) \
@@ -173,7 +173,7 @@ using namespace RACoherence;
             } \
             *((uint ## size ## _t*)addr) = val; \
             if (in_cxl_nhc) \
-                 do_flush((char *)addr); \
+                 do_writeback((char *)addr); \
         }
     #else
     #define RACSTORE(size) \

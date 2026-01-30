@@ -73,7 +73,7 @@ void * memcpy(void * dst, const void * src, size_t n) {
         ret = memcpy_real(dst, src, n);
 #if PROTOCOL_OFF
     if (is_in_cxl_nhc_dst)
-        do_range_flush((char *)dst, n);
+        do_range_writeback((char *)dst, n);
 #else
     if (is_in_cxl_nhc_dst)
         thread_ops->log_range_store(dst_begin, dst_end);
@@ -115,7 +115,7 @@ void * memmove(void *dst, const void *src, size_t n) {
         ret = memmove_real(dst, src, n);
 #if PROTOCOL_OFF
     if (is_in_cxl_nhc_dst)
-        do_range_flush((char *)dst, n);
+        do_range_writeback((char *)dst, n);
 #else
     if (is_in_cxl_nhc_dst)
         thread_ops->log_range_store(dst_begin, dst_end);
@@ -144,7 +144,7 @@ void * memset(void *dst, int c, size_t n) {
         ret = memset_real(dst, c, n);
 #if PROTOCOL_OFF
     if (is_in_cxl_nhc)
-        do_range_flush((char *)dst, n);
+        do_range_writeback((char *)dst, n);
 #else
     if (is_in_cxl_nhc)
         thread_ops->log_range_store(dst_begin, dst_end);
@@ -172,7 +172,7 @@ void bzero(void *dst, size_t n) {
         bzero_real(dst, n);
 #if PROTOCOL_OFF
     if (is_in_cxl_nhc)
-        do_range_flush((char *)dst, n);
+        do_range_writeback((char *)dst, n);
 #else
     if (is_in_cxl_nhc)
         thread_ops->log_range_store(dst_begin, dst_end);
@@ -226,7 +226,7 @@ char * strcpy(char *dst, const char *src) {
     }
 #if PROTOCOL_OFF
     if (is_in_cxl_nhc_dst)
-        do_range_flush((char *)dst, n);
+        do_range_writeback((char *)dst, n);
 #else
     if (is_in_cxl_nhc_dst)
         thread_ops->log_range_store((char *)dst, ((char *)dst + n));
@@ -253,7 +253,7 @@ ssize_t read(int fd, void* buf, size_t count) {
         ret = read_real(fd, buf, count);
 #if PROTOCOL_OFF
     if (is_in_cxl_nhc)
-        do_range_flush((char *)buf, count);
+        do_range_writeback((char *)buf, count);
 #else
     if (is_in_cxl_nhc)
         thread_ops->log_range_store(buf_begin, buf_end);

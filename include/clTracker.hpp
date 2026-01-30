@@ -142,8 +142,8 @@ public:
         bool any_dirty = false;
 
         // Align begin to cache unit boundary
-        uintptr_t addr = begin & ~CL_UNIT_MASK;
-	const unsigned leaf_shift = CL_UNIT_SHIFT + LEAF_BITS;
+        uintptr_t addr = begin & ~VIRTUAL_CL_MASK;
+	const unsigned leaf_shift = VIRTUAL_CL_SHIFT + LEAF_BITS;
 
         while (addr < end) {
             uint64_t l1_idx, l2_idx, line_idx;
@@ -193,7 +193,7 @@ public:
                 uint64_t bits = was_dirty;
                 while (bits) {
                     unsigned bit = __builtin_ctzll(bits);  // index of lowest set bit
-                    uintptr_t line_va = (addr & ~((1ull << leaf_shift) - 1)) + (bit * CL_UNIT_SIZE);
+                    uintptr_t line_va = (addr & ~((1ull << leaf_shift) - 1)) + (bit * VIRTUAL_CL_SIZE);
                     do_invalidate((char*)line_va);
                     bits &= bits - 1; // clear lowest set bit
                 }
@@ -243,8 +243,8 @@ private:
     }
 
     static inline void split_va(uintptr_t va, uint64_t &l1, uint64_t &l2, uint64_t &line) {
-        line = (va >> CL_UNIT_SHIFT) & (LEAF_ENTRIES - 1);          // 6 bit
-	const uintptr_t shift2 = CL_UNIT_SHIFT + LEAF_BITS;
+        line = (va >> VIRTUAL_CL_SHIFT) & (LEAF_ENTRIES - 1);          // 6 bit
+	const uintptr_t shift2 = VIRTUAL_CL_SHIFT + LEAF_BITS;
         l2   = (va >> shift2) & (L2_ENTRIES - 1);                   // 8 bits
 	const uintptr_t shift1 = shift2 + L2_BITS;
         l1   = (va >> shift1) & (L1_ENTRIES - 1);                   // 19 bits

@@ -1,16 +1,16 @@
-#include "memoryPool.hpp"
+#include "slabPool.hpp"
 #include "jemalloc/jemalloc.h"
 #include "extentPool.hpp"
 #include <gtest/gtest.h>
 
 using namespace RACoherence;
 
-TEST(MemoryPoolTest, Allocs)
+TEST(SlabPoolTest, Allocs)
 {
     constexpr size_t POOL_SIZE = 1024 * 1024;
     static char buffer[POOL_SIZE];
 
-    MemoryPool<32, 64, 128> pool(buffer, POOL_SIZE);
+    SlabPool<32, 64, 128> pool(buffer, POOL_SIZE);
 
     void* p1 = pool.allocate(20);   // 32B pool
     void* p2 = pool.allocate(60);   // 64B pool

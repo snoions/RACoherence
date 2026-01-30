@@ -9,12 +9,12 @@ constexpr uintptr_t PAGE_SIZE = 1ull << 12; // 4KB
 constexpr uintptr_t CACHE_LINE_SIZE = 64;
 constexpr uintptr_t CACHE_LINE_SHIFT = 6;
 constexpr uintptr_t CACHE_LINE_MASK = CACHE_LINE_SIZE-1;
-//constexpr uintptr_t CL_UNIT_GRANULARITY_SHIFT = 1; // reasonable range is 0 to 5
-constexpr uintptr_t CL_UNIT_GRANULARITY_SHIFT = 0; // reasonable range is 0 to 5
-constexpr uintptr_t CL_UNIT_GRANULARITY = 1ull << CL_UNIT_GRANULARITY_SHIFT;
-constexpr uintptr_t CL_UNIT_SIZE = CACHE_LINE_SIZE * CL_UNIT_GRANULARITY;
-constexpr uintptr_t CL_UNIT_SHIFT = CACHE_LINE_SHIFT + CL_UNIT_GRANULARITY_SHIFT; // log(CL_UNIT_SIZE)
-constexpr uintptr_t CL_UNIT_MASK = CL_UNIT_SIZE-1;
+//constexpr uintptr_t VIRTUAL_CL_GRANULARITY_SHIFT = 1; // reasonable range is 0 to 5
+constexpr uintptr_t VIRTUAL_CL_GRANULARITY_SHIFT = 0; // reasonable range is 0 to 5
+constexpr uintptr_t VIRTUAL_CL_GRANULARITY = 1ull << VIRTUAL_CL_GRANULARITY_SHIFT;
+constexpr uintptr_t VIRTUAL_CL_SIZE = CACHE_LINE_SIZE * VIRTUAL_CL_GRANULARITY;
+constexpr uintptr_t VIRTUAL_CL_SHIFT = CACHE_LINE_SHIFT + VIRTUAL_CL_GRANULARITY_SHIFT; // log(VIRTUAL_CL_SIZE)
+constexpr uintptr_t VIRTUAL_CL_MASK = VIRTUAL_CL_SIZE-1;
 // assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 

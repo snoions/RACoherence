@@ -10,7 +10,7 @@
 #define CLWB 3
 
 #if !NO_FLUSH
-#define FLUSH_INST 3
+#define WRITEBACK_INST 3
 #define INVALIDATE_INST 2 //may not be CLWB
 #endif
 
@@ -19,13 +19,13 @@ namespace RACoherence {
 constexpr long WRITE_LATENCY_IN_NS = 0;
 constexpr long CPU_FREQ_MHZ = 2100;
 
-static inline void do_flush(volatile char *ptr)
+static inline void do_writeback(volatile char *ptr)
 {
-#if FLUSH_INST == CLFLUSH
+#if WRITEBACK_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
-#elif FLUSH_INST == CLFLUSHOPT
+#elif WRITEBACK_INST == CLFLUSHOPT
     __asm__ volatile(".byte 0x66; clflush %0" : "+m" (*(volatile char *)ptr));
-#elif FLUSH_INST == CLWB
+#elif WRITEBACK_INST == CLWB
     __asm__ volatile(".byte 0x66; xsaveopt %0" : "+m" (*(volatile char *)ptr));
 #endif
 }
@@ -55,14 +55,14 @@ static inline unsigned long read_tsc(void)
     return var;
 }
 
-inline void do_range_flush(char *data, int len)
+inline void do_range_writeback(char *data, int len)
 {
 #if !NO_FLUSH
     char *ptr = (char *)((unsigned long)data & ~CACHE_LINE_MASK);
     for (; ptr < data+len; ptr += CACHE_LINE_SIZE){
         unsigned long etsc = read_tsc() +
             (unsigned long)(WRITE_LATENCY_IN_NS * CPU_FREQ_MHZ/1000);
-        do_flush(ptr);
+        do_writeback(ptr);
         while (read_tsc() < etsc) cpu_pause();
     }
 #endif
@@ -83,7 +83,7 @@ inline void do_range_invalidate(char *data, int len)
 
 static inline void flush_fence()
 {
-#if FLUSH_INST == CLFLUSHOPT || FLUSH_INST == CLWB
+#if WRITEBACK_INST == CLFLUSHOPT || WRITEBACK_INST == CLWB
     __asm__ volatile("sfence":::"memory");
 #endif
 }

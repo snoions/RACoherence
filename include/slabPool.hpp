@@ -23,7 +23,7 @@ public:
 // Tagged pointer pool: pack (pointer | tag) in 64-bit word.
 // Assumptions: pointer fits in LOWER PTR_BITS bits.
 template <size_t... BlockSizes>
-class MemoryPool {
+class SlabPool {
     static_assert(sizeof...(BlockSizes) > 0, "At least one block size required");
     static_assert(std::is_same_v<void*, void*>, "pointer type sanity");
 
@@ -38,13 +38,13 @@ public:
     static constexpr unsigned PTR_BITS = 64u - TAG_BITS;
     static_assert(TAG_BITS > 0 && PTR_BITS > 0, "invalid tag/pointer bit split");
 
-    MemoryPool(void* buf, size_t buf_size)
+    SlabPool(void* buf, size_t buf_size)
       : base(reinterpret_cast<uint8_t*>(buf)), base_size(buf_size)
     {
         // Sanity checks for block sizes
         for (size_t i = 0; i < bucket_count; ++i) {
             if (block_sizes[i] < sizeof(Node)) {
-                std::cerr << "MemoryPool error: Block size " << block_sizes[i]
+                std::cerr << "SlabPool error: Block size " << block_sizes[i]
                           << " < sizeof(Node) (" << sizeof(Node) << ")\n";
                 std::exit(EXIT_FAILURE);
             }
@@ -53,7 +53,7 @@ public:
         // Ensure we can pack pointers into PTR_BITS
         uintptr_t test_ptr = reinterpret_cast<uintptr_t>(base);
         if (!pointer_fits(test_ptr)) {
-            std::cerr << "MemoryPool fatal: pool base pointer " << (void*)base
+            std::cerr << "SlabPool fatal: pool base pointer " << (void*)base
                       << " does not fit into " << PTR_BITS << " bits required for tagging.\n";
             std::exit(EXIT_FAILURE);
         }
@@ -67,8 +67,8 @@ public:
         init_buckets();
     }
 
-    MemoryPool(const MemoryPool&) = delete;
-    MemoryPool& operator=(const MemoryPool&) = delete;
+    SlabPool(const SlabPool&) = delete;
+    SlabPool& operator=(const SlabPool&) = delete;
 
     void* allocate(size_t size) {
            size_t idx = bucket_index_for(size);
@@ -94,7 +94,7 @@ public:
         }
         size_t idx = bucket_index_for(size);
         if (idx == SIZE_MAX) {
-            std::cerr << "MemoryPool::deallocate: invalid size " << size << "\n";
+            std::cerr << "SlabPool::deallocate: invalid size " << size << "\n";
         }
         push_tagged(idx, reinterpret_cast<Node*>(p));
     }
@@ -104,7 +104,7 @@ public:
     }
 
     void debug_print() const {
-        std::cout << "MemoryPool debug:\n";
+        std::cout << "SlabPool debug:\n";
         for (size_t i = 0; i < bucket_count; ++i) {
             std::cout << "  bucket " << i << " block_size=" << block_sizes[i]
                       << " free=" << free_count(i) << "\n";
@@ -131,7 +131,7 @@ private:
         uintptr_t up = reinterpret_cast<uintptr_t>(p);
         if (!pointer_fits(up)) {
             // will be caught earlier; but guard anyway
-            std::cerr << "MemoryPool::pack: pointer too large to pack\n";
+            std::cerr << "SlabPool::pack: pointer too large to pack\n";
             std::exit(EXIT_FAILURE);
         }
         uint64_t raw = (uint64_t)up | ((tag & ((uint64_t(1) << TAG_BITS) - 1)) << TAG_SHIFT);
@@ -166,7 +166,7 @@ private:
             }
             size_t bytes_needed = blocks * bsize;
             if (offset + bytes_needed > base_size) {
-                std::cerr << "MemoryPool::init_buckets: computed overflow\n";
+                std::cerr << "SlabPool::init_buckets: computed overflow\n";
                 std::exit(EXIT_FAILURE);
             }
 
@@ -242,7 +242,7 @@ private:
     
             // 3. Now it is safe to validate the pointer
             if (!pointer_in_range(old_ptr)) {
-                std::cerr << "MemoryPool::pop_tagged: head pointer invalid: " << old_ptr 
+                std::cerr << "SlabPool::pop_tagged: head pointer invalid: " << old_ptr 
                           << " (raw: " << std::hex << old_raw << ")\n";
                 std::exit(EXIT_FAILURE);
             }

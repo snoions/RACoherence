@@ -1,13 +1,13 @@
 #include <sstream>
 #include "config.hpp"
 #include "cxlMalloc.hpp"
-#include "memoryPool.hpp"
+#include "slabPool.hpp"
 #include "extentPool.hpp"
 
 namespace RACoherence {
 
 #ifdef HC_USE_CUSTOM_POOL
-using CXLHCPool = MemoryPool<8, 128>;
+using CXLHCPool = SlabPool<8, 128>;
 CXLHCPool *cxlhc_pool;
 #else
 unsigned cxlhc_arena_index;

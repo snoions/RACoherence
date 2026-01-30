@@ -191,7 +191,7 @@ public:
     }
 
     inline void unlock() {
-        do_range_flush((char *)data, Count * sizeof(T));
+        do_range_writeback((char *)data, Count * sizeof(T));
         flush_fence();
         clh_mutex_unlock(&inner->mutex);
     }

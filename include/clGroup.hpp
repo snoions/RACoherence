@@ -20,7 +20,7 @@ namespace cl_group {
     constexpr uint64_t GROUP_SIZE_SHIFT = 4; //group of 16 CLs
     constexpr size_t GROUP_SIZE = 1ull << GROUP_SIZE_SHIFT;
     constexpr size_t FULL_MASK = (1ull << GROUP_SIZE) - 1ull;
-    constexpr uint64_t GROUP_SHIFT = CL_UNIT_SHIFT + GROUP_SIZE_SHIFT;
+    constexpr uint64_t GROUP_SHIFT = VIRTUAL_CL_SHIFT + GROUP_SIZE_SHIFT;
     constexpr uint64_t GROUP_MASK = (1ull << GROUP_SHIFT) - 1ull; // group of 16 CLs
     constexpr uint64_t GROUP_INDEX_SHIFT = VIRTUAL_ADDRESS_BITS - GROUP_SHIFT;
     constexpr uint64_t GROUP_INDEX_MASK = (1ull << GROUP_INDEX_SHIFT) - 1ull;
@@ -110,7 +110,7 @@ public:
         inline iterator(uintptr_t p, uint64_t m): ptr(p), mask(m) {}
         inline uintptr_t operator*() const {
             int p = __builtin_ctzl(mask);
-            return ptr + (p << CL_UNIT_SHIFT);
+            return ptr + (p << VIRTUAL_CL_SHIFT);
         }
 
         inline iterator operator++() {
