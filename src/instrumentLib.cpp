@@ -1,43 +1,53 @@
 #include <dlfcn.h>
 #include <unistd.h>
+#include <numaif.h>
 #include "instrumentLib.hpp"
 #include "runtime.hpp"
 
 namespace RACoherence {
 
-void * (*volatile memcpy_real)(void * dst, const void *src, size_t n) = nullptr;
-void * (*volatile memmove_real)(void * dst, const void *src, size_t len) = nullptr;
-void (*volatile bzero_real)(void * dst, size_t len) = nullptr;
-void * (*volatile memset_real)(void * dst, int c, size_t len) = nullptr;
-char * (*volatile strcpy_real)(char * dst, const char *src) = nullptr;
-ssize_t (*volatile read_real)(int fd, void* buf, size_t count) = nullptr;
+using memcpy_t = void * (*)(void * dst, const void *src, size_t n);
+using memmove_t = void * (*)(void * dst, const void *src, size_t len);
+using memset_t = void * (*)(void * dst, int c, size_t len);
+using strcpy_t = char * (*)(char * dst, const char *src);
+using bzero_t = void (*)(void * dst, size_t len);
+using read_t = ssize_t (*)(int fd, void* buf, size_t count);
+using mmap_t = void* (*)(void*, size_t, int, int, int, off_t);
+volatile memcpy_t memcpy_real = nullptr;
+volatile memmove_t memmove_real = nullptr;
+volatile memset_t memset_real = nullptr;
+volatile strcpy_t strcpy_real = nullptr;
+volatile bzero_t bzero_real = nullptr;
+volatile read_t read_real = nullptr;
+volatile mmap_t mmap_real = nullptr;
+
 
 void instrument_lib() {
     if (!memcpy_real) {
-        memcpy_real = (void * (*)(void * dst, const void *src, size_t n)) 1;
-        memcpy_real = (void * (*)(void * dst, const void *src, size_t n))dlsym(RTLD_NEXT, "memcpy");
+        memcpy_real = (memcpy_t)1;
+        memcpy_real = (memcpy_t)dlsym(RTLD_NEXT, "memcpy");
     }
     if (!memmove_real) {
-        memmove_real = (void * (*)(void * dst, const void *src, size_t n)) 1;
-        memmove_real = (void * (*)(void * dst, const void *src, size_t n))dlsym(RTLD_NEXT, "memmove");
+        memmove_real = (memmove_t) 1;
+        memmove_real = (memmove_t)dlsym(RTLD_NEXT, "memmove");
     }
 
     if (!memset_real) {
-        memset_real = (void * (*)(void * dst, int c, size_t n)) 1;
-        memset_real = (void * (*)(void * dst, int c, size_t n))dlsym(RTLD_NEXT, "memset");
+        memset_real = (memset_t) 1;
+        memset_real = (memset_t)dlsym(RTLD_NEXT, "memset");
     }
 
     if (!strcpy_real) {
-        strcpy_real = (char * (*)(char * dst, const char *src)) 1;
-        strcpy_real = (char * (*)(char * dst, const char *src))dlsym(RTLD_NEXT, "strcpy");
+        strcpy_real = (strcpy_t) 1;
+        strcpy_real = (strcpy_t)dlsym(RTLD_NEXT, "strcpy");
     }
     if (!bzero_real) {
-        bzero_real = (void (*)(void * dst, size_t len)) 1;
-        bzero_real = (void (*)(void * dst, size_t len))dlsym(RTLD_NEXT, "bzero");
+        bzero_real = (bzero_t) 1;
+        bzero_real = (bzero_t)dlsym(RTLD_NEXT, "bzero");
     }
     if (!read_real) {
-        read_real = (ssize_t (*)(int fd, void* buf, size_t count)) 1;
-        read_real = (ssize_t (*)(int fd, void* buf, size_t count))dlsym(RTLD_NEXT, "read");
+        read_real = (read_t) 1;
+        read_real = (read_t)dlsym(RTLD_NEXT, "read");
     }
 }
 
@@ -258,6 +268,34 @@ ssize_t read(int fd, void* buf, size_t count) {
     if (is_in_cxl_nhc)
         thread_ops->log_range_store(buf_begin, buf_end);
 #endif
+    return ret;
+}
+
+// mmap needs to be instrumented at program start
+void* mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
+    if (!mmap_real) mmap_real = (mmap_t)dlsym(RTLD_NEXT, "mmap");
+
+    void *ret = mmap_real(addr, length, prot, flags, fd, offset);
+    // Get the address of the code that called mmap
+    void *caller = __builtin_return_address(0);
+    Dl_info info;
+
+    if (dladdr(caller, &info) && info.dli_fname != NULL) {
+        // Only intercept if the call originated from a file containing "jemalloc"
+        if (strstr(info.dli_fname, "libjemalloc") != NULL) {
+            // This is a jemalloc call! Apply your FIXED_ADDR logic here.
+#ifdef CXL_NUMA_MODE
+            // bind cxl memory buffers to CXL NUMA node
+            unsigned long nodemask = 0;
+            nodemask |= 1 << CXL_NUMA_NODE_ID;
+            if((uintptr_t)ret != -1 && mbind(ret, length, MPOL_BIND, &nodemask, sizeof(nodemask) * 8, 0) < 0) {
+                perror("mbind");
+                exit(EXIT_FAILURE);
+            }
+#endif
+        }
+    }
+
     return ret;
 }
 
