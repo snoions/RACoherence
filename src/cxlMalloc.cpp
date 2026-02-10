@@ -20,7 +20,7 @@ ExtentPool *cxlnhc_extent_pool;
 
 using namespace RACoherence;
 
-const char *je_malloc_conf ="narenas:1";
+const char *je_malloc_conf ="narenas:1"; //,retain:false";
 
 #ifdef HC_USE_CUSTOM_POOL
 void cxlhc_pool_init(char *buf, size_t size) {
@@ -88,13 +88,11 @@ extent_hooks_t cxlhc_hooks = {
 
 void cxlhc_pool_init(char *buf, size_t size) {
     int ret;
-    //size_t sz = sizeof(cxlhc_arena_index);
-    //if ((ret = je_mallctl("arenas.create", &cxlhc_arena_index, &sz, nullptr, 0))) {
-    //    LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
-    //    std::exit(EXIT_FAILURE);
-    //}
-    // make default arena use cxlhc memory
-    cxlhc_arena_index = 0;
+    size_t sz = sizeof(cxlhc_arena_index);
+    if ((ret = je_mallctl("arenas.create", &cxlhc_arena_index, &sz, nullptr, 0))) {
+        LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
+        std::exit(EXIT_FAILURE);
+    }
     cxlhc_extent_pool = new (buf) ExtentPool(buf + sizeof(ExtentPool), size - sizeof(ExtentPool));
     extent_hooks_t* new_hooks = &cxlhc_hooks;
     extent_hooks_t* old_hooks = nullptr;
@@ -183,9 +181,15 @@ void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
         LOG_ERROR("je_mallctl arena.extent_hooks returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
-    // clear extent pool from default arena
-    if ((ret = je_mallctl("arena.0.purge", NULL, NULL, NULL, 0))) {
-        LOG_ERROR("je_mallctl arena.0.purge returned " << strerror(ret))
+    ssize_t new_decay_ms = 0;
+    ret = je_mallctl("arena.0.dirty_decay_ms", NULL, NULL, &new_decay_ms, sizeof(new_decay_ms));
+    if (ret) {
+        LOG_ERROR("je_mallctl arena.0.dirty_decay_ms returned " << strerror(ret))
+        std::exit(EXIT_FAILURE);
+    }
+    ret = je_mallctl("arena.0.muzzy_decay_ms", NULL, NULL, &new_decay_ms, sizeof(new_decay_ms));
+    if (ret) {
+        LOG_ERROR("je_mallctl arena.0.muzzy_decay_ms returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
     cxlnhc_thread_init();
