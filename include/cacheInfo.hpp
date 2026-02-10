@@ -35,25 +35,25 @@ struct CacheInfo {
                 }
 #endif
                 uintptr_t cl_addr = get_ptr(cg);
-#ifdef EAGER_INVALIDATE
-                for (unsigned i = 0; i < length * GROUP_SIZE * VIRTUAL_CL_GRANULARITY; i++)
+#if EAGER_INVALIDATE
+                for (unsigned i = 0; i < length * GROUP_SIZE * CL_EXPAND_FACTOR; i++)
                     do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
 #else
                 for (unsigned i = 0; i < length; i++)
-                    inv_cls.mark_dirty((char *)cl_addr + i, FULL_MASK << get_mask16_to_64_shift(cl_addr));
+                    inv_cls.mark_dirty(cl_addr + i, FULL_MASK << get_mask16_to_64_shift(cl_addr));
 #endif
             } else {
-#ifdef EAGER_INVALIDATE
+#if EAGER_INVALIDATE
                 for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
                     // should be unrolled, manually unroll if not
-                    for (unsigned i = 0; i < VIRTUAL_CL_GRANULARITY; i++)
+                    for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
                         do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
 #else
                 inv_cls.mark_dirty(get_ptr(cg),  get_mask16(cg) << get_mask16_to_64_shift(cg));
 #endif
             }
         }
-#ifdef EAGER_INVALIDATE
+#if EAGER_INVALIDATE
         invalidate_fence();
 #endif
     }

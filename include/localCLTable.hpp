@@ -14,7 +14,7 @@ namespace RACoherence {
 class LocalCLTable {
     constexpr static size_t GROUP_LEN_MIN = 4; //only saves ranges of at least 4 cache line groups
     /** Each entry here can store 16 cache line units. */
-    cl_group_t table[LOCAL_CL_TABLE_ENTRIES] = {};
+    cl_group_t table[LOCAL_CL_TABLE_SIZE] = {};
     int length_entry_count = 0; //TODO: temporary hack, improve later
     struct EntryBuffer {
         uintptr_t cl_addr = 0;
@@ -45,7 +45,7 @@ class LocalCLTable {
 
         //scan table for overlaps
         int insert_pos = -1;
-        for(int i = 0; i < LOCAL_CL_TABLE_ENTRIES; i++) {
+        for(int i = 0; i < LOCAL_CL_TABLE_SIZE; i++) {
             cl_group_t val = table[i];
             uint64_t val_index = get_index(val);
             if (!val) {
@@ -78,7 +78,7 @@ class LocalCLTable {
         using namespace cl_group;
         //alternatively starting searching from 0
         for(int i = 0; i < LOCAL_CL_TABLE_SEARCH_ITERS; i++) {
-            int tableindex = (group_index + i) & (LOCAL_CL_TABLE_ENTRIES - 1);
+            int tableindex = (group_index + i) & (LOCAL_CL_TABLE_SIZE - 1);
             uint64_t value = table[tableindex];
             value = value ? value : group_index;
             //assert(!is_length_based(value));
@@ -223,7 +223,7 @@ public:
     }
 
     inline cl_group_t *end() {
-        return &table[LOCAL_CL_TABLE_ENTRIES];
+        return &table[LOCAL_CL_TABLE_SIZE];
     }
 
     inline void clear_table() {

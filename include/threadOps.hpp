@@ -23,7 +23,7 @@ class ThreadOps {
     VectorClock thread_clock;
     LocalCLTable dirty_cls;
     uintptr_t recent_cl = 0;
-#ifdef DELAY_PUBLISH
+#if DELAY_PUBLISH
     Log *curr_log = nullptr;
 #endif
 
@@ -44,7 +44,7 @@ class ThreadOps {
 
     clock_t write_to_log(bool is_release) {
         using namespace cl_group;
-#ifdef DELAY_PUBLISH
+#if DELAY_PUBLISH
         clock_t clk_val = 0;
         if (!curr_log)
             set_to_new_log(curr_log);
@@ -56,28 +56,28 @@ class ThreadOps {
         for(auto cg: dirty_cls) {
             if (!cg)
                 continue;
-#ifdef DELAY_PUBLISH
+#if DELAY_PUBLISH
             if (curr_log->is_full()) {
                 clk_val = publish_log(curr_log, false);
 		set_to_new_log(curr_log);
             }
 #endif
             curr_log->write(cg);
-#ifndef EAGER_FLUSH
+#if !EAGER_WRITEBACK
             if (is_length_based(cg)) {
                 for (auto cl_addr: LengthCLRange(cg))
                     // should be unrolled, manually unroll if not
-                    for (unsigned i = 0; i < GROUP_SIZE * VIRTUAL_CL_GRANULARITY; i++)
+                    for (unsigned i = 0; i < GROUP_SIZE * CL_EXPAND_FACTOR; i++)
                         do_writeback((char *)cl_addr + (i * CACHE_LINE_SIZE));
             } else {
                 for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
                     // should be unrolled, manually unroll if not
-                    for (unsigned i = 0; i < VIRTUAL_CL_GRANULARITY; i++)
+                    for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
                         do_writeback((char *)cl_addr + i * CACHE_LINE_SIZE);
             }
 #endif
         }
-#ifdef DELAY_PUBLISH
+#if DELAY_PUBLISH
         if (is_release) {
              clk_val = publish_log(curr_log, true);
              curr_log = nullptr;
@@ -150,6 +150,11 @@ public:
         LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
         if (!recent_cl)
             return thread_clock;
+#ifdef EAGER_WRITEBACK
+        uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
+        for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
+             do_writeback((char *)recent_addr + i * CACHE_LINE_SIZE);
+#endif
         recent_cl = 0;
 #ifdef LOCAL_CL_TABLE_BUFFER
         while (dirty_cls.dump_buffer_to_table())
@@ -171,14 +176,21 @@ public:
     }
 
     inline void log_store(char *addr) {
-        uintptr_t cl_addr = (uintptr_t)addr >> VIRTUAL_CL_SHIFT;
-        if (cl_addr == recent_cl)
+        uintptr_t cl = (uintptr_t)addr >> VIRTUAL_CL_SHIFT;
+        if (cl == recent_cl)
             return;
-        recent_cl = cl_addr;
+#ifdef EAGER_WRITEBACK
+        if (recent_cl) {
+            uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
+            for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
+                 do_writeback((char *)recent_addr + i * CACHE_LINE_SIZE);
+        }
+#endif
+        recent_cl = cl;
 
-        if (dirty_cls.insert((uintptr_t)cl_addr)) {
+        if (dirty_cls.insert((uintptr_t)cl)) {
             write_to_log(false);
-            dirty_cls.insert((uintptr_t)cl_addr);
+            dirty_cls.insert((uintptr_t)cl);
         }
 #ifdef LOCAL_CL_TABLE_BUFFER
         if (dirty_cls.get_length_entry_count()!=0)
@@ -186,21 +198,8 @@ public:
 #endif
     }
 
-//    inline void log_store_may_straddle(char *addr, size_t byte_offset) {
-//        uintptr_t cl_addr = (uintptr_t)addr & ~VIRTUAL_CL_MASK;
-//        if (cl_addr == recent_cl)
-//            return;
-//        recent_cl = cl_addr;
-//
-//        while (dirty_cls.insert_may_straddle((uintptr_t)addr, byte_offset))
-//            write_to_log(false);
-//#ifdef LOCAL_CL_TABLE_BUFFER
-//        if (dirty_cls.get_length_entry_count()!=0)
-//            write_to_log(false);
-//#endif
-//    }
-
     inline void log_range_store(char *begin, char *end) {
+        // EAGER_WRITEBACK not implemented here for efficiency, need to be handled by caller
         uintptr_t begin_addr = (uintptr_t)begin >> VIRTUAL_CL_SHIFT;
         uintptr_t end_addr = (uintptr_t)end >> VIRTUAL_CL_SHIFT;
         recent_cl = end_addr;

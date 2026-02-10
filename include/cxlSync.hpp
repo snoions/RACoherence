@@ -81,8 +81,8 @@ public:
 #ifdef LOCATION_CLOCK_MERGE
             inner->mtx.lock();
             inner->clock.merge(thread_clock);
-            inner->mtx.unlock();
             inner->atomic_data.store(desired, order);
+            inner->mtx.unlock();
 #else
             inner->mtx.lock();
             inner->clock = thread_clock;

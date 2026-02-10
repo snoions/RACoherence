@@ -9,15 +9,21 @@ constexpr uintptr_t PAGE_SIZE = 1ull << 12; // 4KB
 constexpr uintptr_t CACHE_LINE_SIZE = 64;
 constexpr uintptr_t CACHE_LINE_SHIFT = 6;
 constexpr uintptr_t CACHE_LINE_MASK = CACHE_LINE_SIZE-1;
-//constexpr uintptr_t VIRTUAL_CL_GRANULARITY_SHIFT = 1; // reasonable range is 0 to 5
-constexpr uintptr_t VIRTUAL_CL_GRANULARITY_SHIFT = 0; // reasonable range is 0 to 5
-constexpr uintptr_t VIRTUAL_CL_GRANULARITY = 1ull << VIRTUAL_CL_GRANULARITY_SHIFT;
-constexpr uintptr_t VIRTUAL_CL_SIZE = CACHE_LINE_SIZE * VIRTUAL_CL_GRANULARITY;
-constexpr uintptr_t VIRTUAL_CL_SHIFT = CACHE_LINE_SHIFT + VIRTUAL_CL_GRANULARITY_SHIFT; // log(VIRTUAL_CL_SIZE)
-constexpr uintptr_t VIRTUAL_CL_MASK = VIRTUAL_CL_SIZE-1;
-// assuming 64-bit platform
 constexpr int VIRTUAL_ADDRESS_BITS = 48;
 
+// number of bits to shift hardware cache line size
+// in order to get virtual cache line size, reasonable range is 0 to 5
+#ifndef CL_EXPAND_SHIFT
+#define CL_EXPAND_SHIFT 0
+#endif
+
+constexpr uintptr_t CL_EXPAND_FACTOR = 1ull << CL_EXPAND_SHIFT;
+constexpr uintptr_t VIRTUAL_CL_SIZE = CACHE_LINE_SIZE * CL_EXPAND_FACTOR;
+constexpr uintptr_t VIRTUAL_CL_SHIFT = CACHE_LINE_SHIFT + CL_EXPAND_SHIFT; // log(VIRTUAL_CL_SIZE)
+constexpr uintptr_t VIRTUAL_CL_MASK = VIRTUAL_CL_SIZE-1;
+// assuming 64-bit platform
+
+// workload settings
 constexpr unsigned WORKER_PER_NODE = 3;
 constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6); // Should be power of two
 constexpr uintptr_t CXL_NHC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should start at the highest virtual bit for easy comparison
@@ -37,7 +43,9 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 // number of cache line groups for which a wbinvd is faster than invalidating with clflushopt + mfence
 #define WBINVD_THRESHOLD (2 << 18)
 
+#ifndef NODE_COUNT
 #define NODE_COUNT 8
+#endif
 
 // whether to collect statistics
 //#define STATS(s) {s;}
@@ -46,7 +54,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 // user threads consume logs to unblock itself, at the expense of contention with cache agent
 //#define USER_HELP_CONSUME
 
-// thread clock merges with location clock instead of overwriting it, allows release store to be outside of location clock's critical section
+// thread clock merges with location clock instead of overwriting it
 //#define LOCATION_CLOCK_MERGE
 
 // whether turn off RACoherence protocol and use raw stores and loads
@@ -63,28 +71,44 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define CXL_NUMA_MODE
 
 // producers flush eagerly
-//#define EAGER_FLUSH
+#ifndef EAGER_WRITEBACK
+#define EAGER_WRITEBACK 0
+#endif
 
 // consumers invalidate eagerly
-#define EAGER_INVALIDATE
+#ifndef EAGER_INVALIDATE
+#define EAGER_INVALIDATE 1
+#endif
 
 // pin each cache agent to a core
 #define CACHE_AGENT_AFFINITY
 
 // delay publishing until a log is full
-//#define DELAY_PUBLISH
+#ifndef DELAY_PUBLISH
+#define DELAY_PUBLISH 0
+#endif
 
 // use buffer in local cl tables
 //#define LOCAL_CL_TABLE_BUFFER
 
-// number of entries in local cl table
-#ifndef LOCAL_CL_TABLE_ENTRIES
-#define LOCAL_CL_TABLE_ENTRIES (1 << 6)
+// number of entries in local cl table, must be power of two
+#ifndef LOCAL_CL_TABLE_SIZE
+#define LOCAL_CL_TABLE_SIZE (1 << 6)
 #endif
 
 // number of entries searched in local cl table per insertion
 #ifndef LOCAL_CL_TABLE_SEARCH_ITERS
 #define LOCAL_CL_TABLE_SEARCH_ITERS 5
+#endif
+
+// number of entries in a log, cannot be smaller than LOCAL_CL_TABLE_ENTRIES
+#ifndef LOG_SIZE
+#define LOG_SIZE  (1ull << 6)
+#endif
+
+// number of logs in a per-node log buffer, must be power of two
+#ifndef LOG_COUNT
+#define LOG_COUNT (1ull << 6)
 #endif
 
 // use custom memory pool as allocator for CXL hardware coherent memory

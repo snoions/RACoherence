@@ -52,7 +52,7 @@ inline bool in_cxl_nhc_mem(void *addr) {
 }
 
 inline void rac_post_writeback(void *begin, void *end) {
-#if PROTOCOL_OFF || defined(EAGER_FLUSH)
+#if PROTOCOL_OFF || EAGER_WRITEBACK
     if (in_cxl_nhc_mem((char*)begin))
         do_range_writeback((char *)begin, (char *)end - (char *)begin);
 #endif
@@ -82,7 +82,7 @@ inline void invalidate_boundaries(char *begin, char *end) {
 }
 
 inline void rac_store_pre_invalidate(void *begin, void *end) {
-#if PROTOCOL_OFF || !defined(EAGER_INVALIDATE)
+#if PROTOCOL_OFF || !EAGER_INVALIDATE
     if (in_cxl_nhc_mem((char*)begin))
         invalidate_boundaries((char*)begin, (char*)end);
 #endif
@@ -93,7 +93,7 @@ inline void rac_load_pre_invalidate(void *begin, void *end) {
     if (in_cxl_nhc_mem((char*)begin))
         do_range_invalidate((char*)begin, (char*)end-(char*)begin);
 #endif
-#ifndef EAGER_INVALIDATE
+#if !EAGER_INVALIDATE
     if (in_cxl_nhc_mem((char*)begin))
         check_range_invalidate((char*)begin, (char*)end);
 #endif
@@ -113,7 +113,7 @@ using namespace RACoherence;
         } \
         return *((uint ## size ## _t*)addr); \
     }
-#elif defined(EAGER_INVALIDATE)
+#elif EAGER_INVALIDATE
 #define RACLOAD(size) \
     inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
         return *((uint ## size ## _t*)addr); \
@@ -140,52 +140,25 @@ using namespace RACoherence;
         if (in_cxl_nhc) \
             do_writeback((char *)addr); \
     }
-#elif defined(EAGER_INVALIDATE)
-    #ifdef EAGER_FLUSH
-    #define RACSTORE(size) \
-        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-            if (in_cxl_nhc) { \
-                thread_ops->log_store((char *)addr); \
-            } \
-            *((uint ## size ## _t*)addr) = val; \
-            if (in_cxl_nhc) \
-                do_writeback((char *)addr); \
-        }
-    #else
-    #define RACSTORE(size) \
-        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-            if (in_cxl_nhc) { \
-                thread_ops->log_store((char *)addr); \
-            } \
-            *((uint ## size ## _t*)addr) = val; \
-        }
-    #endif
+#elif EAGER_INVALIDATE
+#define RACSTORE(size) \
+    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+        bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
+        if (in_cxl_nhc) { \
+            thread_ops->log_store((char *)addr); \
+        } \
+        *((uint ## size ## _t*)addr) = val; \
+    }
 #else 
-    #ifdef EAGER_FLUSH
-    #define RACSTORE(size) \
-        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-            if (in_cxl_nhc) { \
-                check_invalidate((char *)addr); \
-                thread_ops->log_store((char *)addr); \
-            } \
-            *((uint ## size ## _t*)addr) = val; \
-            if (in_cxl_nhc) \
-                 do_writeback((char *)addr); \
-        }
-    #else
-    #define RACSTORE(size) \
-        inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-            bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-            if (in_cxl_nhc) { \
-                check_invalidate((char *)addr); \
-                thread_ops->log_store((char *)addr); \
-            } \
-            *((uint ## size ## _t*)addr) = val; \
-        }
-    #endif
+#define RACSTORE(size) \
+    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
+        bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
+        if (in_cxl_nhc) { \
+            check_invalidate((char *)addr); \
+            thread_ops->log_store((char *)addr); \
+        } \
+        *((uint ## size ## _t*)addr) = val; \
+    }
 #endif
 
 RACSTORE(8)

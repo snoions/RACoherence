@@ -19,7 +19,7 @@ namespace RACoherence {
 constexpr long WRITE_LATENCY_IN_NS = 0;
 constexpr long CPU_FREQ_MHZ = 2100;
 
-static inline void do_writeback(volatile char *ptr)
+static inline void do_writeback(char *ptr)
 {
 #if WRITEBACK_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));

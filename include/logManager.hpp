@@ -16,20 +16,16 @@
 
 namespace RACoherence {
 
-constexpr size_t LOG_SIZE = 1ull << 6;
-//LOG_BUF_SIZE must be power of 2
-constexpr size_t LOG_BUF_SIZE = 1ull << 6;
-
 class LogManager;
 
 //index into LogManager's pub array, monotonically increases
 using idx_t = size_t;
 
 inline idx_t next_round(idx_t idx) {
-    return idx + LOG_BUF_SIZE;
+    return idx + LOG_COUNT;
 }
 inline size_t get_idx(idx_t idx){
-    return idx & (LOG_BUF_SIZE -1);
+    return idx & (LOG_COUNT -1);
 }
 
 class alignas(CACHE_LINE_SIZE) Log {
@@ -75,10 +71,10 @@ public:
 };
 
 class alignas(CACHE_LINE_SIZE) LogManager {
-    Log buf[LOG_BUF_SIZE];
+    Log buf[LOG_COUNT];
 
     alignas(CACHE_LINE_SIZE)
-    std::atomic<Log *>pub[LOG_BUF_SIZE];
+    std::atomic<Log *>pub[LOG_COUNT];
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> tail{0};
@@ -95,7 +91,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     alignas(CACHE_LINE_SIZE)
     std::atomic<bool> subscribers[NODE_COUNT];
     
-    spmc_bounded_queue<Log *, LOG_BUF_SIZE> freelist;
+    spmc_bounded_queue<Log *, LOG_COUNT> freelist;
 
     unsigned node_id;
 
@@ -132,7 +128,7 @@ public:
     LogManager(unsigned nid): node_id(nid) {
         for (unsigned i = 0; i < NODE_COUNT; i++)
             subscribers[i].store(true);
-        for (unsigned i = 0; i < LOG_BUF_SIZE; i++) {
+        for (unsigned i = 0; i < LOG_COUNT; i++) {
             pub[i].store(&buf[i], std::memory_order_relaxed);
             auto ok = freelist.enqueue(&buf[i]);
             assert(ok);
