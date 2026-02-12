@@ -13,7 +13,7 @@
 
 namespace RACoherence {
 
-extern thread_local ThreadOps *thread_ops;
+extern __thread ThreadOps *thread_ops;
 
 template<typename T>
 class CXLRelaxedAtomic {

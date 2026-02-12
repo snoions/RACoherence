@@ -8,7 +8,7 @@ extern "C" {
 
 void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size);
 
-void cxlnhc_thread_init();
+void cxl_pool_thread_init();
 
 void *cxlnhc_malloc(size_t size);
 

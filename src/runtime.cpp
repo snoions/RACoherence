@@ -11,7 +11,7 @@
 
 namespace RACoherence {
 
-thread_local ThreadOps *thread_ops;
+__thread ThreadOps *thread_ops;
 std::atomic<bool> complete {false};
 std::atomic<unsigned> curr_tid {0};
 pthread_t cacheAgent_group[NODE_COUNT];
@@ -37,7 +37,7 @@ struct RACThreadRet {
 
 //TODO: only need a full thread_acquire/release if parent and child threads are on different nodes, otherwise only need to merge clocks
 void *rac_thread_func_wrapper(void *arg) {
-    cxlnhc_thread_init();
+    cxl_pool_thread_init();
     auto rac_arg = (RACThreadArg *)arg;
     unsigned tid = curr_tid.fetch_add(1, std::memory_order_relaxed);
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
@@ -129,7 +129,7 @@ void alloc_cxl_memory() {
         perror("mmap");
         exit(EXIT_FAILURE);
     }
-#ifdef CXL_NUMA_MODE
+#if CXL_NUMA_MODE
     // make sure all threads use DRAM and cpu from local NUMA node
     if(numa_run_on_node(LOCAL_NUMA_NODE_ID)) {
         perror("numa_run_on_node");
@@ -180,7 +180,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
     unsigned cpu_id = 0;
     for (unsigned i=0; i<NODE_COUNT; i++) {
         int ret;
-#if defined(CACHE_AGENT_AFFINITY) && defined(CXL_NUMA_MODE)
+#if defined(CACHE_AGENT_AFFINITY) && CXL_NUMA_MODE
         ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_NODE_ID);
         assert(!ret);
 #else

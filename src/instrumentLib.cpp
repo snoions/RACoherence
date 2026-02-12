@@ -302,7 +302,7 @@ void* mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
         // Only intercept if the call originated from a file containing "jemalloc"
         if (strstr(info.dli_fname, "libjemalloc") != NULL) {
             // This is a jemalloc call! Apply your FIXED_ADDR logic here.
-#ifdef CXL_NUMA_MODE
+#if CXL_NUMA_MODE
             // bind cxl memory buffers to CXL NUMA node
             unsigned long nodemask = 0;
             nodemask |= 1 << CXL_NUMA_NODE_ID;

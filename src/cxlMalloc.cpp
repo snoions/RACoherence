@@ -106,11 +106,11 @@ void cxlhc_pool_init(char *buf, size_t size) {
 }
 
 void *cxlhc_malloc(size_t size) {
-    return je_mallocx(size, MALLOCX_ARENA(cxlhc_arena_index) | MALLOCX_TCACHE_NONE);
+    return je_mallocx(size, MALLOCX_ARENA(cxlhc_arena_index));
 }
 
 void cxlhc_free(void *ptr, size_t size) {
-    je_dallocx(ptr, MALLOCX_ARENA(cxlhc_arena_index) | MALLOCX_TCACHE_NONE);
+    je_dallocx(ptr, MALLOCX_ARENA(cxlhc_arena_index));
 }
 #endif
 
@@ -192,12 +192,16 @@ void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
         LOG_ERROR("je_mallctl arena.0.muzzy_decay_ms returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
-    cxlnhc_thread_init();
+    cxl_pool_thread_init();
 }
 
-void cxlnhc_thread_init() {
+void cxl_pool_thread_init() {
     int ret;
+#ifdef HC_USE_CUSTOM_POOL
     ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index));
+#else
+    ret = je_mallctl("thread.arena", NULL, NULL, &cxlhc_arena_index, sizeof(cxlhc_arena_index));
+#endif
     if (ret)
         LOG_ERROR("je_mallctl thread.arena returned " << strerror(ret))
     bool enabled = true;
@@ -207,13 +211,13 @@ void cxlnhc_thread_init() {
 }
 
 void *cxlnhc_malloc(size_t size) {
-    return je_mallocx(size, MALLOCX_ARENA(cxlnhc_arena_index));
+    return je_mallocx(size, MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_TCACHE_NONE);
 }
 
 void *cxlnhc_cl_aligned_malloc(size_t size) {
-    return je_mallocx(size,  MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE));
+    return je_mallocx(size,  MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE) | MALLOCX_TCACHE_NONE);
 }
 
 void cxlnhc_free(void *ptr, size_t size) {
-    je_dallocx(ptr, MALLOCX_ARENA(cxlnhc_arena_index));
+    je_dallocx(ptr, MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_TCACHE_NONE);
 }

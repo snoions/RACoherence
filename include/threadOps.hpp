@@ -59,7 +59,7 @@ class ThreadOps {
 #if DELAY_PUBLISH
             if (curr_log->is_full()) {
                 clk_val = publish_log(curr_log, false);
-		set_to_new_log(curr_log);
+                set_to_new_log(curr_log);
             }
 #endif
             curr_log->write(cg);
@@ -116,25 +116,16 @@ class ThreadOps {
     }
 
     void wait_for_consume(const VectorClock &target) {
-        unsigned i = 0;
-        while(true) {
-            bool uptodate = true;
-            for (; i<NODE_COUNT; i++) {
-                if (i == node_id)
-                    continue;
-                if (!log_mgrs[i].is_subscribed(node_id))
-                    continue;
-                auto curr = cache_info->get_clock(i);
-                if (curr < target[i]) {
-                    uptodate = false;
-                    LOG_DEBUG("node " << node_id << " block on acquire, index=" << i << ", target=" << target[i] << ", current=" << curr)
-                    break;
-                }
-            }
-            if (uptodate)
-                break;
-            sched_yield();
-        }
+       for (unsigned i = 0; i<NODE_COUNT; i++) {
+           if (i == node_id)
+               continue;
+           if (!log_mgrs[i].is_subscribed(node_id))
+               continue;
+           while (cache_info->get_clock(i) < target[i]) {
+               LOG_DEBUG("node " << node_id << " block on acquire, index=" << i << ", target=" << target[i] << ", current=" << curr)
+               sched_yield();
+           }
+       }
     }
 
 public:
@@ -150,7 +141,7 @@ public:
         LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
         if (!recent_cl)
             return thread_clock;
-#ifdef EAGER_WRITEBACK
+#if EAGER_WRITEBACK
         uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
         for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
              do_writeback((char *)recent_addr + i * CACHE_LINE_SIZE);
@@ -179,7 +170,7 @@ public:
         uintptr_t cl = (uintptr_t)addr >> VIRTUAL_CL_SHIFT;
         if (cl == recent_cl)
             return;
-#ifdef EAGER_WRITEBACK
+#if EAGER_WRITEBACK
         if (recent_cl) {
             uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
             for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
@@ -214,7 +205,7 @@ public:
 };
 
 //TODO: use a non-thread-local node_id to access cache info when running multiple processes/machines, move these definitions to CacheInfo
-extern thread_local ThreadOps *thread_ops;
+extern __thread ThreadOps *thread_ops;
 extern CacheInfo *cache_infos;
 
 inline bool check_range_invalidate(char *begin, char *end) {

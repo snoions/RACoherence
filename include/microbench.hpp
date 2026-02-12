@@ -96,7 +96,7 @@ struct CXLPool {
     CXLPool(): mutexes{}, atomic_data{} {}
 };
 
-extern thread_local ThreadOps *thread_ops;
+extern __thread ThreadOps *thread_ops;
 
 class Microbench {
     CXLPool &cxl_pool;
