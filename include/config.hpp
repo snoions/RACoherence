@@ -68,7 +68,9 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #endif
 
 // allocate CXL memory from remote NUMA node
-#define CXL_NUMA_MODE
+#ifndef CXL_NUMA_MODE
+#define CXL_NUMA_MODE 1
+#endif
 
 // producers flush eagerly
 #ifndef EAGER_WRITEBACK
