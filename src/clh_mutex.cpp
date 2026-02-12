@@ -106,33 +106,66 @@ void clh_mutex_destroy(clh_mutex_t * self)
 
 
 /*
- * Locks the mutex for the current thread. Will wait for other threads
+ * locks the mutex for the current thread. will wait for other threads
  * that did the atomic_exchange() before this one.
  *
- * Progress Condition: Blocking
+ * progress condition: blocking
  */
 void clh_mutex_lock(clh_mutex_t * self)
 {
-    // Create the new node locked by default, setting islocked=1
+    // create the new node locked by default, setting islocked=1
     clh_mutex_node_t *mynode = clh_mutex_create_node(1);
     clh_mutex_node_t *prev = atomic_exchange(&self->tail, mynode);
 
-    // This thread's node is now in the queue, so wait until it is its turn
+    // this thread's node is now in the queue, so wait until it is its turn
     char prev_islocked = atomic_load_explicit(&prev->succ_must_wait, std::memory_order_relaxed);
     if (prev_islocked) {
         while (prev_islocked) {
-            sched_yield();  // Replace this with thrd_yield() if you use <threads.h>
+            sched_yield();  // replace this with thrd_yield() if you use <threads.h>
             prev_islocked = atomic_load(&prev->succ_must_wait);
         }
     }
-    // This thread has acquired the lock on the mutex and it is now safe to
+    // this thread has acquired the lock on the mutex and it is now safe to
     // cleanup the memory of the previous node.
     cxlhc_free(prev, sizeof(clh_mutex_node_t));
 
-    // Store mynode for clh_mutex_unlock() to use. We could replace
+    // store mynode for clh_mutex_unlock() to use. we could replace
     // this with a thread-local, not sure which is faster.
     self->mynode = mynode;
 }
+
+/*
+ * locks the mutex for the current thread. will not wait for other threads
+ * that did the atomic_exchange() before this one.
+ *
+ * progress condition: non-blocking
+ */
+bool clh_mutex_try_lock(clh_mutex_t * self)
+{
+    clh_mutex_node_t * prev = atomic_load(&self->tail);
+
+    // Optimistic Check: Is the lock currently held?
+    if (atomic_load(&prev->succ_must_wait) == 1) {
+        return false;
+    }
+
+    // create the new node locked by default, setting islocked=1
+    clh_mutex_node_t *mynode = clh_mutex_create_node(1);
+    if (atomic_compare_exchange_strong(&self->tail, &prev, mynode)) {
+        // Success: We acquired the lock.
+        self->mynode = mynode;
+        
+        // We are responsible for freeing the previous node (prev), which is now ours.
+        cxlhc_free(prev, sizeof(prev));
+        
+        return true; 
+    }
+
+    // Someone else modified the tail (enqueued) before we could.
+    cxlhc_free(mynode, sizeof(mynode));
+    return false;
+}
+
 
 
 /*

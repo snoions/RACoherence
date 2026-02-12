@@ -108,8 +108,8 @@ class ThreadOps {
                 }
 
                 //TODO: change to mutex to clh_mutex and implement try_lock for it
-                std::unique_lock<std::mutex> lk(log_mgrs[i].get_head_mutex(node_id), std::defer_lock);
-                if (!lk.try_lock()) {
+                CLHMutex &mtx = log_mgrs[i].get_head_mutex(node_id);
+                if (!mtx.try_lock()) {
                     done = false;
                     continue;
                 }
@@ -128,6 +128,7 @@ class ThreadOps {
                 }
                 node_done[i] = true;
                 cache_info->update_clock(i, clk);
+                mtx.unlock();
                 // mutex unlock takes care of invalidate fence
             }
         }

@@ -49,11 +49,11 @@ typedef struct
     std::atomic<clh_mutex_node_t *> tail;
 } clh_mutex_t;
 
-
 void clh_mutex_init(clh_mutex_t * self);
 void clh_mutex_destroy(clh_mutex_t * self);
 void clh_mutex_lock(clh_mutex_t * self);
 void clh_mutex_unlock(clh_mutex_t * self);
+bool clh_mutex_try_lock(clh_mutex_t * self);
 
 struct CLHMutex: private clh_mutex_t {
     CLHMutex() {
@@ -66,6 +66,10 @@ struct CLHMutex: private clh_mutex_t {
 
     void lock() {
         clh_mutex_lock(this);
+    }
+
+    bool try_lock() {
+        return clh_mutex_try_lock(this);
     }
 
     void unlock() {

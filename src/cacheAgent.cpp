@@ -11,8 +11,8 @@ void CacheAgent::run() {
                 continue;
 
 #ifdef USER_HELP_CONSUME
-            std::unique_lock<std::mutex> lk(log_mgrs[i].get_head_mutex(node_id), std::defer_lock);
-            if (!lk.try_lock())
+            CLHMutex &mtx = log_mgrs[i].get_head_mutex(node_id);
+            if (!mtx.try_lock())
                 continue;
 #endif
             clock_t clk = 0;
@@ -48,6 +48,9 @@ void CacheAgent::run() {
 #endif
                 cache_info.update_clock(i, clk);
             }
+#ifdef USER_HELP_CONSUME
+            mtx.unlock();
+#endif
         }
     }
     LOG_INFO("node " << node_id << " cache agent done")
