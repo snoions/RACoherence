@@ -81,7 +81,7 @@ inline void do_range_invalidate(char *data, int len)
 #endif
 }
 
-static inline void flush_fence()
+static inline void writeback_fence()
 {
 #if WRITEBACK_INST == CLFLUSHOPT || WRITEBACK_INST == CLWB
     __asm__ volatile("sfence":::"memory");

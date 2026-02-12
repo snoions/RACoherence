@@ -73,7 +73,7 @@ public:
     inline void store(T desired, std::memory_order order=std::memory_order_seq_cst) {
         if (order == std::memory_order_seq_cst || order == std::memory_order_release) { 
 #if PROTOCOL_OFF
-            flush_fence();
+            writeback_fence();
             inner->atomic_data.store(desired, order);
 #else
             auto thread_clock = thread_ops->thread_release();
@@ -142,7 +142,7 @@ public:
             return inner->atomic_data.fetch_add(arg, order);
 #else
         if (order == std::memory_order_seq_cst || order == std::memory_order_release || order == std::memory_order_acq_rel)
-            flush_fence();
+            writeback_fence();
 
         return inner->atomic_data.fetch_add(arg, order);
 #endif
@@ -192,7 +192,7 @@ public:
 
     inline void unlock() {
         do_range_writeback((char *)data, Count * sizeof(T));
-        flush_fence();
+        writeback_fence();
         clh_mutex_unlock(&inner->mutex);
     }
 
@@ -234,7 +234,7 @@ public:
 
     inline void unlock() {
 #if PROTOCOL_OFF
-        flush_fence();
+        writeback_fence();
 #else
         auto thread_clock = thread_ops->thread_release();
 
@@ -289,7 +289,7 @@ public:
 
     inline void unlock() {
 #if PROTOCOL_OFF
-        flush_fence();
+        writeback_fence();
 #else
         auto thread_clock = thread_ops->thread_release();
 
@@ -304,7 +304,7 @@ public:
 
     inline void unlock_shared() {
 #if PROTOCOL_OFF
-        flush_fence();
+        writeback_fence();
 #else
         auto thread_clock = thread_ops->thread_release();
 

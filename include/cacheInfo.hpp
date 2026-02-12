@@ -53,9 +53,6 @@ struct CacheInfo {
 #endif
             }
         }
-#if EAGER_INVALIDATE
-        invalidate_fence();
-#endif
     }
 
     inline void update_clock(VectorClock::sized_t i, clock_t val) {

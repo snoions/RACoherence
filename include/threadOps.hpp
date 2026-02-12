@@ -34,7 +34,7 @@ class ThreadOps {
     }
 
     inline clock_t publish_log(Log *log, bool is_release) {
-        flush_fence();
+        //release store in produce_tail acts as a writeback_fence
         auto clk_val = log_mgrs[node_id].produce_tail(log, is_release);
         dirty_cls.clear_table();
         STATS(cache_info->produced_count++)
@@ -89,29 +89,47 @@ class ThreadOps {
     }
 
     void help_consume(const VectorClock &target) {
-        for (unsigned i=0; i<NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
-            auto val = cache_info->get_clock(i);
-            if (val >= target[i])
-                continue;
+        bool done = false;
+        bool node_done[NODE_COUNT] = {false};
+        while (!done) {
+            done = true;
+            for (unsigned i=0; i<NODE_COUNT; i++) {
+                if (node_done[i] || i == node_id)
+                    continue;
 
-            std::unique_lock<std::mutex> l(log_mgrs[i].get_head_mutex(node_id));
-            //check again after wake up
-            val = cache_info->get_clock(i);
-
-            while(val < target[i]) {
-                Log *log;
-                //log might be null here because of yet to be produced logs before the produced target log
-                while(!(log = log_mgrs[i].take_head(node_id)));
-                cache_info->process_log(*log);
-                if (log->is_release()) {
-                    val = log->get_log_idx();
-                    cache_info->update_clock(i, val);
+                if (!log_mgrs[i].is_subscribed(node_id)) {
+                    node_done[i] = true;
+                    continue;
                 }
-                log_mgrs[i].consume_head(node_id);
-                STATS(cache_info->consumed_count[i]++)
-                LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
-            }
 
+                if (cache_info->get_clock(i) >= target[i]) {
+                    node_done[i] = true;
+                    continue;
+                }
+
+                //TODO: change to mutex to clh_mutex and implement try_lock for it
+                std::unique_lock<std::mutex> lk(log_mgrs[i].get_head_mutex(node_id), std::defer_lock);
+                if (!lk.try_lock()) {
+                    done = false;
+                    continue;
+                }
+
+                auto clk = cache_info->get_clock(i);
+                while(clk < target[i]) {
+                    Log *log;
+                    //log might be null because of logs yet to be produced before the target log
+                    while(!(log = log_mgrs[i].take_head(node_id)));
+                    cache_info->process_log(*log);
+                    if (log->is_release())
+                        clk = log->get_log_idx();
+                    log_mgrs[i].consume_head(node_id);
+                    STATS(cache_info->consumed_count[i]++)
+                    LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
+                }
+                node_done[i] = true;
+                cache_info->update_clock(i, clk);
+                // mutex unlock takes care of invalidate fence
+            }
         }
     }
 
