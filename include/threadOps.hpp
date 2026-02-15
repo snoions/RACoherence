@@ -34,7 +34,6 @@ class ThreadOps {
     }
 
     inline clock_t publish_log(Log *log, bool is_release) {
-        //release store in produce_tail acts as a writeback_fence
         auto clk_val = log_mgrs[node_id].produce_tail(log, is_release);
         dirty_cls.clear_table();
         STATS(cache_info->produced_count++)
@@ -66,17 +65,16 @@ class ThreadOps {
 #if !EAGER_WRITEBACK
             if (is_length_based(cg)) {
                 for (auto cl_addr: LengthCLRange(cg))
-                    // should be unrolled, manually unroll if not
                     for (unsigned i = 0; i < GROUP_SIZE * CL_EXPAND_FACTOR; i++)
                         do_writeback((char *)cl_addr + (i * CACHE_LINE_SIZE));
             } else {
                 for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
-                    // should be unrolled, manually unroll if not
                     for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
                         do_writeback((char *)cl_addr + i * CACHE_LINE_SIZE);
             }
 #endif
         }
+        // release store in LogManager::produce_tail acts as writeback fence
 #if DELAY_PUBLISH
         if (is_release) {
              clk_val = publish_log(curr_log, true);
@@ -97,17 +95,16 @@ class ThreadOps {
                 if (node_done[i] || i == node_id)
                     continue;
 
-                if (!log_mgrs[i].is_subscribed(node_id)) {
-                    node_done[i] = true;
-                    continue;
-                }
-
                 if (cache_info->get_clock(i) >= target[i]) {
                     node_done[i] = true;
                     continue;
                 }
 
-                //TODO: change to mutex to clh_mutex and implement try_lock for it
+                if (!log_mgrs[i].is_subscribed(node_id)) {
+                    node_done[i] = true;
+                    continue;
+                }
+
                 CLHMutex &mtx = log_mgrs[i].get_head_mutex(node_id);
                 if (!mtx.try_lock()) {
                     done = false;
@@ -158,27 +155,34 @@ public:
 
     inline const VectorClock &thread_release() {
         LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
+#if INLINE_CACHING
         if (!recent_cl)
             return thread_clock;
+
 #if EAGER_WRITEBACK
         uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
         for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
              do_writeback((char *)recent_addr + i * CACHE_LINE_SIZE);
 #endif
+
         recent_cl = 0;
+#endif
+
 #ifdef LOCAL_CL_TABLE_BUFFER
         while (dirty_cls.dump_buffer_to_table())
             write_to_log(false);
 #endif
+
         clock_t clk_val = write_to_log(true);
-        thread_clock.merge(node_id, clk_val);
+        //increment
+        thread_clock.assign(node_id, clk_val);
         return thread_clock;
     }
 
     inline void thread_acquire(const VectorClock &clock) {
         LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<clock)
         thread_clock.merge(clock);
-#ifdef USER_HELP_CONSUME
+#if CONSUME_HELPING
         help_consume(clock);
 #else
         wait_for_consume(clock);
@@ -187,6 +191,7 @@ public:
 
     inline void log_store(char *addr) {
         uintptr_t cl = (uintptr_t)addr >> VIRTUAL_CL_SHIFT;
+#if INLINE_CACHING
         if (cl == recent_cl)
             return;
 #if EAGER_WRITEBACK
@@ -197,6 +202,7 @@ public:
         }
 #endif
         recent_cl = cl;
+#endif
 
         if (dirty_cls.insert((uintptr_t)cl)) {
             write_to_log(false);
@@ -212,7 +218,9 @@ public:
         // EAGER_WRITEBACK not implemented here for efficiency, need to be handled by caller
         uintptr_t begin_addr = (uintptr_t)begin >> VIRTUAL_CL_SHIFT;
         uintptr_t end_addr = (uintptr_t)end >> VIRTUAL_CL_SHIFT;
+#if INLINE_CACHING
         recent_cl = end_addr;
+#endif
 
         while (dirty_cls.range_insert(begin_addr, end_addr))
             write_to_log(false);

@@ -6,11 +6,13 @@ namespace RACoherence {
 void CacheAgent::run() {
     int idle_rounds = 0;
     while(!complete.load()) {
-        for (unsigned i=0; i<NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
+        for (unsigned i=0; i<NODE_COUNT; i++) {
+            if (i == node_id)
+                continue;
             if (!log_mgrs[i].is_subscribed(node_id))
                 continue;
 
-#ifdef USER_HELP_CONSUME
+#if CONSUME_HELPING
             CLHMutex &mtx = log_mgrs[i].get_head_mutex(node_id);
             if (!mtx.try_lock())
                 continue;
@@ -42,13 +44,13 @@ void CacheAgent::run() {
                 log_mgrs[i].consume_head(node_id);
             }
             if (clk) {
-                // mutex unlock takes care of invalidate fence for USER_HELP_CONSUME
-#if EAGER_INVALIDATE && !defined(USER_HELP_CONSUME)
+                // mutex unlock takes care of invalidate fence for CONSUME_HELPING
+#if EAGER_INVALIDATE && !CONSUME_HELPING
                 invalidate_fence();
 #endif
                 cache_info.update_clock(i, clk);
             }
-#ifdef USER_HELP_CONSUME
+#if CONSUME_HELPING
             mtx.unlock();
 #endif
         }

@@ -100,7 +100,9 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     inline void perform_gc() {
         idx_t new_b = next_round(bound);
-        for (unsigned i = 0; i < NODE_COUNT; i=(i+1==node_id)? i+2: i+1) {
+        for (unsigned i = 0; i < NODE_COUNT; i++) {
+            if (i == node_id)
+                continue;
             if (!subscribers[i].load(std::memory_order_acquire))
                 continue;
             auto h = next_round(heads[i].load(std::memory_order_relaxed));

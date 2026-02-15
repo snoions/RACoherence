@@ -30,11 +30,14 @@ constexpr uintptr_t CXL_NHC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should 
 constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 24;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
+// NUMA nodes with CPU that threads may run on
+constexpr unsigned CPU_NUMAS[] = {0, 1};
 
 // NUMA node that program runs on and makes normal allocations from
 #ifndef LOCAL_NUMA_NODE_ID
-#define LOCAL_NUMA_NODE_ID 1
+#define LOCAL_NUMA_NODE_ID 0
 #endif
+
 // NUMA node containing CXL memory
 #define CXL_NUMA_NODE_ID 2
 
@@ -52,7 +55,9 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define STATS(s)
 
 // user threads consume logs to unblock itself, at the expense of contention with cache agent
-//#define USER_HELP_CONSUME
+#ifndef CONSUME_HELPING
+#define CONSUME_HELPING 1
+#endif
 
 // thread clock merges with location clock instead of overwriting it
 //#define LOCATION_CLOCK_MERGE
@@ -72,7 +77,8 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #define CXL_NUMA_MODE 1
 #endif
 
-// producers flush eagerly
+// producers writeback cache line eagerly, before accessing the cache line line
+// depends on inline caching
 #ifndef EAGER_WRITEBACK
 #define EAGER_WRITEBACK 0
 #endif
@@ -92,6 +98,11 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 
 // use buffer in local cl tables
 //#define LOCAL_CL_TABLE_BUFFER
+
+// save recently accessed cache line in an inline cache
+#ifndef INLINE_CACHING
+#define INLINE_CACHING 1
+#endif
 
 // number of entries in local cl table, must be power of two
 #ifndef LOCAL_CL_TABLE_SIZE
@@ -114,7 +125,7 @@ constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 #endif
 
 // use custom memory pool as allocator for CXL hardware coherent memory
-#define HC_USE_CUSTOM_POOL
+//#define HC_USE_CUSTOM_POOL
 
 // use locks instead of atomics in workload
 #define WORKLOAD_USE_LOCKS
