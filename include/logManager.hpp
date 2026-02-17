@@ -1,5 +1,5 @@
-#ifndef _LOG_BUFFER_H_
-#define _LOG_BUFFER_H_
+#ifndef _LOG_MANAGER_H_
+#define _LOG_MANAGER_H_
 
 #include <atomic>
 #include <array>
@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <iostream>
+#include <thread>
 
 #include "config.hpp"
 #include "clh_mutex.hpp"
@@ -24,11 +25,16 @@ using idx_t = size_t;
 inline idx_t next_round(idx_t idx) {
     return idx + LOG_COUNT;
 }
+
+inline idx_t prev_round(idx_t idx) {
+    return idx - LOG_COUNT;
+}
+
 inline size_t get_idx(idx_t idx){
     return idx & (LOG_COUNT -1);
 }
 
-class alignas(CACHE_LINE_SIZE) Log {
+struct alignas(CACHE_LINE_SIZE) Log {
     friend LogManager;
 
     using Entry = uintptr_t;
@@ -42,15 +48,17 @@ class alignas(CACHE_LINE_SIZE) Log {
     bool is_rel = false;
 
 public:
-
-    inline bool is_full() {
-	return size == LOG_SIZE;
+    inline size_t get_size() {
+        return size;
     }
 
-    inline bool write(uintptr_t cl_addr) {
-        assert(size <= LOG_SIZE);
+    inline bool is_full() {
+        return size == LOG_SIZE;
+    }
+
+    inline void write(uintptr_t cl_addr) {
+        assert(size < LOG_SIZE);
         entries[size++] = cl_addr;
-        return true;
     }
 
     bool is_release() {
@@ -97,31 +105,44 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     idx_t bound = next_round(0);
 
-
     inline void perform_gc() {
         idx_t new_b = next_round(bound);
+        bool subscribed = false;
         for (unsigned i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
                 continue;
             if (!subscribers[i].load(std::memory_order_acquire))
                 continue;
-            auto h = next_round(heads[i].load(std::memory_order_relaxed));
-            if (new_b == next_round(bound))
-                new_b = h;
-            else if (bound <= h && h < new_b)
-                new_b = h;
-            else if (h < new_b && new_b < bound)
-                new_b = h;
-            else if (new_b < bound && bound <= h)
+            subscribed = true;
+            auto h = next_round(heads[i].load(std::memory_order_acquire));
+            if(h < new_b)
                 new_b = h;
         }
-        LOG_DEBUG("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
 
         assert(bound <= new_b);
-        for (idx_t i = bound; i != new_b; i++) {
-            //handle spurious failures from enqueue
-            while(!freelist.enqueue(pub[get_idx(i)].load(std::memory_order_relaxed)));
+        if (!subscribed) {
+            // hack to avoid race condition with producers
+            // improve later
+            for (idx_t i = bound; i != new_b; i++) {
+                Log * log = pub[get_idx(i)].load(std::memory_order_relaxed);
+                
+                if (log->idx.load(std::memory_order_acquire) != prev_round(i) + 1) {
+                    new_b = i; 
+                    break;
+                }
+                //handle spurious failures from enqueue
+                while(!freelist.enqueue(log));
+            }
+
+        } else {
+            for (idx_t i = bound; i != new_b; i++) {
+                Log * log = pub[get_idx(i)].load(std::memory_order_relaxed);
+
+                //handle spurious failures from enqueue
+                while(!freelist.enqueue(log));
+            }
         }
+        LOG_DEBUG("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
         bound = new_b;
     }
 
@@ -148,21 +169,21 @@ public:
     Log *get_new_log() {
          Log *log;
          auto ok = freelist.dequeue(log);
-         if (!ok) {
-             gc_mtx.lock();
-                 //check again after locking
-             ok = freelist.dequeue(log);
-             if (ok) {
-                 gc_mtx.unlock();
-                 return new(log) Log();
-             }
-             perform_gc();
+         if (ok)
+            return new(log) Log();
+         gc_mtx.lock();
+         //check again after locking
+         ok = freelist.dequeue(log);
+         if (ok) {
              gc_mtx.unlock();
-             ok = freelist.dequeue(log);
-             if(!ok)
-                 return NULL;
+             return new(log) Log();
          }
-         return new(log) Log();
+         perform_gc();
+         ok = freelist.dequeue(log);
+         gc_mtx.unlock();
+         if(ok)
+             return new(log) Log();
+         return nullptr;
     }
 
     //returns current release clock
@@ -178,7 +199,7 @@ public:
         return head_mtxs[nid];
     }
 
-    //only allows exclusive access 
+    //only allows exclusive access on each node 
     Log *take_head(unsigned nid) {
         //return head, check if overlaps with tail
         auto h = heads[nid].load(std::memory_order_relaxed);
@@ -189,11 +210,11 @@ public:
         return l;
     }
 
-    //only allows exclusive access 
+    //only allows exclusive access on each node
     void consume_head(unsigned nid) {
         //move head
         auto h = heads[nid].load(std::memory_order_relaxed);
-        heads[nid].store(h+1, std::memory_order_relaxed);
+        heads[nid].store(h+1, std::memory_order_release);
     }
 };
 
