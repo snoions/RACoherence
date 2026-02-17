@@ -153,11 +153,11 @@ public:
     unsigned get_thread_id() { return thread_id; }
     const VectorClock &get_clock() {return thread_clock; }
 
-    inline const VectorClock &thread_release() {
+    inline bool thread_release() {
         LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
 #if INLINE_CACHING
         if (!recent_cl)
-            return thread_clock;
+            return false;
 
 #if EAGER_WRITEBACK
         uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
@@ -176,7 +176,7 @@ public:
         clock_t clk_val = write_to_log(true);
         //increment
         thread_clock.assign(node_id, clk_val);
-        return thread_clock;
+        return true;
     }
 
     inline void thread_acquire(const VectorClock &clock) {

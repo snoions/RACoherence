@@ -37,9 +37,13 @@ struct RACThreadRet {
 
 //TODO: only need a full thread_acquire/release if parent and child threads are on different nodes, otherwise only need to merge clocks
 void *rac_thread_func_wrapper(void *arg) {
+    if(numa_run_on_node(LOCAL_NUMA_NODE_ID)) {
+        perror("numa_run_on_node");
+        exit(EXIT_FAILURE);
+    }
     cxl_pool_thread_init();
     auto rac_arg = (RACThreadArg *)arg;
-    unsigned tid = curr_tid.fetch_add(1, std::memory_order_relaxed);
+    unsigned tid = curr_tid.fetch_add(1);
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
 #if !PROTOCOL_OFF
     thread_ops->thread_acquire(*rac_arg->parent_clock);
@@ -55,7 +59,8 @@ void *rac_thread_func_wrapper(void *arg) {
 
 int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg) {
 #if !PROTOCOL_OFF
-    const VectorClock *parent_clock = &thread_ops->thread_release();
+    thread_ops->thread_release();
+    const VectorClock *parent_clock = &thread_ops->get_clock();
 #else
     const VectorClock *parent_clock = nullptr;
 #endif
@@ -129,12 +134,11 @@ void alloc_cxl_memory() {
         perror("mmap");
         exit(EXIT_FAILURE);
     }
-#if CXL_NUMA_MODE
-    // make sure all threads use DRAM and cpu from local NUMA node
     if(numa_run_on_node(LOCAL_NUMA_NODE_ID)) {
         perror("numa_run_on_node");
         exit(EXIT_FAILURE);
     }
+#if CXL_NUMA_MODE
     // bind cxl memory buffers to CXL NUMA node
     unsigned long nodemask = 0;
     nodemask |= 1 << CXL_NUMA_NODE_ID;
@@ -148,6 +152,16 @@ void alloc_cxl_memory() {
         exit(EXIT_FAILURE);
     }
 #endif
+}
+
+unsigned assign_to_numa(unsigned nid) {
+    unsigned numa_count = sizeof(CPU_NUMAS)/sizeof(CPU_NUMAS[0]);
+    if (numa_count > NODE_COUNT)
+        return CPU_NUMAS[nid];
+    // ceiling of NODE_COUNT/numa_count
+    unsigned nodes_per_numa = (NODE_COUNT + numa_count - 1)/numa_count;
+    // interleave nodes on NUMA nodes
+    return CPU_NUMAS[nid%nodes_per_numa];
 }
 
 void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
@@ -170,6 +184,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
     assert(cxl_hc_range > cxl_hc_off);
     cxlhc_pool_init(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
     cxlnhc_pool_init(cxl_nhc_pool_buf, cxl_nhc_buf, cxl_nhc_range);
+    cxl_pool_thread_init();
     for (int i = 0; i < NODE_COUNT; i++)
         new (&log_mgrs[i]) LogManager(i);
     cache_infos = new (node_local_buf) CacheInfo[NODE_COUNT];
@@ -180,7 +195,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg) {
     unsigned cpu_id = 0;
     for (unsigned i=0; i<NODE_COUNT; i++) {
         int ret;
-#if defined(CACHE_AGENT_AFFINITY) && CXL_NUMA_MODE
+#if defined(CACHE_AGENT_AFFINITY)
         ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_NODE_ID);
         assert(!ret);
 #else
