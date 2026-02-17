@@ -32,8 +32,8 @@ public:
     }
 
     // Merge this vector clock with with a new clock value at a given index
-    void merge(size_t index, clock_t clk_val) {
-        vc[index] = vc[index] > clk_val? vc[index] : clk_val;
+    void assign(size_t index, clock_t clk_val) {
+        vc[index] = clk_val;
     }
 
     // Merge this vector clock with another (element-wise max)

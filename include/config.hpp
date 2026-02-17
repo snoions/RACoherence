@@ -106,7 +106,7 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 
 // number of entries in local cl table, must be power of two
 #ifndef LOCAL_CL_TABLE_SIZE
-#define LOCAL_CL_TABLE_SIZE (1 << 6)
+#define LOCAL_CL_TABLE_SIZE (1ull << 6)
 #endif
 
 // number of entries searched in local cl table per insertion

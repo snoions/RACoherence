@@ -192,7 +192,6 @@ void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size) {
         LOG_ERROR("je_mallctl arena.0.muzzy_decay_ms returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
-    cxl_pool_thread_init();
 }
 
 void cxl_pool_thread_init() {

@@ -26,6 +26,8 @@ static int pin_to_core(int core_id) {
 }
 
 static int find_cpu_on_numa(unsigned &cpu_id, int target_numa_id) {
+    if (target_numa_id == -1)
+        return 0;
     for (int numa_id = -1; numa_id != target_numa_id; cpu_id++) {
         numa_id = numa_node_of_cpu(cpu_id);
         if (numa_id == -1){
