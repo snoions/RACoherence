@@ -33,18 +33,10 @@ class ThreadOps {
         }
     }
 
-    inline clock_t publish_log(Log *log, bool is_release) {
-        auto clk_val = log_mgrs[node_id].produce_tail(log, is_release);
-        dirty_cls.clear_table();
-        STATS(cache_info->produced_count++)
-        LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count)
-        return clk_val;
-    }
-
     clock_t write_to_log(bool is_release) {
         using namespace cl_group;
-#if DELAY_PUBLISH
         clock_t clk_val = 0;
+#if DELAY_PUBLISH
         if (!curr_log)
             set_to_new_log(curr_log);
 #else
@@ -57,7 +49,9 @@ class ThreadOps {
                 continue;
 #if DELAY_PUBLISH
             if (curr_log->is_full()) {
-                clk_val = publish_log(curr_log, false);
+                clk_val = log_mgrs[node_id].produce_tail(curr_log, is_release);
+                STATS(cache_info->produced_count++)
+                LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count)
                 set_to_new_log(curr_log);
             }
 #endif
@@ -74,16 +68,20 @@ class ThreadOps {
             }
 #endif
         }
+
         // release store in LogManager::produce_tail acts as writeback fence
 #if DELAY_PUBLISH
         if (is_release) {
-             clk_val = publish_log(curr_log, true);
+             clk_val = log_mgrs[node_id].produce_tail(curr_log, is_release);
              curr_log = nullptr;
         }
-        return clk_val;
 #else
-        return publish_log(curr_log, is_release);
+        clk_val = log_mgrs[node_id].produce_tail(curr_log, is_release);
 #endif
+        STATS(cache_info->produced_count++)
+        LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count)
+        dirty_cls.clear_table();
+        return clk_val;
     }
 
     void help_consume(const VectorClock &target) {
