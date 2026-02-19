@@ -76,19 +76,16 @@ public:
             writeback_fence();
             inner->atomic_data.store(desired, order);
 #else
-            bool released = thread_ops->thread_release();
-            if (released) {
-                const VectorClock &thread_clock = thread_ops->get_clock();
-                inner->mtx.lock();
+            thread_ops->thread_release();
+            const VectorClock &thread_clock = thread_ops->get_clock();
+            inner->mtx.lock();
 #ifdef LOCATION_CLOCK_MERGE
-                inner->clock.merge(thread_clock);
+            inner->clock.merge(thread_clock);
 #else
-                inner->clock = thread_clock;
+            inner->clock = thread_clock;
 #endif
-                inner->atomic_data.store(desired, order);
-                inner->mtx.unlock();
-            } else 
-                inner->atomic_data.store(desired, order);
+            inner->atomic_data.store(desired, order);
+            inner->mtx.unlock();
 #endif
         }
         else
@@ -118,23 +115,19 @@ public:
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire || order == std::memory_order_release || order == std::memory_order_acq_rel) { 
             char ret;
             if (order == std::memory_order_seq_cst || order == std::memory_order_acq_rel) { 
-                bool released = thread_ops->thread_release();
+                thread_ops->thread_release();
                 inner->mtx.lock();
                 ret = inner->atomic_data.fetch_add(arg, order);
-                if (released)
-                    inner->clock.merge(thread_ops->get_clock());
+                 inner->clock.merge(thread_ops->get_clock());
                 const VectorClock clock = inner->clock;
                 inner->mtx.unlock();
                 thread_ops->thread_acquire(clock);
             } else if (order == std::memory_order_release) {
-                bool released = thread_ops->thread_release();
-                if (released) {
-                    inner->mtx.lock();
-                    ret = inner->atomic_data.fetch_add(arg, order);
-                    inner->clock.merge(thread_ops->get_clock());
-                    inner->mtx.unlock();
-                } else
-                    ret = inner->atomic_data.fetch_add(arg, order); 
+                thread_ops->thread_release();
+                inner->mtx.lock();
+                ret = inner->atomic_data.fetch_add(arg, order);
+                inner->clock.merge(thread_ops->get_clock());
+                inner->mtx.unlock();
             } else if (order == std::memory_order_acquire){
                 inner->mtx.lock();
                 ret = inner->atomic_data.fetch_add(arg, order);
@@ -243,16 +236,18 @@ public:
 #if PROTOCOL_OFF
         writeback_fence();
 #else
-        bool released = thread_ops->thread_release();
-        if (released) {
-            const auto &thread_clock = thread_ops->get_clock();
+        thread_ops->thread_release(); 
+        const auto &thread_clock = thread_ops->get_clock();
 #ifdef LOCATION_CLOCK_MERGE
-            inner->clock.merge(thread_clock);
+        inner->clock.merge(thread_clock);
 #else
-            inner->clock = thread_clock;
+        inner->clock = thread_clock;
 #endif
-        }
 #endif
+        clh_mutex_unlock(&inner->mutex);
+    }
+
+    inline void unlock_relaxed() {
         clh_mutex_unlock(&inner->mutex);
     }
 };
@@ -300,16 +295,13 @@ public:
 #if PROTOCOL_OFF
         writeback_fence();
 #else
-        bool released = thread_ops->thread_release();
-        
-        if (released) {
-            const auto &thread_clock = thread_ops->get_clock();
+        thread_ops->thread_release();
+        const auto &thread_clock = thread_ops->get_clock();
 #ifdef LOCATION_CLOCK_MERGE
-            inner->clock.merge(thread_clock);
+        inner->clock.merge(thread_clock);
 #else
-            inner->clock = thread_clock;
+        inner->clock = thread_clock;
 #endif
-        }
 #endif
         clh_rwlock_writeunlock(&inner->mutex);
     }
@@ -318,15 +310,13 @@ public:
 #if PROTOCOL_OFF
         writeback_fence();
 #else
-        bool released = thread_ops->thread_release();
-        if (released) {
-            const auto &thread_clock = thread_ops->get_clock();
+        thread_ops->thread_release();
+        const auto &thread_clock = thread_ops->get_clock();
 #ifdef LOCATION_CLOCK_MERGE
-            inner->clock.merge(thread_clock);
+        inner->clock.merge(thread_clock);
 #else
-            inner->clock = thread_clock;
+        inner->clock = thread_clock;
 #endif
-        }
 #endif
         clh_rwlock_readunlock(&inner->mutex);
     }
