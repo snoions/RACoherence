@@ -111,12 +111,13 @@ class ThreadOps {
 
                 auto clk = cache_info->get_clock(i);
                 while(clk < target[i]) {
-                    Log *log;
-                    //log might be null because of logs yet to be produced before the target log
-                    while(!(log = log_mgrs[i].take_head(node_id)));
+                    const PubEntry* entry;
+                    //entry might be null because of logs yet to be produced before the target log
+                    while(!(entry = log_mgrs[i].take_head(node_id)));
+                    Log *log = entry->log.load(std::memory_order_relaxed);
+                    if (entry->is_rel)
+                        clk = entry->idx.load(std::memory_order_relaxed);
                     cache_info->process_log(*log);
-                    if (log->is_release())
-                        clk = log->get_log_idx();
                     log_mgrs[i].consume_head(node_id);
                     STATS(cache_info->consumed_count[i]++)
                     LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)

@@ -43,9 +43,7 @@ struct alignas(CACHE_LINE_SIZE) Log {
     using const_iterator = const Entry *;
 
     Data entries;
-    std::atomic<idx_t> idx{0};
     size_t size = 0;
-    bool is_rel = false;
 
 public:
     inline size_t get_size() {
@@ -61,14 +59,6 @@ public:
         entries[size++] = cl_addr;
     }
 
-    bool is_release() {
-        return is_rel;
-    }
-
-    clock_t get_log_idx() {
-        return idx.load(std::memory_order_relaxed);
-    }
-
     const_iterator begin() const {
         return &entries[0];
     }
@@ -78,11 +68,16 @@ public:
     }
 };
 
+struct alignas(CACHE_LINE_SIZE) PubEntry {
+    std::atomic<Log *> log;
+    std::atomic<idx_t> idx{0};
+    bool is_rel = false;
+};
+
 class alignas(CACHE_LINE_SIZE) LogManager {
     Log buf[LOG_COUNT];
 
-    alignas(CACHE_LINE_SIZE)
-    std::atomic<Log *>pub[LOG_COUNT];
+    PubEntry pub[LOG_COUNT];
 
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> tail{0};
@@ -124,9 +119,9 @@ class alignas(CACHE_LINE_SIZE) LogManager {
             // hack to avoid race condition with producers
             // improve later
             for (idx_t i = bound; i != new_b; i++) {
-                Log * log = pub[get_idx(i)].load(std::memory_order_relaxed);
-                
-                if (log->idx.load(std::memory_order_acquire) != prev_round(i) + 1) {
+                const auto &entry = pub[get_idx(i)];
+                Log *log = entry.log.load(std::memory_order_relaxed);
+                if (entry.idx.load(std::memory_order_acquire) != prev_round(i) + 1) {
                     new_b = i; 
                     break;
                 }
@@ -136,7 +131,7 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
         } else {
             for (idx_t i = bound; i != new_b; i++) {
-                Log * log = pub[get_idx(i)].load(std::memory_order_relaxed);
+                Log * log = pub[get_idx(i)].log.load(std::memory_order_relaxed);
 
                 //handle spurious failures from enqueue
                 while(!freelist.enqueue(log));
@@ -152,7 +147,7 @@ public:
         for (unsigned i = 0; i < NODE_COUNT; i++)
             subscribers[i].store(true);
         for (unsigned i = 0; i < LOG_COUNT; i++) {
-            pub[i].store(&buf[i], std::memory_order_relaxed);
+            pub[i].log.store(&buf[i], std::memory_order_relaxed);
             auto ok = freelist.enqueue(&buf[i]);
             assert(ok);
         }
@@ -189,9 +184,10 @@ public:
     //returns current release clock
     clock_t produce_tail(Log *l, bool r) {
         auto t = tail.fetch_add(1, std::memory_order_relaxed);
-        l->is_rel = r;
-        pub[get_idx(t)].store(l, std::memory_order_relaxed);
-        l->idx.store(t+1, std::memory_order_release);
+        auto &entry = pub[get_idx(t)];
+        entry.is_rel = r;
+        entry.log.store(l, std::memory_order_relaxed);
+        entry.idx.store(t+1, std::memory_order_release);
         return t+1;
     }
 
@@ -200,14 +196,14 @@ public:
     }
 
     //only allows exclusive access on each node 
-    Log *take_head(unsigned nid) {
+    const PubEntry *take_head(unsigned nid) {
         //return head, check if overlaps with tail
         auto h = heads[nid].load(std::memory_order_relaxed);
-        auto l = pub[get_idx(h)].load(std::memory_order_relaxed);
-        if (l->idx.load(std::memory_order_acquire) != h+1) {
+        const auto &entry = pub[get_idx(h)];
+        if (entry.idx.load(std::memory_order_acquire) != h+1) {
             return NULL;
         }
-        return l;
+        return &entry;
     }
 
     //only allows exclusive access on each node
