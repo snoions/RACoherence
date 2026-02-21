@@ -17,14 +17,16 @@ extern __thread ThreadOps *thread_ops;
 
 template<typename T>
 class CXLRelaxedAtomic {
+public:
     struct InnerData {
         std::atomic<T> atomic_data;
     };
-
+private:
     InnerData *inner;
 
 public:
     CXLRelaxedAtomic(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLRelaxedAtomic(InnerData *ptr): inner(new(ptr) InnerData()) {}
 
     ~CXLRelaxedAtomic() {
         inner->~InnerData();
@@ -54,16 +56,18 @@ public:
 
 template<typename T>
 class CXLAtomic {
+public:
     struct InnerData {
         std::atomic<T> atomic_data;
         VectorClock clock;
         CLHMutex mtx;
     };
-
+private:
     InnerData *inner;
 
 public:
     CXLAtomic(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLAtomic(InnerData *ptr): inner(new(ptr) InnerData()) {}
 
     ~CXLAtomic() {
         inner->~InnerData();
@@ -152,6 +156,7 @@ public:
 // CXLRelaxedMutex only guarantees coherence of the contained data
 template<typename T, size_t Count>
 class CXLRelaxedMutex {
+public:
     struct InnerData {
         clh_mutex_t mutex;
         unsigned owner_node = NODE_COUNT+1;
@@ -163,12 +168,13 @@ class CXLRelaxedMutex {
             clh_mutex_destroy(&mutex);
         }
     };
-
+private:
     InnerData *inner;
     T *data;
 
 public:
     CXLRelaxedMutex(T *d): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()), data(d) {}
+    CXLRelaxedMutex(InnerData *ptr, T *d): inner(new(ptr) InnerData()), data(d) {}
 
     ~CXLRelaxedMutex() {
         inner->~InnerData();
@@ -202,6 +208,7 @@ public:
 };
 
 class CXLMutex {
+public:
     struct InnerData{
         clh_mutex_t mutex;
         VectorClock clock;
@@ -213,11 +220,12 @@ class CXLMutex {
             clh_mutex_destroy(&mutex);
         }
     };
-
+private:
     InnerData *inner;
 
 public:
     CXLMutex(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLMutex(InnerData *ptr): inner(new(ptr) InnerData()) {}
 
     ~CXLMutex() {
         inner->~InnerData();
@@ -253,6 +261,7 @@ public:
 };
 
 class CXLSharedMutex {
+public:
     struct InnerData{
         clh_rwlock_t mutex;
         VectorClock clock;
@@ -264,11 +273,12 @@ class CXLSharedMutex {
             clh_rwlock_destroy(&mutex);
         }
     };
-
+private:
     InnerData *inner;
 
 public:
     CXLSharedMutex(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLSharedMutex(void* ptr): inner(new(ptr) InnerData()) {}
 
     ~CXLSharedMutex() {
         inner->~InnerData();
