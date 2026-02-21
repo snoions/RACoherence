@@ -135,10 +135,9 @@ void clh_mutex_lock(clh_mutex_t * self)
 }
 
 /*
- * locks the mutex for the current thread. will not wait for other threads
- * that did the atomic_exchange() before this one.
+ * pseudo try-lock function. check if the mutex is locked once, then does blocking lock
  *
- * progress condition: non-blocking
+ * progress condition: blocking
  */
 bool clh_mutex_try_lock(clh_mutex_t * self)
 {
@@ -149,21 +148,24 @@ bool clh_mutex_try_lock(clh_mutex_t * self)
         return false;
     }
 
-    // create the new node locked by default, setting islocked=1
-    clh_mutex_node_t *mynode = clh_mutex_create_node(1);
-    if (atomic_compare_exchange_strong(&self->tail, &prev, mynode)) {
-        // Success: We acquired the lock.
-        self->mynode = mynode;
-        
-        // We are responsible for freeing the previous node (prev), which is now ours.
-        cxlhc_free(prev, sizeof(prev));
-        
-        return true; 
-    }
+    clh_mutex_lock(self);
+    return true;
+    //clh_mutex_node_t *mynode = clh_mutex_create_node(1);
+    //clh_mutex_node_t *prev = atomic_exchange(&self->tail, mynode);
+    ////FIXME: potential ABA problem if prev is recyled
+    //if (atomic_compare_exchange_strong(&self->tail, &prev, mynode)) {
+    //    // Success: We acquired the lock.
+    //    self->mynode = mynode;
+    //    
+    //    // We are responsible for freeing the previous node (prev), which is now ours.
+    //    cxlhc_free(prev, sizeof(clh_mutex_node_t));
+    //    
+    //    return true; 
+    //}
 
-    // Someone else modified the tail (enqueued) before we could.
-    cxlhc_free(mynode, sizeof(mynode));
-    return false;
+    //// Someone else modified the tail (enqueued) before we could.
+    //cxlhc_free(mynode, sizeof(clh_mutex_node_t));
+    //return false;
 }
 
 
