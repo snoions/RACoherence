@@ -51,7 +51,7 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 #endif
 
 // whether to collect statistics
-//#define STATS(s) {s;}
+//#define STATS(s) {s}
 #define STATS(s)
 
 // user threads consume logs to unblock itself, at the expense of contention with cache agent
@@ -106,7 +106,7 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 
 // number of entries in local cl table, must be power of two
 #ifndef LOCAL_CL_TABLE_SIZE
-#define LOCAL_CL_TABLE_SIZE (1ull << 6)
+#define LOCAL_CL_TABLE_SIZE 64
 #endif
 
 // number of entries searched in local cl table per insertion
@@ -114,15 +114,17 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 #define LOCAL_CL_TABLE_SEARCH_ITERS 5
 #endif
 
+#ifndef LOG_ENTRY_TOTAL
+#define LOG_ENTRY_TOTAL 4096
+#endif
+
 // number of entries in a log, cannot be smaller than LOCAL_CL_TABLE_ENTRIES
 #ifndef LOG_SIZE
-#define LOG_SIZE  (1ull << 6)
+#define LOG_SIZE 64
 #endif
 
 // number of logs in a per-node log buffer, must be power of two
-#ifndef LOG_COUNT
-#define LOG_COUNT (1ull << 6)
-#endif
+#define LOG_COUNT (LOG_ENTRY_TOTAL/LOG_SIZE)
 
 // use custom memory pool as allocator for CXL hardware coherent memory
 //#define HC_USE_CUSTOM_POOL

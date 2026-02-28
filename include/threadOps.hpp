@@ -50,7 +50,7 @@ class ThreadOps {
 #if DELAY_PUBLISH
             if (curr_log->is_full()) {
                 clk_val = log_mgrs[node_id].produce_tail(curr_log, is_release);
-                STATS(cache_info->produced_count++)
+                STATS(cache_info->produced_count++;)
                 LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count)
                 set_to_new_log(curr_log);
             }
@@ -78,7 +78,7 @@ class ThreadOps {
 #else
         clk_val = log_mgrs[node_id].produce_tail(curr_log, is_release);
 #endif
-        STATS(cache_info->produced_count++)
+        STATS(cache_info->produced_count++;)
         LOG_DEBUG("node " << node_id << " produce log " << cache_info->produced_count)
         dirty_cls.clear_table();
         return clk_val;
@@ -119,7 +119,7 @@ class ThreadOps {
                         clk = entry->idx.load(std::memory_order_relaxed);
                     cache_info->process_log(*log);
                     log_mgrs[i].consume_head(node_id);
-                    STATS(cache_info->consumed_count[i]++)
+                    STATS(cache_info->consumed_count[i]++;)
                     LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
                 }
                 node_done[i] = true;

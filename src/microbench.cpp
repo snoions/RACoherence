@@ -26,22 +26,18 @@ void Microbench::run() {
         //TODO: data-race-free workload based on synchronization (locked region?)
         switch (op.type) {
             case OP_STORE_RLS: {
-                STATS(write_count++)
                 cxl_pool.atomic_data[op.offset].store(0, std::memory_order_release);
                 break;
             }
              case OP_STORE: {
-                STATS(write_count++)
                 rac_store8(&cxl_pool.data[op.offset], 0, nullptr);
                 break;
             }
             case OP_LOAD_ACQ: {
-                STATS(read_count++)
                 cxl_pool.atomic_data[op.offset].load(std::memory_order_acquire);
                 break;
             }
             case OP_LOAD: {
-                STATS(read_count++)
                 rac_load8(&cxl_pool.data[op.offset], nullptr);
                 break;
             }
