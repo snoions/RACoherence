@@ -29,16 +29,16 @@ struct CacheInfo {
     //void simulate_process_log(Log &log) {
     //    using namespace cl_group;
     //    STATS(auto start = std::chrono::steady_clock::now();)
-    //    for (auto cg: log) {
-    //        if (is_length_based(cg)) {
-    //            unsigned length = get_length(cg);
-    //            uintptr_t cl_addr = get_ptr(cg);
+    //    for (auto entry: log) {
+    //        if (is_length_based(entry)) {
+    //            unsigned length = get_length(entry);
+    //            uintptr_t cl_addr = get_ptr(entry);
     //            for (unsigned i = 0; i < length * GROUP_SIZE * CL_EXPAND_FACTOR; i++) {
     //                __rdtsc();
     //                __rdtsc();
     //            }
     //        } else {
-    //            for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
+    //            for (auto cl_addr: MaskCLRange(get_ptr(entry), get_mask16(entry)))
     //                // should be unrolled, manually unroll if not
     //                for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++) {
     //                   __rdtsc();
@@ -55,16 +55,19 @@ struct CacheInfo {
 
     void process_log(Log &log) {
         using namespace cl_group;
-        for (auto cg: log) {
-            if (is_length_based(cg)) {
-                unsigned length = get_length(cg);
+        for (auto entry: log) {
+#if IMMEDIATE_PUBLISH
+            do_invalidate((char *)(entry << VIRTUAL_CL_SHIFT));
+#else
+            if (is_length_based(entry)) {
+                unsigned length = get_length(entry);
 #ifdef WBINVD_PATH
                 if (length >= WBINVD_THRESHOLD) {
                     wbinvd();
                     return;
                 }
 #endif
-                uintptr_t cl_addr = get_ptr(cg);
+                uintptr_t cl_addr = get_ptr(entry);
 #if EAGER_INVALIDATE
                 for (unsigned i = 0; i < length * GROUP_SIZE * CL_EXPAND_FACTOR; i++)
                     do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
@@ -74,14 +77,15 @@ struct CacheInfo {
 #endif
             } else {
 #if EAGER_INVALIDATE
-                for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
+                for (auto cl_addr: MaskCLRange(get_ptr(entry), get_mask16(entry)))
                     // should be unrolled, manually unroll if not
                     for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
                         do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
 #else
-                inv_cls.mark_dirty(get_ptr(cg),  get_mask16(cg) << get_mask16_to_64_shift(cg));
+                inv_cls.mark_dirty(get_ptr(entry),  get_mask16(entry) << get_mask16_to_64_shift(entry));
 #endif
             }
+#endif
         }
     }
 

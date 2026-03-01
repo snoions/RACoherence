@@ -164,20 +164,25 @@ public:
     Log *get_new_log() {
          Log *log;
          auto ok = freelist.dequeue(log);
-         if (ok)
-            return new(log) Log();
+         if (ok) {
+            log->size = 0;
+            return log;
+            }
          gc_mtx.lock();
          //check again after locking
          ok = freelist.dequeue(log);
          if (ok) {
              gc_mtx.unlock();
-             return new(log) Log();
+             log->size = 0;
+             return log;
          }
          perform_gc();
          ok = freelist.dequeue(log);
          gc_mtx.unlock();
-         if(ok)
-             return new(log) Log();
+         if(ok) {
+             log->size = 0;
+             return log;
+         }
          return nullptr;
     }
 

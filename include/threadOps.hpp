@@ -23,14 +23,22 @@ class ThreadOps {
     VectorClock thread_clock;
     LocalCLTable dirty_cls;
     uintptr_t recent_cl = 0;
-#if DELAY_PUBLISH
     Log *curr_log = nullptr;
-#endif
 
     inline void set_to_new_log(Log *& log) {
         while(!(log = log_mgrs[node_id].get_new_log())) {
             sched_yield();
         }
+    }
+
+    void write_cl_to_log(uintptr_t cl) {
+        if (!curr_log)
+            set_to_new_log(curr_log);
+        if (curr_log->is_full()) {
+            log_mgrs[node_id].produce_tail(curr_log, false);
+            set_to_new_log(curr_log);
+        }
+        curr_log->write(cl);
     }
 
     clock_t write_to_log(bool is_release) {
@@ -44,8 +52,8 @@ class ThreadOps {
         set_to_new_log(curr_log);
 #endif
 
-        for(auto cg: dirty_cls) {
-            if (!cg)
+        for(auto entry: dirty_cls) {
+            if (!entry)
                 continue;
 #if DELAY_PUBLISH
             if (curr_log->is_full()) {
@@ -55,14 +63,14 @@ class ThreadOps {
                 set_to_new_log(curr_log);
             }
 #endif
-            curr_log->write(cg);
+            curr_log->write(entry);
 #if !EAGER_WRITEBACK
-            if (is_length_based(cg)) {
-                for (auto cl_addr: LengthCLRange(cg))
+            if (is_length_based(entry)) {
+                for (auto cl_addr: LengthCLRange(entry))
                     for (unsigned i = 0; i < GROUP_SIZE * CL_EXPAND_FACTOR; i++)
                         do_writeback((char *)cl_addr + (i * CACHE_LINE_SIZE));
             } else {
-                for (auto cl_addr: MaskCLRange(get_ptr(cg), get_mask16(cg)))
+                for (auto cl_addr: MaskCLRange(get_ptr(entry), get_mask16(entry)))
                     for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
                         do_writeback((char *)cl_addr + i * CACHE_LINE_SIZE);
             }
@@ -154,7 +162,6 @@ public:
 
     inline bool thread_release() {
         LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)
-#if INLINE_CACHING
         if (!recent_cl)
             return false;
 
@@ -165,14 +172,18 @@ public:
 #endif
 
         recent_cl = 0;
-#endif
 
 #ifdef LOCAL_CL_TABLE_BUFFER
         while (dirty_cls.dump_buffer_to_table())
             write_to_log(false);
 #endif
 
+#if IMMEDIATE_PUBLISH
+        clock_t clk_val = log_mgrs[node_id].produce_tail(curr_log, true);
+        curr_log = nullptr;
+#else
         clock_t clk_val = write_to_log(true);
+#endif
         //increment
         thread_clock.assign(node_id, clk_val);
         return true;
@@ -193,6 +204,7 @@ public:
 #if INLINE_CACHING
         if (cl == recent_cl)
             return;
+#endif
 #if EAGER_WRITEBACK
         if (recent_cl) {
             uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
@@ -201,8 +213,10 @@ public:
         }
 #endif
         recent_cl = cl;
-#endif
 
+#if IMMEDIATE_PUBLISH
+        write_cl_to_log(cl);
+#else
         if (dirty_cls.insert((uintptr_t)cl)) {
             write_to_log(false);
             dirty_cls.insert((uintptr_t)cl);
@@ -211,21 +225,24 @@ public:
         if (dirty_cls.get_length_entry_count()!=0)
             write_to_log(false);
 #endif
+#endif
     }
 
     inline void log_range_store(char *begin, char *end) {
         // EAGER_WRITEBACK not implemented here for efficiency, need to be handled by caller
         uintptr_t begin_addr = (uintptr_t)begin >> VIRTUAL_CL_SHIFT;
         uintptr_t end_addr = (uintptr_t)end >> VIRTUAL_CL_SHIFT;
-#if INLINE_CACHING
         recent_cl = end_addr;
-#endif
-
+#if IMMEDIATE_PUBLISH
+        for (uintptr_t cl = begin_addr; cl < end_addr; cl++)
+            write_cl_to_log(cl);
+#else
         while (dirty_cls.range_insert(begin_addr, end_addr))
             write_to_log(false);
 #ifdef LOCAL_CL_TABLE_BUFFER
         if (dirty_cls.get_length_entry_count() !=0)
             write_to_log(false);
+#endif
 #endif
     }
 };

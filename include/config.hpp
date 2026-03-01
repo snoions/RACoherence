@@ -78,7 +78,6 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 #endif
 
 // producers writeback cache line eagerly, before accessing the cache line line
-// depends on inline caching
 #ifndef EAGER_WRITEBACK
 #define EAGER_WRITEBACK 0
 #endif
@@ -90,6 +89,11 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 
 // pin each cache agent to a core
 #define CACHE_AGENT_AFFINITY
+
+// publish immediately, can only use eager write back
+#ifndef IMMEDIATE_PUBLISH
+#define IMMEDIATE_PUBLISH 0
+#endif
 
 // delay publishing until a log is full
 #ifndef DELAY_PUBLISH
