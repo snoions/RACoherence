@@ -12,7 +12,6 @@
 #include "config.hpp"
 #include "clh_mutex.hpp"
 #include "logger.hpp"
-#include "spmcQueue.hpp"
 #include "utils.hpp"
 
 namespace RACoherence {
@@ -87,21 +86,21 @@ class alignas(CACHE_LINE_SIZE) LogManager {
 
     CacheAligned<CLHMutex> head_mtxs[NODE_COUNT];
 
-    alignas(CACHE_LINE_SIZE)
-    CLHMutex gc_mtx;
-
     // try aligning each bool to different cache line if contention is high
     alignas(CACHE_LINE_SIZE)
     std::atomic<bool> subscribers[NODE_COUNT];
     
-    spmc_bounded_queue<Log *, LOG_COUNT> freelist;
-
     unsigned node_id;
 
-    idx_t bound = next_round(0);
+    alignas(CACHE_LINE_SIZE)
+    std::atomic<idx_t> alloc_tail{next_round(0)};
 
-    inline void perform_gc() {
-        idx_t new_b = next_round(bound);
+    alignas(CACHE_LINE_SIZE)
+    std::atomic<idx_t> alloc_head{0};    
+
+    inline idx_t perform_gc() {
+        idx_t at = alloc_tail.load(std::memory_order_relaxed);
+        idx_t new_at = next_round(at);
         bool subscribed = false;
         for (unsigned i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
@@ -110,35 +109,30 @@ class alignas(CACHE_LINE_SIZE) LogManager {
                 continue;
             subscribed = true;
             auto h = next_round(heads[i].load(std::memory_order_acquire));
-            if(h < new_b)
-                new_b = h;
+            if(h < new_at)
+                new_at = h;
         }
 
-        assert(bound <= new_b);
+        assert(at <= new_at);
         if (!subscribed) {
             // hack to avoid race condition with producers
             // improve later
-            for (idx_t i = bound; i != new_b; i++) {
+            for (idx_t i = alloc_tail; i != new_at; i++) {
                 const auto &entry = pub[get_idx(i)];
                 Log *log = entry.log.load(std::memory_order_relaxed);
                 if (entry.idx.load(std::memory_order_acquire) != prev_round(i) + 1) {
-                    new_b = i; 
+                    new_at = i; 
                     break;
                 }
-                //handle spurious failures from enqueue
-                while(!freelist.enqueue(log));
             }
 
-        } else {
-            for (idx_t i = bound; i != new_b; i++) {
-                Log * log = pub[get_idx(i)].log.load(std::memory_order_relaxed);
-
-                //handle spurious failures from enqueue
-                while(!freelist.enqueue(log));
-            }
         }
-        LOG_DEBUG("node " << node_id << " perform gc new bound " << new_b << " bound " << bound)
-        bound = new_b;
+        LOG_DEBUG("node " << node_id << " perform gc new alloc_tail " << new_at << " alloc_tail " << alloc_tail)
+        at = alloc_tail.load(std::memory_order_relaxed);
+        if (new_at > at)
+            if(alloc_tail.compare_exchange_strong(at, new_at, std::memory_order_acq_rel, std::memory_order_relaxed))
+                return new_at;
+        return at;
     }
 
 public:
@@ -148,8 +142,6 @@ public:
             subscribers[i].store(true);
         for (unsigned i = 0; i < LOG_COUNT; i++) {
             pub[i].log.store(&buf[i], std::memory_order_relaxed);
-            auto ok = freelist.enqueue(&buf[i]);
-            assert(ok);
         }
     }
 
@@ -162,26 +154,24 @@ public:
     }
 
     Log *get_new_log() {
-         Log *log;
-         auto ok = freelist.dequeue(log);
-         if (ok) {
-            log->size = 0;
-            return log;
+         idx_t at = alloc_tail.load(std::memory_order_acquire);
+         idx_t ah = alloc_head.load(std::memory_order_relaxed);
+         while (ah < at) {
+            if (alloc_head.compare_exchange_weak(ah, ah+1, std::memory_order_relaxed)) {
+                Log *log = pub[(get_idx(ah))].log.load(std::memory_order_relaxed);
+                log->size = 0;
+                return log;
             }
-         gc_mtx.lock();
-         //check again after locking
-         ok = freelist.dequeue(log);
-         if (ok) {
-             gc_mtx.unlock();
-             log->size = 0;
-             return log;
          }
-         perform_gc();
-         ok = freelist.dequeue(log);
-         gc_mtx.unlock();
-         if(ok) {
-             log->size = 0;
-             return log;
+         if (ah >= alloc_tail.load(std::memory_order_acquire)) {
+            at = perform_gc();
+         }
+         while (ah < at) {
+            if (alloc_head.compare_exchange_weak(ah, ah+1, std::memory_order_relaxed)) {
+                Log *log = pub[(get_idx(ah))].log.load(std::memory_order_relaxed);
+                log->size = 0;
+                return log;
+            }
          }
          return nullptr;
     }
