@@ -82,7 +82,11 @@ public:
 #else
             thread_ops->thread_release();
             const VectorClock &thread_clock = thread_ops->get_clock();
+#if CONSUME_HELP_IN_LOCK
+            inner->mtx.lock_with_help();
+#else
             inner->mtx.lock();
+#endif
 #ifdef LOCATION_CLOCK_MERGE
             inner->clock.merge(thread_clock);
 #else
@@ -99,7 +103,12 @@ public:
     inline T load(std::memory_order order=std::memory_order_seq_cst) {
 #if !PROTOCOL_OFF
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire) { 
+
+#if CONSUME_HELP_IN_LOCK
+            inner->mtx.lock_with_help();
+#else
             inner->mtx.lock();
+#endif
             char ret = inner->atomic_data.load(order);
             VectorClock clock = inner->clock;
             inner->mtx.unlock();
@@ -120,7 +129,11 @@ public:
             char ret;
             if (order == std::memory_order_seq_cst || order == std::memory_order_acq_rel) { 
                 thread_ops->thread_release();
+#if CONSUME_HELP_IN_LOCK
+                inner->mtx.lock_with_help();
+#else
                 inner->mtx.lock();
+#endif
                 ret = inner->atomic_data.fetch_add(arg, order);
                  inner->clock.merge(thread_ops->get_clock());
                 const VectorClock clock = inner->clock;
@@ -128,12 +141,20 @@ public:
                 thread_ops->thread_acquire(clock);
             } else if (order == std::memory_order_release) {
                 thread_ops->thread_release();
+#if CONSUME_HELP_IN_LOCK
+                inner->mtx.lock_with_help();
+#else
                 inner->mtx.lock();
+#endif
                 ret = inner->atomic_data.fetch_add(arg, order);
                 inner->clock.merge(thread_ops->get_clock());
                 inner->mtx.unlock();
             } else if (order == std::memory_order_acquire){
+#if CONSUME_HELP_IN_LOCK
+                inner->mtx.lock_with_help();
+#else
                 inner->mtx.lock();
+#endif
                 ret = inner->atomic_data.fetch_add(arg, order);
                 const VectorClock clock = inner->clock;
                 inner->mtx.unlock();
@@ -158,15 +179,8 @@ template<typename T, size_t Count>
 class CXLRelaxedMutex {
 public:
     struct InnerData {
-        clh_mutex_t mutex;
+        CLHMutex mtx;
         unsigned owner_node = NODE_COUNT+1;
-
-        InnerData() {
-            clh_mutex_init(&mutex);
-        }
-        ~InnerData() {
-            clh_mutex_destroy(&mutex);
-        }
     };
 private:
     InnerData *inner;
@@ -182,7 +196,11 @@ public:
     }
 
     inline void lock() {
-        clh_mutex_lock(&inner->mutex);
+#if CONSUME_HELP_IN_LOCK
+        inner->mtx.lock_with_help();
+#else
+        inner->mtx.lock();
+#endif
 #ifndef PROTOCOL_OFF
         unsigned nid = thread_op->get_node_id();
         if (inner->owner_node != nid) {
@@ -199,7 +217,7 @@ public:
     inline void unlock() {
         do_range_writeback((char *)data, Count * sizeof(T));
         writeback_fence();
-        clh_mutex_unlock(&inner->mutex);
+        inner->mtx.unlock();
     }
 
     inline T* get() {
@@ -210,15 +228,8 @@ public:
 class CXLMutex {
 public:
     struct InnerData{
-        clh_mutex_t mutex;
+        CLHMutex mtx;
         VectorClock clock;
-
-        InnerData(): clock() {
-            clh_mutex_init(&mutex);
-        }
-        ~InnerData() {
-            clh_mutex_destroy(&mutex);
-        }
     };
 private:
     InnerData *inner;
@@ -233,7 +244,11 @@ public:
     }
 
     inline void lock() {
-        clh_mutex_lock(&inner->mutex);
+#if CONSUME_HELP_IN_LOCK
+        inner->mtx.lock_with_help();
+#else
+        inner->mtx.lock();
+#endif
 
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
@@ -252,26 +267,19 @@ public:
         inner->clock = thread_clock;
 #endif
 #endif
-        clh_mutex_unlock(&inner->mutex);
+        inner->mtx.unlock();
     }
 
     inline void unlock_relaxed() {
-        clh_mutex_unlock(&inner->mutex);
+        inner->mtx.unlock();
     }
 };
 
 class CXLSharedMutex {
 public:
     struct InnerData{
-        clh_rwlock_t mutex;
+        CLHSharedMutex mtx;
         VectorClock clock;
-
-        InnerData(): clock() {
-            clh_rwlock_init(&mutex);
-        }
-        ~InnerData() {
-            clh_rwlock_destroy(&mutex);
-        }
     };
 private:
     InnerData *inner;
@@ -286,7 +294,7 @@ public:
     }
 
     inline void lock() {
-        clh_rwlock_writelock(&inner->mutex);
+        inner->mtx.lock();
 
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
@@ -294,7 +302,7 @@ public:
     }
 
     inline void lock_shared() {
-        clh_rwlock_readlock(&inner->mutex);
+        inner->mtx.lock_shared();
 
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
@@ -313,7 +321,7 @@ public:
         inner->clock = thread_clock;
 #endif
 #endif
-        clh_rwlock_writeunlock(&inner->mutex);
+        inner->mtx.unlock();
     }
 
     inline void unlock_shared() {
@@ -328,7 +336,7 @@ public:
         inner->clock = thread_clock;
 #endif
 #endif
-        clh_rwlock_readunlock(&inner->mutex);
+        inner->mtx.unlock_shared();
     }
 };
 

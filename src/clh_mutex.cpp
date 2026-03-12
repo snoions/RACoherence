@@ -66,6 +66,7 @@
 #include <cassert>
 
 #include "clh_mutex.hpp"
+#include "threadOps.hpp"
 #include "cxlMalloc.hpp"
 
 namespace RACoherence {
@@ -122,6 +123,39 @@ void clh_mutex_lock(clh_mutex_t * self)
     if (prev_islocked) {
         while (prev_islocked) {
             sched_yield();  // replace this with thrd_yield() if you use <threads.h>
+            prev_islocked = atomic_load(&prev->succ_must_wait);
+        }
+    }
+    // this thread has acquired the lock on the mutex and it is now safe to
+    // cleanup the memory of the previous node.
+    cxlhc_free(prev, sizeof(clh_mutex_node_t));
+
+    // store mynode for clh_mutex_unlock() to use. we could replace
+    // this with a thread-local, not sure which is faster.
+    self->mynode = mynode;
+}
+
+extern __thread ThreadOps *thread_ops;
+
+/*
+ * locks the mutex for the current thread. will wait for other threads
+ * that did the atomic_exchange() before this one. help consume broadcast channels while blocked.
+ *
+ * progress condition: blocking
+ */
+void clh_mutex_lock_with_help(clh_mutex_t * self)
+{
+    // create the new node locked by default, setting islocked=1
+    clh_mutex_node_t *mynode = clh_mutex_create_node(1);
+    clh_mutex_node_t *prev = atomic_exchange(&self->tail, mynode);
+
+    // this thread's node is now in the queue, so wait until it is its turn
+    char prev_islocked = atomic_load_explicit(&prev->succ_must_wait, std::memory_order_relaxed);
+    if (prev_islocked) {
+        unsigned nid = NODE_COUNT-1;
+        while (prev_islocked) {
+            thread_ops->help_consume_channel(nid);
+            nid = (nid == 0)? NODE_COUNT-1: nid-1;
             prev_islocked = atomic_load(&prev->succ_must_wait);
         }
     }

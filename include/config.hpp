@@ -54,9 +54,14 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 //#define STATS(s) {s}
 #define STATS(s)
 
-// user threads consume logs to unblock itself, at the expense of contention with cache agent
+// user threads consume logs to when it's blocked due to insufficient progress by cach cagent, at the expense of contention
 #ifndef CONSUME_HELPING
 #define CONSUME_HELPING 1
+#endif
+
+// user threads consume logs to when it's waiting for lock, at the expense of contention
+#ifndef CONSUME_HELP_IN_LOCK
+#define CONSUME_HELP_IN_LOCK 0
 #endif
 
 // thread clock merges with location clock instead of overwriting it

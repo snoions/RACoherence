@@ -97,7 +97,7 @@ class ThreadOps {
         bool node_done[NODE_COUNT] = {false};
         while (!done) {
             done = true;
-            for (unsigned i=0; i<NODE_COUNT; i++) {
+            for (unsigned i=NODE_COUNT; i-- > 0;) {
                 if (node_done[i] || i == node_id)
                     continue;
 
@@ -159,6 +159,37 @@ public:
     unsigned get_node_id() { return node_id; }
     unsigned get_thread_id() { return thread_id; }
     const VectorClock &get_clock() {return thread_clock; }
+   
+    inline void help_consume_channel(unsigned nid) {
+        constexpr unsigned max = 10;
+        if (nid == node_id)
+            return;
+
+        if (!log_mgrs[nid].is_subscribed(node_id)) {
+            return;
+        }
+
+        CLHMutex &mtx = log_mgrs[nid].get_head_mutex(node_id);
+        if (!mtx.try_lock()) {
+            return;
+        }
+        auto clk = cache_info->get_clock(nid);
+        for (unsigned j = 0; j < max; j++) {
+             const PubEntry* entry;
+             if(!(entry = log_mgrs[nid].take_head(node_id)))
+                break;
+             Log *log = entry->log.load(std::memory_order_relaxed);
+             if (entry->is_rel)
+                 clk = entry->idx.load(std::memory_order_relaxed);
+             cache_info->process_log(*log);
+             log_mgrs[nid].consume_head(node_id);
+             STATS(cache_info->consumed_count[nid]++;)
+             LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[nid] << " from " << nid)
+        }
+        cache_info->update_clock(nid, clk);
+        mtx.unlock();
+        // mutex unlock takes care of invalidate fence
+    }
 
     inline bool thread_release() {
         LOG_DEBUG("thread " << std::this_thread::get_id() << " release at " << this << std::dec << ", thread clock=" <<thread_clock)

@@ -78,11 +78,11 @@ struct CLHSharedMutex: private clh_rwlock_t {
         clh_rwlock_writeunlock(this);
     }
 
-    void shared_lock() {
+    void lock_shared() {
         clh_rwlock_readlock(this);
     }
 
-    void shared_unlock() {
+    void unlock_shared() {
         clh_rwlock_readunlock(this);
     }
 };
