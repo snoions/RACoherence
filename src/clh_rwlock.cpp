@@ -54,6 +54,7 @@
  */
 #include "clh_rwlock.hpp"
 #include "cxlMalloc.hpp"
+#include "threadOps.hpp"
 
 namespace RACoherence {
 
@@ -127,6 +128,44 @@ void clh_rwlock_readlock(clh_rwlock_t * self)
 }
 
 
+extern __thread ThreadOps *thread_ops;
+
+
+/*
+ * Locks the rwlock for the current thread. Will wait for other threads
+ * that did the atomic_exchange() before this one.
+ *
+ * Progress Condition: Blocking
+ */
+void clh_rwlock_readlock_with_help(clh_rwlock_t * self, const VectorClock &target)
+{
+    // Create the new node locked by default, setting succ_must_wait=1
+    clh_rwlock_node_t *mynode = clh_rwlock_create_node(1);
+    clh_rwlock_node_t *prev = atomic_exchange(&self->tail, mynode);
+
+    // This thread's node is now in the queue, so wait until it is its turn
+    char prev_islocked = atomic_load_explicit(&prev->succ_must_wait, std::memory_order_relaxed);
+    if (prev_islocked) {
+        int count = 0;
+        while (prev_islocked) {
+            if (count++ % 16 == 0)
+                thread_ops->help_consume(target);    
+            prev_islocked = atomic_load(&prev->succ_must_wait);
+        }
+    }
+
+    // Incrementing the readers_counter will prevent a Writer from going in
+    atomic_fetch_add(&self->readers_counter, 1);
+
+    // This will allow the next thread to go in, but only if it is a Reader
+    atomic_store(&mynode->succ_must_wait, 0);
+
+    // This thread has acquired the lock and it is now safe to
+    // cleanup the memory of the previous node.
+    cxlhc_free(prev, sizeof(clh_rwlock_node_t));
+}
+
+
 /*
  *
  * Progress Condition: Lock-Free, or Wait-Free Population Oblivious (on x86)
@@ -179,6 +218,43 @@ void clh_rwlock_writelock(clh_rwlock_t * self)
 }
 
 
+/*
+ * Locks the rwlock for the current thread. Will wait for other threads
+ * that did the atomic_exchange() before this one.
+ *
+ * Progress Condition: Blocking
+ */
+void clh_rwlock_writelock_with_help(clh_rwlock_t * self, const VectorClock &target)
+{
+    // Create the new node locked by default, setting succ_must_wait=1
+    clh_rwlock_node_t *mynode = clh_rwlock_create_node(1);
+    clh_rwlock_node_t *prev = atomic_exchange(&self->tail, mynode);
+
+    // This thread's node is now in the queue, so wait until it is its turn
+    char prev_islocked = atomic_load_explicit(&prev->succ_must_wait, std::memory_order_relaxed);
+    if (prev_islocked) {
+        int count = 0;
+        while (prev_islocked) {
+            if (count++ % 16 == 0)
+                thread_ops->help_consume(target);    
+            prev_islocked = atomic_load(&prev->succ_must_wait);
+        }
+    }
+
+    // Even though succ_must_wait is 0, there may be unfinished Readers, so spin/wait
+    // until they're over.
+    long readers_counter = atomic_load_explicit(&self->readers_counter, std::memory_order_relaxed);
+    if (readers_counter != 0) {
+        while (readers_counter != 0) {
+            sched_yield();
+            readers_counter = atomic_load(&self->readers_counter);
+        }
+    }
+    // This thread has acquired the lock
+
+    self->mynode = mynode;
+    cxlhc_free(prev, sizeof(clh_rwlock_node_t));
+}
 /*
  *
  * Progress Condition: Wait-Free Population Oblivious

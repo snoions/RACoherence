@@ -92,7 +92,16 @@ class ThreadOps {
         return clk_val;
     }
 
-    void help_consume(const VectorClock &target) {
+public:
+    ThreadOps() = default;
+    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid) {}
+    ThreadOps &operator=(const ThreadOps &other) = default;
+
+    unsigned get_node_id() { return node_id; }
+    unsigned get_thread_id() { return thread_id; }
+    const VectorClock &get_clock() {return thread_clock; }
+
+    inline void help_consume(const VectorClock &target) {
         bool done = false;
         bool node_done[NODE_COUNT] = {false};
         while (!done) {
@@ -138,7 +147,7 @@ class ThreadOps {
         }
     }
 
-    void wait_for_consume(const VectorClock &target) {
+    inline void wait_for_consume(const VectorClock &target) {
        for (unsigned i = 0; i<NODE_COUNT; i++) {
            if (i == node_id)
                continue;
@@ -149,46 +158,6 @@ class ThreadOps {
                sched_yield();
            }
        }
-    }
-
-public:
-    ThreadOps() = default;
-    ThreadOps(LogManager *lmgrs, CacheInfo *cinfo, unsigned nid, unsigned tid): log_mgrs(lmgrs), cache_info(cinfo), node_id(nid), thread_id(tid) {}
-    ThreadOps &operator=(const ThreadOps &other) = default;
-
-    unsigned get_node_id() { return node_id; }
-    unsigned get_thread_id() { return thread_id; }
-    const VectorClock &get_clock() {return thread_clock; }
-   
-    inline void help_consume_channel(unsigned nid) {
-        constexpr unsigned max = 10;
-        if (nid == node_id)
-            return;
-
-        if (!log_mgrs[nid].is_subscribed(node_id)) {
-            return;
-        }
-
-        CLHMutex &mtx = log_mgrs[nid].get_head_mutex(node_id);
-        if (!mtx.try_lock()) {
-            return;
-        }
-        auto clk = cache_info->get_clock(nid);
-        for (unsigned j = 0; j < max; j++) {
-             const PubEntry* entry;
-             if(!(entry = log_mgrs[nid].take_head(node_id)))
-                break;
-             Log *log = entry->log.load(std::memory_order_relaxed);
-             if (entry->is_rel)
-                 clk = entry->idx.load(std::memory_order_relaxed);
-             cache_info->process_log(*log);
-             log_mgrs[nid].consume_head(node_id);
-             STATS(cache_info->consumed_count[nid]++;)
-             LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[nid] << " from " << nid)
-        }
-        cache_info->update_clock(nid, clk);
-        mtx.unlock();
-        // mutex unlock takes care of invalidate fence
     }
 
     inline bool thread_release() {
@@ -222,12 +191,12 @@ public:
 
     inline void thread_acquire(const VectorClock &clock) {
         LOG_DEBUG("thread " << std::this_thread::get_id() << " acquire at " << this << std::dec << ", loc clock=" <<clock)
-        thread_clock.merge(clock);
 #if CONSUME_HELPING
         help_consume(clock);
 #else
         wait_for_consume(clock);
 #endif
+        thread_clock.merge(clock);
     }
 
     inline void log_store(char *addr) {

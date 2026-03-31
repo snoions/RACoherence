@@ -35,6 +35,8 @@
 #include <pthread.h>
 #include <sched.h>
 
+#include "vectorClock.hpp"
+
 namespace RACoherence {
 
 typedef struct clh_rwlock_node_ clh_rwlock_node_t;
@@ -47,7 +49,7 @@ struct clh_rwlock_node_
 typedef struct
 {
     clh_rwlock_node_t * mynode;
-    //char padding1[64];  // To avoid false sharing with the tail
+    //char padding1[64];  // To avoid false sharing with the tail, removed to shrink size
     std::atomic<clh_rwlock_node_t *> tail;
     char padding2[64];  // No point in having false-sharing with the tail
     std::atomic<long> readers_counter;
@@ -57,8 +59,10 @@ typedef struct
 void clh_rwlock_init(clh_rwlock_t * self);
 void clh_rwlock_destroy(clh_rwlock_t * self);
 void clh_rwlock_readlock(clh_rwlock_t * self);
+void clh_rwlock_readlock_with_help(clh_rwlock_t * self, const VectorClock &target);
 void clh_rwlock_readunlock(clh_rwlock_t * self);
 void clh_rwlock_writelock(clh_rwlock_t * self);
+void clh_rwlock_writelock_with_help(clh_rwlock_t * self, const VectorClock &target);
 void clh_rwlock_writeunlock(clh_rwlock_t * self);
 
 struct CLHSharedMutex: private clh_rwlock_t {
@@ -73,6 +77,10 @@ struct CLHSharedMutex: private clh_rwlock_t {
     void lock() {
         clh_rwlock_writelock(this);
     }
+    
+    void lock_with_help(const VectorClock &target) {
+        clh_rwlock_writelock_with_help(this, target);
+    }
 
     void unlock() {
         clh_rwlock_writeunlock(this);
@@ -80,6 +88,10 @@ struct CLHSharedMutex: private clh_rwlock_t {
 
     void lock_shared() {
         clh_rwlock_readlock(this);
+    }
+
+    void lock_shared_with_help(const VectorClock &target) {
+        clh_rwlock_readlock_with_help(this, target);
     }
 
     void unlock_shared() {

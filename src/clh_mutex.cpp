@@ -66,8 +66,8 @@
 #include <cassert>
 
 #include "clh_mutex.hpp"
-#include "threadOps.hpp"
 #include "cxlMalloc.hpp"
+#include "threadOps.hpp"
 
 namespace RACoherence {
 
@@ -135,7 +135,9 @@ void clh_mutex_lock(clh_mutex_t * self)
     self->mynode = mynode;
 }
 
+
 extern __thread ThreadOps *thread_ops;
+
 
 /*
  * locks the mutex for the current thread. will wait for other threads
@@ -143,7 +145,7 @@ extern __thread ThreadOps *thread_ops;
  *
  * progress condition: blocking
  */
-void clh_mutex_lock_with_help(clh_mutex_t * self)
+void clh_mutex_lock_with_help(clh_mutex_t * self, const VectorClock &target)
 {
     // create the new node locked by default, setting islocked=1
     clh_mutex_node_t *mynode = clh_mutex_create_node(1);
@@ -152,10 +154,10 @@ void clh_mutex_lock_with_help(clh_mutex_t * self)
     // this thread's node is now in the queue, so wait until it is its turn
     char prev_islocked = atomic_load_explicit(&prev->succ_must_wait, std::memory_order_relaxed);
     if (prev_islocked) {
-        unsigned nid = NODE_COUNT-1;
+        int count = 0;
         while (prev_islocked) {
-            thread_ops->help_consume_channel(nid);
-            nid = (nid == 0)? NODE_COUNT-1: nid-1;
+            if (count++ % 16 == 0)
+                thread_ops->help_consume(target);    
             prev_islocked = atomic_load(&prev->succ_must_wait);
         }
     }

@@ -12,14 +12,13 @@ void CacheAgent::run() {
             if (!log_mgrs[i].is_subscribed(node_id))
                 continue;
 
-#if CONSUME_HELPING
+#if CONSUME_HELPING || CONSUME_HELPING_IN_LOCK
             CLHMutex &mtx = log_mgrs[i].get_head_mutex(node_id);
             if (!mtx.try_lock())
                 continue;
 #endif
             clock_t clk = 0;
             for (unsigned j=0; j<LOG_MAX_BATCH; j++) {
-                //Log* log = log_mgrs[i].take_head(node_id);
                 const PubEntry* entry = log_mgrs[i].take_head(node_id);
                 if (!entry) {
                     if (idle_rounds >= NODE_COUNT -1) {
@@ -41,12 +40,12 @@ void CacheAgent::run() {
             }
             if (clk) {
                 // mutex unlock takes care of invalidate fence for CONSUME_HELPING
-#if EAGER_INVALIDATE && !CONSUME_HELPING
+#if EAGER_INVALIDATE && ! (CONSUME_HELPING || CONSUME_HELPING_IN_LOCK)
                 invalidate_fence();
 #endif
                 cache_info.update_clock(i, clk);
             }
-#if CONSUME_HELPING
+#if CONSUME_HELPING || CONSUME_HELPING_IN_LOCK
             mtx.unlock();
 #endif
         }

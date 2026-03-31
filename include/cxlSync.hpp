@@ -82,11 +82,7 @@ public:
 #else
             thread_ops->thread_release();
             const VectorClock &thread_clock = thread_ops->get_clock();
-#if CONSUME_HELP_IN_LOCK
-            inner->mtx.lock_with_help();
-#else
             inner->mtx.lock();
-#endif
 #ifdef LOCATION_CLOCK_MERGE
             inner->clock.merge(thread_clock);
 #else
@@ -104,11 +100,7 @@ public:
 #if !PROTOCOL_OFF
         if (order == std::memory_order_seq_cst || order == std::memory_order_acquire) { 
 
-#if CONSUME_HELP_IN_LOCK
-            inner->mtx.lock_with_help();
-#else
             inner->mtx.lock();
-#endif
             char ret = inner->atomic_data.load(order);
             VectorClock clock = inner->clock;
             inner->mtx.unlock();
@@ -129,11 +121,7 @@ public:
             char ret;
             if (order == std::memory_order_seq_cst || order == std::memory_order_acq_rel) { 
                 thread_ops->thread_release();
-#if CONSUME_HELP_IN_LOCK
-                inner->mtx.lock_with_help();
-#else
                 inner->mtx.lock();
-#endif
                 ret = inner->atomic_data.fetch_add(arg, order);
                  inner->clock.merge(thread_ops->get_clock());
                 const VectorClock clock = inner->clock;
@@ -141,20 +129,12 @@ public:
                 thread_ops->thread_acquire(clock);
             } else if (order == std::memory_order_release) {
                 thread_ops->thread_release();
-#if CONSUME_HELP_IN_LOCK
-                inner->mtx.lock_with_help();
-#else
                 inner->mtx.lock();
-#endif
                 ret = inner->atomic_data.fetch_add(arg, order);
                 inner->clock.merge(thread_ops->get_clock());
                 inner->mtx.unlock();
             } else if (order == std::memory_order_acquire){
-#if CONSUME_HELP_IN_LOCK
-                inner->mtx.lock_with_help();
-#else
                 inner->mtx.lock();
-#endif
                 ret = inner->atomic_data.fetch_add(arg, order);
                 const VectorClock clock = inner->clock;
                 inner->mtx.unlock();
@@ -197,7 +177,8 @@ public:
 
     inline void lock() {
 #if CONSUME_HELP_IN_LOCK
-        inner->mtx.lock_with_help();
+        VectorClock clock = inner->clock;
+        inner->mtx.lock_with_help(clock);
 #else
         inner->mtx.lock();
 #endif
@@ -245,7 +226,9 @@ public:
 
     inline void lock() {
 #if CONSUME_HELP_IN_LOCK
-        inner->mtx.lock_with_help();
+        //TODO: wrap clock with atomics for thread safety
+        VectorClock clock = inner->clock;
+        inner->mtx.lock_with_help(clock);
 #else
         inner->mtx.lock();
 #endif
@@ -294,7 +277,17 @@ public:
     }
 
     inline void lock() {
+#if CONSUME_HELP_IN_LOCK && !PROTOCOL_OFF
+        VectorClock clock = inner->clock;
+        inner->mtx.lock_with_help(clock);
+#else
+#if !PROTOCOL_OFF
+        inner->mtx.lock_shared();
+        thread_ops->thread_acquire(inner->clock);
+        inner->mtx.unlock_shared();
+#endif 
         inner->mtx.lock();
+#endif
 
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
@@ -302,7 +295,12 @@ public:
     }
 
     inline void lock_shared() {
+#if CONSUME_HELP_IN_LOCK && !PROTOCOL_OFF
+        VectorClock clock = inner->clock;
+        inner->mtx.lock_shared_with_help(clock);
+#else
         inner->mtx.lock_shared();
+#endif
 
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);

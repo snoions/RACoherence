@@ -33,6 +33,8 @@
 #include <pthread.h>
 #include <sched.h>
 
+#include "vectorClock.hpp"
+
 namespace RACoherence {
 
 typedef struct clh_mutex_node_ clh_mutex_node_t;
@@ -52,7 +54,7 @@ typedef struct
 void clh_mutex_init(clh_mutex_t * self);
 void clh_mutex_destroy(clh_mutex_t * self);
 void clh_mutex_lock(clh_mutex_t * self);
-void clh_mutex_lock_with_help(clh_mutex_t * self);
+void clh_mutex_lock_with_help(clh_mutex_t * self, const VectorClock &target);
 void clh_mutex_unlock(clh_mutex_t * self);
 bool clh_mutex_try_lock(clh_mutex_t * self);
 
@@ -69,8 +71,8 @@ struct CLHMutex: private clh_mutex_t {
         clh_mutex_lock(this);
     }
 
-    void lock_with_help() {
-        clh_mutex_lock_with_help(this);
+    void lock_with_help(const VectorClock &target) {
+        clh_mutex_lock_with_help(this, target);
     }
 
     bool try_lock() {
