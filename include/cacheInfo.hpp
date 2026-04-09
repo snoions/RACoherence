@@ -20,10 +20,10 @@ struct CacheInfo {
     // by cache line race freedom.
     CacheLineTracker inv_cls;
     // per-node stats
+#ifdef STATS
     std::atomic<unsigned> consumed_count[NODE_COUNT];
     std::atomic<unsigned> produced_count;
-    //std::chrono::duration<double> process_log_duration{0};
-    //unsigned process_log_count = 0;
+#endif
 
     CacheInfo(): clock(), inv_cls(), consumed_count{}, produced_count{0} {};
     //void simulate_process_log(Log &log) {
@@ -99,7 +99,7 @@ struct CacheInfo {
 
     void dump_stats() {
         for (int i = 0; i < NODE_COUNT; i++)
-	        std::cout << "consumed count from node " << i << ": " << consumed_count[i].load() << std::endl;
+	        LOG_STATS("consumed count from node " << i << ": " << consumed_count[i].load());
     }
 };
 

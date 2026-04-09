@@ -220,3 +220,10 @@ void *cxlnhc_cl_aligned_malloc(size_t size) {
 void cxlnhc_free(void *ptr, size_t size) {
     je_dallocx(ptr, MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_TCACHE_NONE);
 }
+
+void print_jemalloc_stats() {
+    // Refresh epoch to get current stats
+    uint64_t epoch = 1;
+    je_mallctl("epoch", NULL, NULL, &epoch, sizeof(epoch)); 
+    je_malloc_stats_print(NULL, NULL, NULL);
+}

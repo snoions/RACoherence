@@ -1,6 +1,9 @@
 #include <atomic>
 #include <numaif.h>
 #include <pthread.h>
+#include <x86intrin.h>
+#include <iomanip>
+
 #include "cacheAgent.hpp"
 #include "cxlSync.hpp"
 #include "instrumentLib.hpp"
@@ -22,6 +25,11 @@ size_t cxl_hc_range;
 char *node_local_buf;
 CacheInfo *cache_infos;
 LogManager *log_mgrs;
+
+#if TIME_STATS
+std::atomic<uint64_t> thread_cycles; 
+std::atomic<uint64_t> invd_msg_stall_cycles;
+#endif
 
 struct RACThreadArg {
     const VectorClock *parent_clock;
@@ -45,12 +53,19 @@ void *rac_thread_func_wrapper(void *arg) {
     auto rac_arg = (RACThreadArg *)arg;
     unsigned tid = curr_tid.fetch_add(1);
     thread_ops = new ThreadOps(log_mgrs, &cache_infos[rac_arg->nid], rac_arg->nid, tid);
+#if TIME_STATS
+    uint64_t start = __rdtsc();
+#endif
 #if !PROTOCOL_OFF
     thread_ops->thread_acquire(*rac_arg->parent_clock);
 #endif
     void* ret = rac_arg->func(rac_arg->arg);
 #if !PROTOCOL_OFF
     thread_ops->thread_release();
+#endif
+#if TIME_STATS
+    thread_cycles += __rdtsc() - start;
+    invd_msg_stall_cycles += thread_ops->invd_msg_stall_cycles;
 #endif
     delete rac_arg;
     auto *rac_ret = new RACThreadRet{thread_ops, ret};
@@ -222,11 +237,15 @@ void rac_shutdown() {
         log_mgrs[i].~LogManager();
     for (int i = 0; i < NODE_COUNT; i++) {
         STATS(
-            std::cout << "node " << i << " statistics:" << std::endl;
+            LOG_STATS("node " << i << " stats:");
             cache_infos[i].dump_stats();
-	    )
+        )
         cache_infos[i].~CacheInfo();
     }
+    //print_jemalloc_stats();
+#if TIME_STATS
+    LOG_STATS("invalidation message stall percentage: " << std::fixed << std::setprecision(2) << (double)invd_msg_stall_cycles/thread_cycles * 100);
+#endif
     delete thread_ops;
     munmap(cxl_hc_buf, cxl_hc_range);
     munmap(cxl_nhc_buf, cxl_nhc_range);

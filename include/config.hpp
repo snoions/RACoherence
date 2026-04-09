@@ -54,6 +54,11 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 //#define STATS(s) {s}
 #define STATS(s)
 
+// collect time-related statistics
+#ifndef TIME_STATS
+#define TIME_STATS 0
+#endif
+
 // user threads consume logs to when it's blocked due to insufficient progress by cach cagent, at the expense of contention
 #ifndef CONSUME_HELPING
 #define CONSUME_HELPING 1

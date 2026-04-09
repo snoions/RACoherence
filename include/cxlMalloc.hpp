@@ -26,6 +26,8 @@ void cxlhc_free(void *ptr, size_t size);
 }
 #endif
 
+void print_jemalloc_stats();
+
 #if __cplusplus
 #include <cassert>
 #include <map>

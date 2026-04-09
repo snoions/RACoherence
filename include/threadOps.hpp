@@ -2,6 +2,7 @@
 #define _THREAD_OPS_H_
 
 #include <unistd.h>
+#include <x86intrin.h>
 
 #include "cacheInfo.hpp"
 #include "config.hpp"
@@ -101,7 +102,15 @@ public:
     unsigned get_thread_id() { return thread_id; }
     const VectorClock &get_clock() {return thread_clock; }
 
+#if TIME_STATS
+    //thread local stats
+    uint64_t invd_msg_stall_cycles;
+#endif 
+
     inline void help_consume(const VectorClock &target) {
+#if TIME_STATS
+        uint64_t start = __rdtsc();
+#endif
         bool done = false;
         bool node_done[NODE_COUNT] = {false};
         while (!done) {
@@ -145,9 +154,16 @@ public:
                 // mutex unlock takes care of invalidate fence
             }
         }
+#if TIME_STATS
+        uint64_t end = __rdtsc();
+        invd_msg_stall_cycles += end - start;
+#endif
     }
 
     inline void wait_for_consume(const VectorClock &target) {
+#if TIME_STATS
+        uint64_t start = __rdtsc();
+#endif
        for (unsigned i = 0; i<NODE_COUNT; i++) {
            if (i == node_id)
                continue;
@@ -158,6 +174,10 @@ public:
                sched_yield();
            }
        }
+#if TIME_STATS
+        uint64_t end = __rdtsc();
+        invd_msg_stall_cycles += end - start;
+#endif
     }
 
     inline bool thread_release() {

@@ -16,22 +16,24 @@ extern std::mutex LoggerMutex;
 #define CURRENT_LOG_LEVEL 3 // Set desired log level
 
 #if CURRENT_LOG_LEVEL <= LOG_LEVEL_DEBUG
-#define LOG_DEBUG(msg) { LoggerMutex.lock(); std::cout << __FILENAME__ << ": " << msg << std::endl << std::flush; LoggerMutex.unlock(); }
+#define LOG_DEBUG(msg) { LoggerMutex.lock(); std::cout << "DEBUG [" << __FILENAME__ << "] " << msg << std::endl << std::flush; LoggerMutex.unlock(); }
 #else
 #define LOG_DEBUG(msg) // Empty macro, effectively removes debug logs
 #endif
 
 #if CURRENT_LOG_LEVEL <= LOG_LEVEL_INFO
-#define LOG_INFO(msg) { LoggerMutex.lock(); std::cout << __FILENAME__ << ": " << msg << std::endl << std::flush; LoggerMutex.unlock(); }
+#define LOG_INFO(msg) { LoggerMutex.lock(); std::cout << "INFO [" << __FILENAME__ << "] " << msg << std::endl << std::flush; LoggerMutex.unlock(); }
 #else
 #define LOG_INFO(msg) // Empty macro, effectively removes debug logs
 #endif
 
 #if CURRENT_LOG_LEVEL <= LOG_LEVEL_ERROR
-#define LOG_ERROR(msg) { LoggerMutex.lock(); std::cerr << __FILENAME__ << ": " << msg << std::endl << std::flush; LoggerMutex.unlock(); }
+#define LOG_ERROR(msg) { LoggerMutex.lock(); std::cerr << "ERROR [" << __FILENAME__ << "] " << msg << std::endl << std::flush; LoggerMutex.unlock(); }
 #else
 #define LOG_ERROR(msg) // Empty macro, effectively removes debug logs
 #endif
+
+#define LOG_STATS(msg) { LoggerMutex.lock(); std::cout << "STATS [" << __FILENAME__ << "] " << msg << std::endl << std::flush; LoggerMutex.unlock(); }
 
 } // RACoherence
 
