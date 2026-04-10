@@ -13,6 +13,7 @@
 
 namespace RACoherence {
 
+//TODO: try atomic clocks instead of lock-protected vector clocks
 extern __thread ThreadOps *thread_ops;
 
 template<typename T>
@@ -277,20 +278,20 @@ public:
     }
 
     inline void lock() {
-#if CONSUME_HELP_IN_LOCK && !PROTOCOL_OFF
+#if !PROTOCOL_OFF
+#if CONSUME_HELP_IN_LOCK 
         VectorClock clock = inner->clock;
         inner->mtx.lock_with_help(clock);
 #else
-#if !PROTOCOL_OFF
         inner->mtx.lock_shared();
         thread_ops->thread_acquire(inner->clock);
         inner->mtx.unlock_shared();
-#endif 
-        inner->mtx.lock();
-#endif
-
-#if !PROTOCOL_OFF
+ 
+        inner->mtx.lock(); 
         thread_ops->thread_acquire(inner->clock);
+#endif
+#else
+        inner->mtx.lock();
 #endif
     }
 
@@ -372,7 +373,6 @@ public:
     }
 };
 
-//TODO: node local barrier
 } // RACoherence
 
 #endif
