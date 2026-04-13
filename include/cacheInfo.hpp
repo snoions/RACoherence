@@ -56,7 +56,7 @@ struct CacheInfo {
     void process_log(Log &log) {
         using namespace cl_group;
         for (auto entry: log) {
-#if IMMEDIATE_PUBLISH
+#if !LOCAL_CL_TABLE
             do_invalidate((char *)(entry << VIRTUAL_CL_SHIFT));
 #else
             if (is_length_based(entry)) {

@@ -198,7 +198,7 @@ public:
             write_to_log(false);
 #endif
 
-#if IMMEDIATE_PUBLISH
+#if !LOCAL_CL_TABLE
         clock_t clk_val = log_mgrs[node_id].produce_tail(curr_log, true);
         curr_log = nullptr;
 #else
@@ -226,7 +226,7 @@ public:
             return;
 #endif
 #if EAGER_WRITEBACK
-        if (recent_cl) {
+       if (recent_cl) {
             uintptr_t recent_addr = recent_cl << VIRTUAL_CL_SHIFT;
             for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++)
                  do_writeback((char *)recent_addr + i * CACHE_LINE_SIZE);
@@ -234,7 +234,11 @@ public:
 #endif
         recent_cl = cl;
 
-#if IMMEDIATE_PUBLISH
+#if !LOCAL_CL_TABLE && !EAGER_WRITEBACK
+        do_writeback(addr);
+#endif
+
+#if !LOCAL_CL_TABLE
         write_cl_to_log(cl);
 #else
         if (dirty_cls.insert((uintptr_t)cl)) {
@@ -253,7 +257,7 @@ public:
         uintptr_t begin_addr = (uintptr_t)begin >> VIRTUAL_CL_SHIFT;
         uintptr_t end_addr = (uintptr_t)end >> VIRTUAL_CL_SHIFT;
         recent_cl = end_addr;
-#if IMMEDIATE_PUBLISH
+#if !LOCAL_CL_TABLE
         for (uintptr_t cl = begin_addr; cl < end_addr; cl++)
             write_cl_to_log(cl);
 #else

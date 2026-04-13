@@ -367,6 +367,7 @@ public:
             phase.fetch_add(1, std::memory_order_seq_cst);
         } else {
             while (phase.load(std::memory_order_seq_cst) == local_phase) {
+            //while (arrived.load(std::memory_order_seq_cst) != 0) {
                 std::this_thread::yield();
             }
         }

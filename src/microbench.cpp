@@ -31,6 +31,10 @@ void Microbench::run() {
             }
              case OP_STORE: {
                 rac_store8(&cxl_pool.data[op.offset], 0, nullptr);
+                // to simulate cache line alternations
+                // size_t next_off = op.offset+64 > CXL_POOL_DATA_SIZE? op.offset: op.offset+64;
+                // rac_store8(&cxl_pool.data[next_off] , 0, nullptr);
+                // rac_store8(&cxl_pool.data[op.offset], 0, nullptr);
                 break;
             }
             case OP_LOAD_ACQ: {

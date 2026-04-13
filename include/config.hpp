@@ -24,8 +24,8 @@ constexpr uintptr_t VIRTUAL_CL_MASK = VIRTUAL_CL_SIZE-1;
 // assuming 64-bit platform
 
 // workload settings
-constexpr unsigned WORKER_PER_NODE = 3;
-constexpr unsigned TOTAL_OPS = 10000 * (1ull << 6); // Should be power of two
+constexpr unsigned WORKER_PER_NODE = 4;
+constexpr unsigned TOTAL_OPS = 1ull << 28; // Should be power of two
 constexpr uintptr_t CXL_NHC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should start at the highest virtual bit for easy comparison
 constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 24;
@@ -87,7 +87,7 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 #define CXL_NUMA_MODE 1
 #endif
 
-// producers writeback cache line eagerly, before accessing the cache line line
+// producers writeback cache line when a new cache line is accessed
 #ifndef EAGER_WRITEBACK
 #define EAGER_WRITEBACK 0
 #endif
@@ -100,9 +100,9 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 // pin each cache agent to a core
 #define CACHE_AGENT_AFFINITY
 
-// publish immediately, can only use eager write back
-#ifndef IMMEDIATE_PUBLISH
-#define IMMEDIATE_PUBLISH 0
+// whether to use local cacheline table
+#ifndef LOCAL_CL_TABLE
+#define LOCAL_CL_TABLE 1
 #endif
 
 // delay publishing until a log is full
