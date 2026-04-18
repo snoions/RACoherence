@@ -226,6 +226,10 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
         new (&global->cxlhc_pool) CXLHCPool(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
         new (&global->cxlnhc_pool) ExtentPool(cxl_nhc_buf, cxl_nhc_range);
 
+        // pool need to be initalialized before any allocation
+        cxl_pool_init();
+        cxl_pool_thread_init();
+
         assert(cxl_hc_range > cxlhc_off + root_size);
         global->user_root = cxl_hc_buf + cxl_hc_off;
         cxl_hc_off += root_size;
@@ -233,8 +237,6 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
             new (&global->log_mgrs[i]) LogManager(i);
         global->curr_tid = 0;
 
-        cxl_pool_init();
-        cxl_pool_thread_init();
         thread_ops = new ThreadOps(&global->log_mgrs[0], &cache_info, node_id, global->curr_tid.fetch_add(1, std::memory_order_relaxed));
         new (&global->node_barrier) Barrier(NODE_COUNT);
         global->started = true;
