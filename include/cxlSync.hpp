@@ -13,7 +13,6 @@
 
 namespace RACoherence {
 
-//TODO: try atomic clocks instead of lock-protected vector clocks
 extern __thread ThreadOps *thread_ops;
 
 template<typename T>
@@ -374,6 +373,40 @@ public:
     }
 };
 
+class Barrier {
+    std::atomic<int> target;
+    std::atomic<int> arrived;
+    std::atomic<int> phase;
+
+public:
+    Barrier() = default;
+
+    Barrier(int count) {
+        init(count);
+    }
+
+    inline void init(int count) {
+        target.store(count, std::memory_order_seq_cst);
+        arrived.store(0, std::memory_order_seq_cst);
+        phase.store(0, std::memory_order_seq_cst);
+    }
+
+    inline void wait() {
+        int local_phase = phase.load(std::memory_order_seq_cst);
+
+        int local_arrived = arrived.fetch_add(1, std::memory_order_seq_cst) + 1;
+
+        if (local_arrived == target.load(std::memory_order_seq_cst)) {
+            arrived.store(0, std::memory_order_seq_cst);
+            phase.fetch_add(1, std::memory_order_seq_cst);
+        } else {
+            while (phase.load(std::memory_order_seq_cst) == local_phase) {
+            //while (arrived.load(std::memory_order_seq_cst) != 0) {
+                std::this_thread::yield();
+            }
+        }
+    }
+};
 } // RACoherence
 
 #endif

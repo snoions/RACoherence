@@ -6,17 +6,11 @@
 extern "C" {
 #endif
 
-void cxlnhc_pool_init(char *hc_buf, char *buf, size_t size);
-
-void cxl_pool_thread_init();
-
 void *cxlnhc_malloc(size_t size);
 
 void *cxlnhc_cl_aligned_malloc(size_t size);
 
 void cxlnhc_free(void *ptr, size_t size);
-
-void cxlhc_pool_init(char *buf, size_t size);
 
 void *cxlhc_malloc(size_t size);
 
@@ -26,8 +20,6 @@ void cxlhc_free(void *ptr, size_t size);
 }
 #endif
 
-void print_jemalloc_stats();
-
 #if __cplusplus
 #include <cassert>
 #include <map>
@@ -36,6 +28,12 @@ void print_jemalloc_stats();
 #include <vector>
 
 namespace RACoherence {
+
+void cxl_pool_init();
+
+void cxl_pool_thread_init();
+
+void print_jemalloc_stats();
 
 template <typename T> 
 class cxlhc_allocator { 

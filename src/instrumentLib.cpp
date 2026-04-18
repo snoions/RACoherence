@@ -1,6 +1,5 @@
 #include <dlfcn.h>
 #include <unistd.h>
-#include <numaif.h>
 #include "instrumentLib.hpp"
 #include "runtime.hpp"
 
@@ -286,34 +285,6 @@ ssize_t read(int fd, void* buf, size_t count) {
         thread_ops->log_range_store(buf_begin, buf_end);
 #endif
     }
-    return ret;
-}
-
-// mmap needs to be instrumented at program start
-void* mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
-    if (!mmap_real) mmap_real = (mmap_t)dlsym(RTLD_NEXT, "mmap");
-
-    void *ret = mmap_real(addr, length, prot, flags, fd, offset);
-    // Get the address of the code that called mmap
-    void *caller = __builtin_return_address(0);
-    Dl_info info;
-
-    if (dladdr(caller, &info) && info.dli_fname != NULL) {
-        // Only intercept if the call originated from a file containing "jemalloc"
-        if (strstr(info.dli_fname, "libjemalloc") != NULL) {
-            // This is a jemalloc call! Apply your FIXED_ADDR logic here.
-#if CXL_NUMA_MODE
-            // bind cxl memory buffers to CXL NUMA node
-            unsigned long nodemask = 0;
-            nodemask |= 1 << CXL_NUMA_NODE_ID;
-            if((uintptr_t)ret != -1 && mbind(ret, length, MPOL_BIND, &nodemask, sizeof(nodemask) * 8, 0) < 0) {
-                perror("mbind");
-                exit(EXIT_FAILURE);
-            }
-#endif
-        }
-    }
-
     return ret;
 }
 

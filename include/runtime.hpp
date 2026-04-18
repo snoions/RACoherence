@@ -4,6 +4,7 @@
 #include "stdint.h"
 #include "flushUtils.hpp"
 #include "cxlMalloc.hpp"
+#include "cxlSync.hpp"
 #include "threadOps.hpp"
 
 #if __cplusplus
@@ -28,13 +29,17 @@ namespace RACoherence {
 extern char *cxl_nhc_buf;
 extern size_t cxl_nhc_range;
 
-void rac_init(unsigned nid, size_t cxl_hc_range, size_t cxl_nhc_range);
+void rac_init(unsigned nid, size_t cxl_hc_range, size_t cxl_nhc_range, size_t root_size);
 
 void rac_shutdown();
 
 unsigned rac_get_node_id();
 
 unsigned rac_get_node_count();
+
+void* rac_get_user_root();
+
+Barrier *rac_get_node_barrier();
 
 void rac_subscribe_to_node(unsigned node_id);
 
@@ -48,7 +53,7 @@ int rac_thread_join(unsigned nid, pthread_t thread, void **thread_ret);
 
 inline bool in_cxl_nhc_mem(void *addr) {
     //return (addr >= cxl_nhc_buf) & (addr < (cxl_nhc_buf + cxl_nhc_range));
-    return ((uintptr_t)addr & CXL_NHC_START);
+    return ((uintptr_t)addr >= CXL_NHC_START);
 }
 
 inline void rac_post_writeback(void *begin, void *end) {

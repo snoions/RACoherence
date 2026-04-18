@@ -26,7 +26,8 @@ constexpr uintptr_t VIRTUAL_CL_MASK = VIRTUAL_CL_SIZE-1;
 // workload settings
 constexpr unsigned WORKER_PER_NODE = 4;
 constexpr unsigned TOTAL_OPS = 1ull << 28; // Should be power of two
-constexpr uintptr_t CXL_NHC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should start at the highest virtual bit for easy comparison
+constexpr uintptr_t CXL_HC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should start at the highest virtual bit for easy comparison
+constexpr uintptr_t CXL_NHC_START = 0b11ull << (VIRTUAL_ADDRESS_BITS-2); // should start at the highest virtual bit for easy comparison
 constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 24;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
@@ -43,6 +44,9 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 
 // path to the file interface exposing wbinvd
 #define WBINVD_PATH "/proc/wbinvd"
+
+#define SHM_PATH "/rac"
+
 // number of cache line groups for which a wbinvd is faster than invalidating with clflushopt + mfence
 #define WBINVD_THRESHOLD (2 << 18)
 
@@ -141,7 +145,7 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 #define LOG_COUNT (LOG_ENTRY_TOTAL/LOG_SIZE)
 
 // use custom memory pool as allocator for CXL hardware coherent memory
-//#define HC_USE_CUSTOM_POOL
+// #define HC_USE_CUSTOM_POOL
 
 // use locks instead of atomics in workload
 #define WORKLOAD_USE_LOCKS
