@@ -113,22 +113,20 @@ Barrier *rac_get_node_barrier() {
     return &global->node_barrier;
 }
 
-void rac_subscribe_to_node(unsigned node_id) {
-    auto my_node_id = thread_ops->get_node_id();
-    assert(node_id <= 0 && node_id < NODE_COUNT && "invalid node_id");
-    global->log_mgrs[node_id].set_subscribed(node_id, true);
+void rac_subscribe_to_node(unsigned target) {
+    assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
+    global->log_mgrs[target].set_subscribed(node_id, true);
     wbinvd();
 }
 
-void rac_unsubscribe_from_node(unsigned node_id) {
-    auto my_node_id = thread_ops->get_node_id();
-    assert(node_id <= 0 && node_id < NODE_COUNT && "invalid node_id");
-    global->log_mgrs[node_id].set_subscribed(node_id, false);
+void rac_unsubscribe_from_node(unsigned target) {
+    assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
+    global->log_mgrs[target].set_subscribed(node_id, false);
 }
 
-bool rac_is_subscribed_to_node(unsigned node_id) {
-    assert(node_id <= 0 && node_id < NODE_COUNT && "invalid node_id");
-    return global->log_mgrs[node_id].is_subscribed(node_id);
+bool rac_is_subscribed_to_node(unsigned target) {
+    assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
+    return global->log_mgrs[target].is_subscribed(node_id);
 }
 
 struct CacheAgentArg {

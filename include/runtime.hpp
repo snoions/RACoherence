@@ -41,11 +41,11 @@ void* rac_get_user_root();
 
 Barrier *rac_get_node_barrier();
 
-void rac_subscribe_to_node(unsigned node_id);
+void rac_subscribe_to_node(unsigned target);
 
-void rac_unsubscribe_from_node(unsigned node_id);
+void rac_unsubscribe_from_node(unsigned target);
 
-bool rac_is_subscribed_to_node(unsigned node_id);
+bool rac_is_subscribed_to_node(unsigned target);
 
 int rac_thread_create(unsigned nid, pthread_t *thread, void *(*func)(void*), void *arg);
 
