@@ -220,21 +220,21 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
         assert(cxl_hc_range > sizeof(RACGlobal));
         cxl_hc_off += sizeof(RACGlobal);
 
+        assert(cxl_hc_range > cxlhc_off + root_size);
+        global->user_root = cxl_hc_buf + cxl_hc_off;
+        cxl_hc_off += root_size;
+
         //align start of hc pool to cache line
         if (uintptr_t remain = (uintptr_t)(cxl_hc_buf + cxl_hc_off) & (CACHE_LINE_SIZE-1))
             cxl_hc_off += CACHE_LINE_SIZE - remain; 
         new (&global->cxlhc_pool) CXLHCPool(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
         new (&global->cxlnhc_pool) ExtentPool(cxl_nhc_buf, cxl_nhc_range);
 
-        // pool need to be initalialized before any allocation
+        // pool need to be initalialized before any cxl allocation
         cxl_pool_init();
         cxl_pool_thread_init();
 
-        assert(cxl_hc_range > cxlhc_off + root_size);
-        global->user_root = cxl_hc_buf + cxl_hc_off;
-        cxl_hc_off += root_size;
-        for (int i = 0; i < NODE_COUNT; i++)
-            new (&global->log_mgrs[i]) LogManager(i);
+        new (&global->log_mgrs[node_id]) LogManager(node_id);
         global->curr_tid = 0;
 
         thread_ops = new ThreadOps(&global->log_mgrs[0], &cache_info, node_id, global->curr_tid.fetch_add(1, std::memory_order_relaxed));
@@ -245,6 +245,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
 
         cxl_pool_init();
         cxl_pool_thread_init();
+        new (&global->log_mgrs[node_id]) LogManager(node_id);
         thread_ops = new ThreadOps(&global->log_mgrs[0], &cache_info, node_id, global->curr_tid.fetch_add(1, std::memory_order_relaxed));
     }
     instrument_lib();
@@ -282,10 +283,9 @@ void rac_shutdown() {
     LOG_STATS("invalidation message stall percentage: " << std::fixed << std::setprecision(2) << (double)invd_msg_stall_cycles/thread_cycles * 100);
 #endif
     delete thread_ops;
+    global->log_mgrs[node_id].~LogManager();
     if (node_id == 0) {
         global->node_barrier.~Barrier();
-        for (int i = 0; i < NODE_COUNT; i++)
-            global->log_mgrs[i].~LogManager();
         shm_unlink(SHM_PATH);
         munmap(cxl_hc_buf, cxl_hc_range);
         munmap(cxl_nhc_buf, cxl_nhc_range);
