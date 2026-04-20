@@ -13,7 +13,7 @@ void CacheAgent::run() {
                 continue;
 
 #if CONSUME_HELPING || CONSUME_HELPING_IN_LOCK
-            CLHMutex &mtx = log_mgrs[i].get_head_mutex(node_id);
+            auto &mtx = log_mgrs[i].get_head_mutex(node_id);
             if (!mtx.try_lock())
                 continue;
 #endif

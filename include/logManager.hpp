@@ -10,8 +10,8 @@
 #include <thread>
 
 #include "config.hpp"
-#include "clh_mutex.hpp"
 #include "logger.hpp"
+#include "mcsLock.hpp"
 #include "spmcQueue.hpp"
 #include "utils.hpp"
 
@@ -85,10 +85,10 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     // ensure atomic and mutex arrays are aligned to cache line boundaries
     CacheAligned<std::atomic<idx_t>> heads[NODE_COUNT];
 
-    CacheAligned<CLHMutex> head_mtxs[NODE_COUNT];
+    CacheAligned<MCSLock> head_mtxs[NODE_COUNT];
 
     alignas(CACHE_LINE_SIZE)
-    CLHMutex gc_mtx;
+    MCSLock gc_mtx;
 
     // try aligning each bool to different cache line if contention is high
     alignas(CACHE_LINE_SIZE)
@@ -167,7 +167,7 @@ public:
          if (ok) {
             log->size = 0;
             return log;
-            }
+         }
          gc_mtx.lock();
          //check again after locking
          ok = freelist.dequeue(log);
@@ -196,7 +196,7 @@ public:
         return t+1;
     }
 
-    CLHMutex &get_head_mutex(unsigned nid) {
+    MCSLock &get_head_mutex(unsigned nid) {
         return head_mtxs[nid];
     }
 

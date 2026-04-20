@@ -137,7 +137,6 @@ void cxl_pool_thread_init() {
 #endif
     if (ret)
         LOG_ERROR("je_mallctl thread.arena returned " << strerror(ret))
-    bool enabled = true;
     ret = je_mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
     if (ret)
         LOG_ERROR("je_mallctl thread.tcache.flush returned " << strerror(ret))

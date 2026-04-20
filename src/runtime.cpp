@@ -109,7 +109,7 @@ void *rac_get_user_root() {
     return global->user_root;
 }
 
-Barrier *rac_get_node_barrier() {
+CXLBarrier *rac_get_node_barrier() {
     return &global->node_barrier;
 }
 
@@ -238,7 +238,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
         global->curr_tid = 0;
 
         thread_ops = new ThreadOps(&global->log_mgrs[0], &cache_info, node_id, global->curr_tid.fetch_add(1, std::memory_order_relaxed));
-        new (&global->node_barrier) Barrier(NODE_COUNT);
+        new (&global->node_barrier) CXLBarrier(NODE_COUNT);
         global->started = true;
     } else {
         while (!global->started.load()) {} 
@@ -285,7 +285,7 @@ void rac_shutdown() {
     delete thread_ops;
     global->log_mgrs[node_id].~LogManager();
     if (node_id == 0) {
-        global->node_barrier.~Barrier();
+        global->node_barrier.~CXLBarrier();
         shm_unlink(SHM_PATH);
         munmap(cxl_hc_buf, cxl_hc_range);
         munmap(cxl_nhc_buf, cxl_nhc_range);

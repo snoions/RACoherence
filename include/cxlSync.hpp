@@ -3,10 +3,10 @@
 
 #include <atomic>
 #include <thread>
-#include "clh_mutex.hpp"
 #include "clh_rwlock.hpp"
 #include "cxlMalloc.hpp"
 #include "flushUtils.hpp"
+#include "mcsLock.hpp"
 #include "threadOps.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
@@ -60,7 +60,7 @@ public:
     struct InnerData {
         std::atomic<T> atomic_data;
         VectorClock clock;
-        CLHMutex mtx;
+        MCSLock mtx;
     };
 private:
     InnerData *inner;
@@ -159,7 +159,7 @@ template<typename T, size_t Count>
 class CXLRelaxedMutex {
 public:
     struct InnerData {
-        CLHMutex mtx;
+        MCSLock mtx;
         unsigned owner_node = NODE_COUNT+1;
     };
 private:
@@ -209,7 +209,7 @@ public:
 class CXLMutex {
 public:
     struct InnerData{
-        CLHMutex mtx;
+        MCSLock mtx;
         VectorClock clock;
     };
 private:
@@ -351,62 +351,29 @@ public:
     }
 
     inline void init(int count) {
-        target.store(count, std::memory_order_seq_cst);
-        arrived.store(0, std::memory_order_seq_cst);
-        phase.store(0, std::memory_order_seq_cst);
+        target.store(count, std::memory_order_relaxed);
+        arrived.store(0, std::memory_order_release);
+        phase.store(0, std::memory_order_relaxed);
     }
 
     inline void wait() {
-        int local_phase = phase.load(std::memory_order_seq_cst);
+        int local_phase = phase.load(std::memory_order_relaxed);
 
-        int local_arrived = arrived.fetch_add(1, std::memory_order_seq_cst) + 1;
+        int local_arrived = arrived.fetch_add(1, std::memory_order_acq_rel) + 1;
 
-        if (local_arrived == target.load(std::memory_order_seq_cst)) {
-            arrived.store(0, std::memory_order_seq_cst);
-            phase.fetch_add(1, std::memory_order_seq_cst);
+        if (local_arrived == target.load(std::memory_order_relaxed)) {
+            arrived.store(0, std::memory_order_release);
+            //phase.fetch_add(1, std::memory_order_acq_rel);
+            phase.fetch_add(1, std::memory_order_relaxed);
         } else {
-            while (phase.load(std::memory_order_seq_cst) == local_phase) {
-            //while (arrived.load(std::memory_order_seq_cst) != 0) {
+            //while (phase.load(std::memory_order_release) == local_phase) {
+            while (arrived.load(std::memory_order_acquire) != 0) {
                 std::this_thread::yield();
             }
         }
     }
 };
 
-class Barrier {
-    std::atomic<int> target;
-    std::atomic<int> arrived;
-    std::atomic<int> phase;
-
-public:
-    Barrier() = default;
-
-    Barrier(int count) {
-        init(count);
-    }
-
-    inline void init(int count) {
-        target.store(count, std::memory_order_seq_cst);
-        arrived.store(0, std::memory_order_seq_cst);
-        phase.store(0, std::memory_order_seq_cst);
-    }
-
-    inline void wait() {
-        int local_phase = phase.load(std::memory_order_seq_cst);
-
-        int local_arrived = arrived.fetch_add(1, std::memory_order_seq_cst) + 1;
-
-        if (local_arrived == target.load(std::memory_order_seq_cst)) {
-            arrived.store(0, std::memory_order_seq_cst);
-            phase.fetch_add(1, std::memory_order_seq_cst);
-        } else {
-            while (phase.load(std::memory_order_seq_cst) == local_phase) {
-            //while (arrived.load(std::memory_order_seq_cst) != 0) {
-                std::this_thread::yield();
-            }
-        }
-    }
-};
 } // RACoherence
 
 #endif

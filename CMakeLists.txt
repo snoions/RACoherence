@@ -19,7 +19,6 @@ set(RUNTIME_LIB
       src/instrumentLib.cpp
       src/runtime.cpp
     )
-set_source_files_properties(src/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS "ONLY_MSPACES;HAVE_MMAP=0;USE_LOCKS")
 
 separate_arguments(RAC_FLAG_LIST NATIVE_COMMAND ${RAC_CONFIG_FLAGS})
 add_library(racoherence SHARED ${RUNTIME_LIB})

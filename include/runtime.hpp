@@ -39,7 +39,7 @@ unsigned rac_get_node_count();
 
 void* rac_get_user_root();
 
-Barrier *rac_get_node_barrier();
+CXLBarrier *rac_get_node_barrier();
 
 void rac_subscribe_to_node(unsigned target);
 
