@@ -277,7 +277,6 @@ void rac_shutdown() {
         LOG_STATS("node " << i << " stats:");
         cache_info.dump_stats();
     )
-    cache_info.~CacheInfo(); 
     //print_jemalloc_stats();
 #if TIME_STATS
     LOG_STATS("invalidation message stall percentage: " << std::fixed << std::setprecision(2) << (double)invd_msg_stall_cycles/thread_cycles * 100);

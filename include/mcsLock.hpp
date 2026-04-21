@@ -4,7 +4,10 @@
 #include <atomic>
 #include <sched.h>
 
+#include "config.hpp"
 #include "cxlMalloc.hpp"
+
+namespace RACoherence {
 
 struct MCSNode {
     std::atomic<MCSNode*> next{nullptr};
@@ -16,6 +19,7 @@ private:
     std::atomic<MCSNode*> tail{nullptr};
     MCSNode* owner = nullptr;
 public:
+    friend class MCSSharedLock;
     void lock_with_node(MCSNode* node) {
         node->next.store(nullptr, std::memory_order_relaxed);
         node->locked.store(true, std::memory_order_relaxed);
@@ -103,6 +107,52 @@ public:
     }
 };
 
+class MCSSharedLock {
+private:
+    MCSLock wlock;
+    alignas(CACHE_LINE_SIZE) std::atomic<int> active_readers{0};
+
+public:
+    void lock_shared_with_node(MCSNode* node) {
+        wlock.lock_with_node(node);
+        active_readers.fetch_add(1, std::memory_order_acquire);
+        wlock.unlock_with_node(node);
+    }
+
+    void unlock_shared() {
+        active_readers.fetch_sub(1, std::memory_order_release);
+    }
+
+    void lock_with_node(MCSNode* node) {
+        wlock.lock_with_node(node);
+
+        while (active_readers.load(std::memory_order_acquire) > 0) {
+            sched_yield();
+        }
+    }
+
+    void unlock_with_node(MCSNode* node) {
+        wlock.unlock_with_node(node);
+    }
+
+    void lock_shared() {
+        MCSNode *node = (MCSNode*)cxlhc_malloc(sizeof(MCSNode));
+        lock_shared_with_node(node);
+        cxlhc_free(node, sizeof(MCSNode));
+    }
+    
+    void lock() {
+        MCSNode *node = (MCSNode*)cxlhc_malloc(sizeof(MCSNode));
+        lock_with_node(node);
+    }
+
+    void unlock() {
+        MCSNode *node = wlock.owner;
+        unlock_with_node(node);
+        cxlhc_free(node, sizeof(MCSNode));
+    }
+};
+
 struct defer_lock_t { explicit defer_lock_t() = default; };
 
 constexpr defer_lock_t defer_lock{};
@@ -120,7 +170,7 @@ public:
         lk.lock_with_node(&node);
     }
     
-    UniqueLock(MCSLock &l, defer_lock_t d): lk(l), locked(false) {}
+    UniqueLock(MCSLock &l, defer_lock_t /*d*/): lk(l), locked(false) {}
     
     ~UniqueLock() {
         if (locked)
@@ -142,5 +192,6 @@ public:
         return locked;
     }
 };
+} // RACoherence
 
 #endif

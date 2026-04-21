@@ -3,7 +3,6 @@
 
 #include <atomic>
 #include <thread>
-#include "clh_rwlock.hpp"
 #include "cxlMalloc.hpp"
 #include "flushUtils.hpp"
 #include "mcsLock.hpp"
@@ -261,7 +260,7 @@ public:
 class CXLSharedMutex {
 public:
     struct InnerData{
-        CLHSharedMutex mtx;
+        MCSSharedLock mtx;
         VectorClock clock;
     };
 private:
@@ -353,26 +352,88 @@ public:
     inline void init(int count) {
         target.store(count, std::memory_order_relaxed);
         arrived.store(0, std::memory_order_release);
-        phase.store(0, std::memory_order_relaxed);
+        phase.store(0, std::memory_order_release);
     }
 
     inline void wait() {
-        int local_phase = phase.load(std::memory_order_relaxed);
+        int local_phase = phase.load(std::memory_order_acquire);
 
         int local_arrived = arrived.fetch_add(1, std::memory_order_acq_rel) + 1;
-
         if (local_arrived == target.load(std::memory_order_relaxed)) {
-            arrived.store(0, std::memory_order_release);
-            //phase.fetch_add(1, std::memory_order_acq_rel);
-            phase.fetch_add(1, std::memory_order_relaxed);
+            arrived.store(0, std::memory_order_relaxed);
+            phase.fetch_add(1, std::memory_order_acq_rel);
         } else {
-            //while (phase.load(std::memory_order_release) == local_phase) {
-            while (arrived.load(std::memory_order_acquire) != 0) {
+            while (phase.load(std::memory_order_acquire) == local_phase) {
                 std::this_thread::yield();
             }
         }
     }
 };
+
+// inlined version of CXLBarrier, slower than non-inlined version 
+//class CXLBarrier {
+//    struct InnerData {
+//        std::atomic<int> target;
+//        std::atomic<int> arrived;
+//        std::atomic<int> phase;
+//        VectorClock clock;
+//        MCSSharedLock mtx;
+//    };
+//    InnerData *inner;
+//
+//public:
+//    CXLBarrier(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+//    CXLBarrier(int count): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {
+//        init(count);
+//    }
+//
+//    inline void init(int count) {
+//        inner->target.store(count, std::memory_order_relaxed);
+//        inner->arrived.store(0, std::memory_order_release);
+//        inner->phase.store(0, std::memory_order_release);
+//    }
+//
+//    inline void wait() {
+//        int local_phase = inner->phase.load(std::memory_order_acquire);
+//        int local_arrived = inner->arrived.fetch_add(1, std::memory_order_acq_rel) + 1;
+//
+//#if PROTOCOL_OFF
+//        writeback_fence();
+//#else
+//        const auto &thread_clock = thread_ops->get_clock();
+//        inner->mtx.lock();
+//#ifdef LOCATION_CLOCK_MERGE
+//        inner->clock.merge(thread_clock);
+//#else
+//        inner->clock = thread_clock;
+//#endif
+//        inner->mtx.unlock();
+//#endif
+//
+//        if (local_arrived == inner->target.load(std::memory_order_relaxed)) {
+//            inner->arrived.store(0, std::memory_order_relaxed);
+//            inner->phase.fetch_add(1, std::memory_order_acq_rel);
+//        } else {
+//            while (inner->phase.load(std::memory_order_acquire) == local_phase) {
+//#if PROTOCOL_OFF
+//                  std::this_thread::yield();
+//#else
+//                  inner->mtx.lock_shared();
+//                  VectorClock clock = inner->clock;
+//                  inner->mtx.unlock_shared();
+//                  thread_ops->thread_acquire(clock);
+//#endif
+//            }
+//        }
+//
+//#if !PROTOCOL_OFF
+//        inner->mtx.lock_shared();
+//        VectorClock clock = inner->clock;
+//        inner->mtx.unlock_shared();
+//        thread_ops->thread_acquire(clock);
+//#endif
+//    }
+//};
 
 } // RACoherence
 
