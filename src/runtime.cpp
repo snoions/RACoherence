@@ -178,10 +178,6 @@ void alloc_cxl_memory() {
         perror("mmap");
         exit(EXIT_FAILURE);
     }
-    if(numa_run_on_node(LOCAL_NUMA_NODE_ID)) {
-        perror("numa_run_on_node");
-        exit(EXIT_FAILURE);
-    }
 
 #if CXL_NUMA_MODE
     // bind cxl memory buffers to CXL NUMA node
@@ -214,6 +210,10 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
     cxl_hc_range = cxl_hc_rg;
     cxl_nhc_range = cxl_nhc_rg;
     alloc_cxl_memory();
+    if(numa_run_on_node(LOCAL_NUMA_NODE_ID)) {
+        perror("numa_run_on_node");
+        exit(EXIT_FAILURE);
+    }
     global = (RACGlobal*)cxl_hc_buf;
     if (node_id == 0) {
         size_t cxl_hc_off = 0;
@@ -251,13 +251,11 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
     instrument_lib();
 
 #if !PROTOCOL_OFF
-    unsigned cpu_id = 0;
+    unsigned cpu_id = node_id;
     int ret;
 #if defined(CACHE_AGENT_AFFINITY)
     ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_NODE_ID);
     assert(!ret);
-#else
-    cpu_id = node_id;
 #endif
     auto arg = new CacheAgentArg{node_id, cpu_id};
     ret = pthread_create(&cache_agent, nullptr, run_cache_agent, arg);
