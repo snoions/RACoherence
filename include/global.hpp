@@ -24,7 +24,7 @@ struct RACGlobal {
     LogManager log_mgrs[NODE_COUNT];
     void *user_root;
     //TODO: change to CXLBarrier
-    CXLBarrier node_barrier;
+    CXLBarrier root_barrier;
     CXLHCPool cxlhc_pool;
     ExtentPool cxlnhc_pool;
 };
