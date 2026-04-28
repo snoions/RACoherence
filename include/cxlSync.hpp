@@ -175,12 +175,7 @@ public:
     }
 
     inline void lock() {
-#if CONSUME_HELP_IN_LOCK
-        VectorClock clock = inner->clock;
-        inner->mtx.lock_with_help(clock);
-#else
         inner->mtx.lock();
-#endif
 #ifndef PROTOCOL_OFF
         unsigned nid = thread_op->get_node_id();
         if (inner->owner_node != nid) {
