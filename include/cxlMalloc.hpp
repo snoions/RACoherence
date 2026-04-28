@@ -1,6 +1,8 @@
 #ifndef _CXL_MALLOC_H_
 #define _CXL_MALLOC_H_
 #include <stddef.h>
+#include "extentPool.hpp"
+#include "slabPool.hpp"
 
 #if __cplusplus
 extern "C" {
@@ -29,9 +31,23 @@ void cxlhc_free(void *ptr, size_t size);
 
 namespace RACoherence {
 
-void cxl_pool_init();
+#ifdef HC_USE_CUSTOM_POOL
+// 16-bit tag
+// only valid for 65,536 CAS operations
+using CXLHCPool = SlabPool<8, 128>;
+#else
+using CXLHCPool = ExtentPool;
+#endif
+struct AllocMeta {
+    CXLHCPool cxlhc_pool;
+    ExtentPool cxlnhc_pool;
+};
 
-void cxl_pool_thread_init();
+void cxl_alloc_global_init(AllocMeta *a_meta, char *hc_pool_buf, size_t hc_pool_range, char *nhc_pool_buf, size_t nhc_pool_range);
+
+void cxl_alloc_process_init(AllocMeta *a_meta);
+
+void cxl_alloc_thread_init();
 
 void print_jemalloc_stats();
 

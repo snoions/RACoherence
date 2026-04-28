@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstring>
 #include <unistd.h>
-#include "jemalloc/jemalloc.h"
 #include "config.hpp"
 
 namespace RACoherence {

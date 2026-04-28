@@ -2,21 +2,22 @@
 #include "config.hpp"
 #include "cxlMalloc.hpp"
 #include "globalMeta.hpp"
-#include "extentPool.hpp"
-#include "slabPool.hpp"
+#include "jemalloc/jemalloc.h"
+
+const char *je_malloc_conf ="narenas:1"; //,retain:false";
 
 namespace RACoherence {
 
-extern GlobalMeta *meta;
+AllocMeta *alloc_meta;
 unsigned cxlhc_arena_index;
 unsigned cxlnhc_arena_index;
 
 inline void* cxlhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              void* /*new_addr*/, size_t size, size_t alignment,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
-    if (!meta) return nullptr;
+    if (!alloc_meta) return nullptr;
 
-    void* p = meta->cxlhc_pool.allocate(size, alignment);
+    void* p = alloc_meta->cxlhc_pool.allocate(size, alignment);
     if (!p) {
         return nullptr;
     }
@@ -60,9 +61,9 @@ extent_hooks_t cxlhc_hooks = {
 inline void* cxlnhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              void* /*new_addr*/, size_t size, size_t alignment,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
-    if (!meta) return nullptr;
+    if (!alloc_meta) return nullptr;
 
-    void* p = meta->cxlnhc_pool.allocate(size, alignment);
+    void* p = alloc_meta->cxlnhc_pool.allocate(size, alignment);
     if (!p) {
         return nullptr;
     }
@@ -94,7 +95,25 @@ extent_hooks_t cxlnhc_hooks = {
     .merge         = extent_merge,
 };
 
-void cxl_pool_init() {
+void print_jemalloc_stats() {
+    // Refresh epoch to get current stats
+    uint64_t epoch = 1;
+    je_mallctl("epoch", NULL, NULL, &epoch, sizeof(epoch)); 
+    je_malloc_stats_print(NULL, NULL, NULL);
+}
+
+void cxl_alloc_global_init(AllocMeta *a_meta, char *hc_pool_buf, size_t hc_pool_range, char *nhc_pool_buf, size_t nhc_pool_range) { 
+        //align start of hc pool to cache line
+        if (size_t padding = CACHE_LINE_SIZE - (size_t)(hc_pool_buf) & (CACHE_LINE_SIZE-1)) {
+            hc_pool_buf += padding; 
+            hc_pool_range -= padding;
+        }
+        new (&a_meta->cxlhc_pool) CXLHCPool(hc_pool_buf, hc_pool_range);
+        new (&a_meta->cxlnhc_pool) ExtentPool(nhc_pool_buf, nhc_pool_range);
+}
+
+void cxl_alloc_process_init(AllocMeta *a_meta) {
+    alloc_meta = a_meta;
     int ret;
     size_t sz = sizeof(unsigned);
     extent_hooks_t* new_hooks;
@@ -128,7 +147,7 @@ void cxl_pool_init() {
     }
 }
 
-void cxl_pool_thread_init() {
+void cxl_alloc_thread_init() {
     int ret;
 #ifdef HC_USE_CUSTOM_POOL
     ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index));
@@ -142,26 +161,17 @@ void cxl_pool_thread_init() {
         LOG_ERROR("je_mallctl thread.tcache.flush returned " << strerror(ret))
 }
 
-void print_jemalloc_stats() {
-    // Refresh epoch to get current stats
-    uint64_t epoch = 1;
-    je_mallctl("epoch", NULL, NULL, &epoch, sizeof(epoch)); 
-    je_malloc_stats_print(NULL, NULL, NULL);
-}
-
 } // RACoherence
 
 using namespace RACoherence;
 
-const char *je_malloc_conf ="narenas:1"; //,retain:false";
-
 #ifdef HC_USE_CUSTOM_POOL
 void *cxlhc_malloc(size_t size) {
-    return meta->cxlhc_pool.allocate(size);
+    return alloc_meta->cxlhc_pool.allocate(size);
 }
 
 void cxlhc_free(void *ptr, size_t size) {
-    return meta->cxlhc_pool.deallocate(ptr, size);
+    return alloc_meta->cxlhc_pool.deallocate(ptr, size);
 }
 #else
 

@@ -49,7 +49,7 @@ void *rac_thread_func_wrapper(void *arg) {
         perror("numa_run_on_node");
         exit(EXIT_FAILURE);
     }
-    cxl_pool_thread_init();
+    cxl_alloc_thread_init();
     auto rac_arg = (RACThreadArg *)arg;
     unsigned tid = meta->curr_tid.fetch_add(1);
     thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, rac_arg->nid, tid);
@@ -223,28 +223,22 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
         assert(cxl_hc_range > cxlhc_off + root_size);
         meta->user_root = cxl_hc_buf + cxl_hc_off;
         cxl_hc_off += root_size;
-
-        //align start of hc pool to cache line
-        if (uintptr_t remain = (uintptr_t)(cxl_hc_buf + cxl_hc_off) & (CACHE_LINE_SIZE-1))
-            cxl_hc_off += CACHE_LINE_SIZE - remain; 
-        new (&meta->cxlhc_pool) CXLHCPool(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
-        new (&meta->cxlnhc_pool) ExtentPool(cxl_nhc_buf, cxl_nhc_range);
-
-        // pool need to be initalialized before any cxl allocation
-        cxl_pool_init();
-        cxl_pool_thread_init();
+        
+        cxl_alloc_global_init(&meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf, cxl_nhc_range);
+        cxl_alloc_process_init(&meta->alloc_meta);
+        cxl_alloc_thread_init();
 
         new (&meta->log_mgrs[node_id]) LogManager(node_id);
-        meta->curr_tid = 0;
+        meta->curr_tid.store(0);
 
         thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, node_id, meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
         new (&meta->root_barrier) CXLBarrier(NODE_COUNT);
-        meta->started = true;
+        meta->started.store(true);
     } else {
         while (!meta->started.load()) {} 
 
-        cxl_pool_init();
-        cxl_pool_thread_init();
+        cxl_alloc_process_init(&meta->alloc_meta);
+        cxl_alloc_thread_init();
         new (&meta->log_mgrs[node_id]) LogManager(node_id);
         thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, node_id, meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
     }
