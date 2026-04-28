@@ -1,22 +1,22 @@
 #include <sstream>
 #include "config.hpp"
 #include "cxlMalloc.hpp"
-#include "global.hpp"
+#include "globalMeta.hpp"
 #include "extentPool.hpp"
 #include "slabPool.hpp"
 
 namespace RACoherence {
 
-extern RACGlobal *global;
+extern GlobalMeta *meta;
 unsigned cxlhc_arena_index;
 unsigned cxlnhc_arena_index;
 
 inline void* cxlhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              void* /*new_addr*/, size_t size, size_t alignment,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
-    if (!global) return nullptr;
+    if (!meta) return nullptr;
 
-    void* p = global->cxlhc_pool.allocate(size, alignment);
+    void* p = meta->cxlhc_pool.allocate(size, alignment);
     if (!p) {
         return nullptr;
     }
@@ -60,9 +60,9 @@ extent_hooks_t cxlhc_hooks = {
 inline void* cxlnhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              void* /*new_addr*/, size_t size, size_t alignment,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
-    if (!global) return nullptr;
+    if (!meta) return nullptr;
 
-    void* p = global->cxlnhc_pool.allocate(size, alignment);
+    void* p = meta->cxlnhc_pool.allocate(size, alignment);
     if (!p) {
         return nullptr;
     }
@@ -157,11 +157,11 @@ const char *je_malloc_conf ="narenas:1"; //,retain:false";
 
 #ifdef HC_USE_CUSTOM_POOL
 void *cxlhc_malloc(size_t size) {
-    return global->cxlhc_pool.allocate(size);
+    return meta->cxlhc_pool.allocate(size);
 }
 
 void cxlhc_free(void *ptr, size_t size) {
-    return global->cxlhc_pool.deallocate(ptr, size);
+    return meta->cxlhc_pool.deallocate(ptr, size);
 }
 #else
 

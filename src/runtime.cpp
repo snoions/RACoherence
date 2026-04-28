@@ -8,7 +8,7 @@
 #include <x86intrin.h>
 
 #include "cacheAgent.hpp"
-#include "global.hpp"
+#include "globalMeta.hpp"
 #include "instrumentLib.hpp"
 #include "logger.hpp"
 #include "numaUtils.hpp"
@@ -37,7 +37,7 @@ char *cxl_hc_buf;
 size_t cxl_hc_range;
 CacheInfo cache_info;
 pthread_t cache_agent;
-RACGlobal *global;
+GlobalMeta *meta;
 #if TIME_STATS
 std::atomic<uint64_t> thread_cycles; 
 std::atomic<uint64_t> invd_msg_stall_cycles;
@@ -51,8 +51,8 @@ void *rac_thread_func_wrapper(void *arg) {
     }
     cxl_pool_thread_init();
     auto rac_arg = (RACThreadArg *)arg;
-    unsigned tid = global->curr_tid.fetch_add(1);
-    thread_ops = new ThreadOps(&global->log_mgrs[0], &cache_info, rac_arg->nid, tid);
+    unsigned tid = meta->curr_tid.fetch_add(1);
+    thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, rac_arg->nid, tid);
 #if TIME_STATS
     uint64_t start = __rdtsc();
 #endif
@@ -106,27 +106,27 @@ unsigned rac_get_node_count() {
 }
 
 void *rac_get_user_root() {
-    return global->user_root;
+    return meta->user_root;
 }
 
 CXLBarrier *rac_get_root_barrier() {
-    return &global->root_barrier;
+    return &meta->root_barrier;
 }
 
 void rac_subscribe_to_node(unsigned target) {
     assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
-    global->log_mgrs[target].set_subscribed(node_id, true);
+    meta->log_mgrs[target].set_subscribed(node_id, true);
     wbinvd();
 }
 
 void rac_unsubscribe_from_node(unsigned target) {
     assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
-    global->log_mgrs[target].set_subscribed(node_id, false);
+    meta->log_mgrs[target].set_subscribed(node_id, false);
 }
 
 bool rac_is_subscribed_to_node(unsigned target) {
     assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
-    return global->log_mgrs[target].is_subscribed(node_id);
+    return meta->log_mgrs[target].is_subscribed(node_id);
 }
 
 struct CacheAgentArg {
@@ -140,7 +140,7 @@ void *run_cache_agent(void *arg) {
     pin_to_core(carg->cpu_id);
 #endif
     unsigned nid = carg->node_id;
-    CacheAgent(cache_info, &global->log_mgrs[0], nid).run();
+    CacheAgent(cache_info, &meta->log_mgrs[0], nid).run();
     return arg;
 }
 
@@ -214,46 +214,46 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
         perror("numa_run_on_node");
         exit(EXIT_FAILURE);
     }
-    global = (RACGlobal*)cxl_hc_buf;
+    meta = (GlobalMeta*)cxl_hc_buf;
     if (node_id == 0) {
         size_t cxl_hc_off = 0;
-        assert(cxl_hc_range > sizeof(RACGlobal));
-        cxl_hc_off += sizeof(RACGlobal);
+        assert(cxl_hc_range > sizeof(GlobalMeta));
+        cxl_hc_off += sizeof(GlobalMeta);
 
         assert(cxl_hc_range > cxlhc_off + root_size);
-        global->user_root = cxl_hc_buf + cxl_hc_off;
+        meta->user_root = cxl_hc_buf + cxl_hc_off;
         cxl_hc_off += root_size;
 
         //align start of hc pool to cache line
         if (uintptr_t remain = (uintptr_t)(cxl_hc_buf + cxl_hc_off) & (CACHE_LINE_SIZE-1))
             cxl_hc_off += CACHE_LINE_SIZE - remain; 
-        new (&global->cxlhc_pool) CXLHCPool(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
-        new (&global->cxlnhc_pool) ExtentPool(cxl_nhc_buf, cxl_nhc_range);
+        new (&meta->cxlhc_pool) CXLHCPool(cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off);
+        new (&meta->cxlnhc_pool) ExtentPool(cxl_nhc_buf, cxl_nhc_range);
 
         // pool need to be initalialized before any cxl allocation
         cxl_pool_init();
         cxl_pool_thread_init();
 
-        new (&global->log_mgrs[node_id]) LogManager(node_id);
-        global->curr_tid = 0;
+        new (&meta->log_mgrs[node_id]) LogManager(node_id);
+        meta->curr_tid = 0;
 
-        thread_ops = new ThreadOps(&global->log_mgrs[0], &cache_info, node_id, global->curr_tid.fetch_add(1, std::memory_order_relaxed));
-        new (&global->root_barrier) CXLBarrier(NODE_COUNT);
-        global->started = true;
+        thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, node_id, meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
+        new (&meta->root_barrier) CXLBarrier(NODE_COUNT);
+        meta->started = true;
     } else {
-        while (!global->started.load()) {} 
+        while (!meta->started.load()) {} 
 
         cxl_pool_init();
         cxl_pool_thread_init();
-        new (&global->log_mgrs[node_id]) LogManager(node_id);
-        thread_ops = new ThreadOps(&global->log_mgrs[0], &cache_info, node_id, global->curr_tid.fetch_add(1, std::memory_order_relaxed));
+        new (&meta->log_mgrs[node_id]) LogManager(node_id);
+        thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, node_id, meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
     }
     instrument_lib();
 
 #if !PROTOCOL_OFF
     unsigned cpu_id = node_id;
     int ret;
-#if defined(CACHE_AGENT_AFFINITY)
+#ifdef CACHE_AGENT_AFFINITY
     ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_NODE_ID);
     assert(!ret);
 #endif
@@ -280,9 +280,9 @@ void rac_shutdown() {
     LOG_STATS("invalidation message stall percentage: " << std::fixed << std::setprecision(2) << (double)invd_msg_stall_cycles/thread_cycles * 100);
 #endif
     delete thread_ops;
-    global->log_mgrs[node_id].~LogManager();
+    meta->log_mgrs[node_id].~LogManager();
     if (node_id == 0) {
-        global->root_barrier.~CXLBarrier();
+        meta->root_barrier.~CXLBarrier();
         shm_unlink(SHM_PATH);
         munmap(cxl_hc_buf, cxl_hc_range);
         munmap(cxl_nhc_buf, cxl_nhc_range);
