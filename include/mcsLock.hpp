@@ -17,6 +17,7 @@ struct MCSNode {
 class MCSLock {
 private:
     std::atomic<MCSNode*> tail{nullptr};
+    //char padding[56]; // avoid false sharing
     MCSNode* owner = nullptr;
 public:
     friend class MCSSharedLock;
@@ -110,7 +111,8 @@ public:
 class MCSSharedLock {
 private:
     MCSLock wlock;
-    alignas(CACHE_LINE_SIZE) std::atomic<int> active_readers{0};
+    char padding2[60]; // avoid false sharing
+    std::atomic<int> active_readers{0};
 
 public:
     void lock_shared_with_node(MCSNode* node) {
