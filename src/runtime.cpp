@@ -67,6 +67,7 @@ void *rac_thread_func_wrapper(void *arg) {
     thread_cycles += __rdtsc() - start;
     invd_msg_stall_cycles += thread_ops->invd_msg_stall_cycles;
 #endif
+    cxl_alloc_thread_exit();
     delete rac_arg;
     auto *rac_ret = new RACThreadRet{thread_ops, ret};
     return rac_ret;
@@ -215,17 +216,12 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
         exit(EXIT_FAILURE);
     }
     meta = (GlobalMeta*)cxl_hc_buf;
+    size_t cxl_hc_off = sizeof(GlobalMeta) + root_size;
+    assert(cxl_hc_range > cxl_hc_off && "hardware coherent memory region too small");
     if (node_id == 0) {
-        size_t cxl_hc_off = 0;
-        assert(cxl_hc_range > sizeof(GlobalMeta));
-        cxl_hc_off += sizeof(GlobalMeta);
+        meta->user_root = cxl_hc_buf + sizeof(GlobalMeta);
 
-        assert(cxl_hc_range > cxlhc_off + root_size);
-        meta->user_root = cxl_hc_buf + cxl_hc_off;
-        cxl_hc_off += root_size;
-        
-        cxl_alloc_global_init(&meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf, cxl_nhc_range);
-        cxl_alloc_process_init(&meta->alloc_meta);
+        cxl_alloc_process_init(&meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf, cxl_nhc_range, true);
         cxl_alloc_thread_init();
 
         new (&meta->log_mgrs[node_id]) LogManager(node_id);
@@ -237,7 +233,7 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
     } else {
         while (!meta->started.load()) {} 
 
-        cxl_alloc_process_init(&meta->alloc_meta);
+        cxl_alloc_process_init(&meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf, cxl_nhc_range, false);
         cxl_alloc_thread_init();
         new (&meta->log_mgrs[node_id]) LogManager(node_id);
         thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, node_id, meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
@@ -278,8 +274,7 @@ void rac_shutdown() {
     if (node_id == 0) {
         meta->root_barrier.~CXLBarrier();
         shm_unlink(SHM_PATH);
-        munmap(cxl_hc_buf, cxl_hc_range);
-        munmap(cxl_nhc_buf, cxl_nhc_range);
+        // no need to unmap memory regions - they are released when all processes exit
     }
 }
 

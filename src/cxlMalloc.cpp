@@ -2,6 +2,8 @@
 #include "config.hpp"
 #include "cxlMalloc.hpp"
 #include "globalMeta.hpp"
+#include "mimalloc.h"
+#include "mimalloc/cxl.h"
 #include "jemalloc/jemalloc.h"
 
 const char *je_malloc_conf ="narenas:1"; //,retain:false";
@@ -9,9 +11,17 @@ const char *je_malloc_conf ="narenas:1"; //,retain:false";
 namespace RACoherence {
 
 AllocMeta *alloc_meta;
-unsigned cxlhc_arena_index;
-unsigned cxlnhc_arena_index;
+#ifdef USE_MIMALLOC
+mi_arena_id_t hc_arena;
+mi_arena_id_t nhc_arena;
+__thread mi_heap_t* hc_heap;
+__thread mi_heap_t* nhc_heap;
+#else
+unsigned hc_arena_index;
+unsigned nhc_arena_index;
+#endif
 
+#ifndef USE_MIMALLOC
 inline void* cxlhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              void* /*new_addr*/, size_t size, size_t alignment,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
@@ -98,100 +108,146 @@ extent_hooks_t cxlnhc_hooks = {
 void print_jemalloc_stats() {
     // Refresh epoch to get current stats
     uint64_t epoch = 1;
-    je_mallctl("epoch", NULL, NULL, &epoch, sizeof(epoch)); 
+    je_mallctl("epoch", NULL, NULL, &epoch, sizeof(epoch));
     je_malloc_stats_print(NULL, NULL, NULL);
 }
+#endif
 
-void cxl_alloc_global_init(AllocMeta *a_meta, char *hc_pool_buf, size_t hc_pool_range, char *nhc_pool_buf, size_t nhc_pool_range) { 
-        //align start of hc pool to cache line
-        if (size_t padding = CACHE_LINE_SIZE - (size_t)(hc_pool_buf) & (CACHE_LINE_SIZE-1)) {
-            hc_pool_buf += padding; 
-            hc_pool_range -= padding;
-        }
-        new (&a_meta->cxlhc_pool) CXLHCPool(hc_pool_buf, hc_pool_range);
-        new (&a_meta->cxlnhc_pool) ExtentPool(nhc_pool_buf, nhc_pool_range);
-}
-
-void cxl_alloc_process_init(AllocMeta *a_meta) {
+void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, char *nhc_buf, size_t nhc_range, bool is_first) { 
+    //align start of hc pool to cache line
     alloc_meta = a_meta;
+#ifdef USE_MIMALLOC
+    //mi_option_set(mi_option_disallow_os_alloc, 1);
+    mi_option_set(mi_option_verbose, 0);
+    size_t nhc_meta_size = mi_cxl_meta_region_size(nhc_range);
+    size_t hc_meta_size = mi_cxl_meta_region_size(hc_range - nhc_meta_size);
+    assert(hc_range > nhc_meta_size + hc_meta_size && "hardware coherent region too small");
+
+    if (!mi_manage_os_memory_shared_disjoint(hc_buf, hc_meta_size, hc_buf + hc_meta_size, hc_range - hc_meta_size - nhc_meta_size, &hc_arena)) {
+        LOG_ERROR("mi_manage_os_memory_shared_disjoint(hc_pool) failed")
+        std::exit(EXIT_FAILURE);
+    }
+
+    if (!mi_manage_os_memory_shared_disjoint(hc_buf + hc_range - nhc_meta_size, nhc_meta_size, nhc_buf, nhc_range, &nhc_arena)) {
+        LOG_ERROR("mi_manage_os_memory_shared_disjoint(nhc_pool) failed")
+        std::exit(EXIT_FAILURE);
+    }
+#else
+    if (size_t padding = CACHE_LINE_SIZE - (size_t)(hc_buf) & (CACHE_LINE_SIZE-1)) {
+        hc_buf += padding;
+        hc_range -= padding;
+    }
+    if (is_first) {
+        new (&a_meta->cxlhc_pool) CXLHCPool(hc_buf, hc_range);
+        new (&a_meta->cxlnhc_pool) ExtentPool(nhc_buf, nhc_range);
+    }
+
     int ret;
     size_t sz = sizeof(unsigned);
     extent_hooks_t* new_hooks;
     extent_hooks_t* old_hooks = nullptr;
     size_t olen = sizeof(old_hooks);
 #ifndef HC_USE_CUSTOM_POOL
-    if ((ret = je_mallctl("arenas.create", &cxlhc_arena_index, &sz, nullptr, 0))) {
+    if ((ret = je_mallctl("arenas.create", &hc_arena_index, &sz, nullptr, 0))) {
         LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
 
     new_hooks = &cxlhc_hooks;
     std::stringstream ss;
-    ss << "arena." << cxlhc_arena_index << ".extent_hooks";
+    ss << "arena." << hc_arena_index << ".extent_hooks";
     if ((ret = je_mallctl(ss.str().c_str(), &old_hooks, &olen, &new_hooks, sizeof(new_hooks)))) {
         LOG_ERROR("je_mallctl " << ss.str() << " returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
 #endif
-    if ((ret = je_mallctl("arenas.create", &cxlnhc_arena_index, &sz, nullptr, 0))) {
+    if ((ret = je_mallctl("arenas.create", &nhc_arena_index, &sz, nullptr, 0))) {
         LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
 
     new_hooks = &cxlnhc_hooks;
     std::stringstream ss2;
-    ss2 << "arena." << cxlnhc_arena_index << ".extent_hooks";
+    ss2 << "arena." << nhc_arena_index << ".extent_hooks";
     if ((ret = je_mallctl(ss2.str().c_str(), &old_hooks, &olen, &new_hooks, sizeof(new_hooks)))) {
         LOG_ERROR("je_mallctl arena.extent_hooks returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
+#endif
 }
 
 void cxl_alloc_thread_init() {
+#ifdef USE_MIMALLOC
+    hc_heap = mi_heap_new_in_arena(hc_arena);
+    nhc_heap = mi_heap_new_in_arena(nhc_arena);
+#else
     int ret;
 #ifdef HC_USE_CUSTOM_POOL
-    ret = je_mallctl("thread.arena", NULL, NULL, &cxlnhc_arena_index, sizeof(cxlnhc_arena_index));
+    ret = je_mallctl("thread.arena", NULL, NULL, &nhc_arena_index, sizeof(nhc_arena_index));
 #else
-    ret = je_mallctl("thread.arena", NULL, NULL, &cxlhc_arena_index, sizeof(cxlhc_arena_index));
+    ret = je_mallctl("thread.arena", NULL, NULL, &hc_arena_index, sizeof(hc_arena_index));
 #endif
     if (ret)
         LOG_ERROR("je_mallctl thread.arena returned " << strerror(ret))
     ret = je_mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
     if (ret)
         LOG_ERROR("je_mallctl thread.tcache.flush returned " << strerror(ret))
+#endif
 }
 
+void cxl_alloc_thread_exit() {
+#ifdef USE_MIMALLOC
+    mi_heap_collect(hc_heap, true);
+    mi_heap_delete(hc_heap);
+    mi_heap_collect(nhc_heap, true);
+    mi_heap_delete(nhc_heap);
+    mi_collect(true);
+#endif
+}
 } // RACoherence
 
 using namespace RACoherence;
 
-#ifdef HC_USE_CUSTOM_POOL
 void *cxlhc_malloc(size_t size) {
+#ifdef USE_MIMALLOC
+    return mi_heap_malloc(hc_heap, size);
+#elif defined(HC_USE_CUSTOM_POOL)
     return alloc_meta->cxlhc_pool.allocate(size);
-}
-
-void cxlhc_free(void *ptr, size_t size) {
-    return alloc_meta->cxlhc_pool.deallocate(ptr, size);
-}
-#else
-
-void *cxlhc_malloc(size_t size) {
-    return je_mallocx(size, MALLOCX_ARENA(cxlhc_arena_index));
-}
-
-void cxlhc_free(void *ptr, size_t size) {
-    je_dallocx(ptr, MALLOCX_ARENA(cxlhc_arena_index));
-}
+#else 
+    return je_mallocx(size, MALLOCX_ARENA(hc_arena_index));
 #endif
+}
+
+void cxlhc_free(void *ptr, size_t size) {
+#ifdef USE_MIMALLOC
+    mi_free(ptr);
+#elif defined(HC_USE_CUSTOM_POOL)
+    alloc_meta->cxlhc_pool.deallocate(ptr, size);
+#else
+    je_dallocx(ptr, MALLOCX_ARENA(hc_arena_index));
+#endif
+}
 
 void *cxlnhc_malloc(size_t size) {
-    return je_mallocx(size, MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_TCACHE_NONE);
+#ifdef USE_MIMALLOC
+    return mi_heap_malloc(nhc_heap, size);
+#else
+    return je_mallocx(size, MALLOCX_ARENA(nhc_arena_index) | MALLOCX_TCACHE_NONE);
+#endif
 }
 
 void *cxlnhc_cl_aligned_malloc(size_t size) {
-    return je_mallocx(size,  MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE) | MALLOCX_TCACHE_NONE);
+#ifdef USE_MIMALLOC
+    return mi_heap_malloc_aligned(nhc_heap, size, CACHE_LINE_SIZE);
+#else
+    return je_mallocx(size,  MALLOCX_ARENA(nhc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE) | MALLOCX_TCACHE_NONE);
+#endif
 }
 
 void cxlnhc_free(void *ptr, size_t size) {
-    je_dallocx(ptr, MALLOCX_ARENA(cxlnhc_arena_index) | MALLOCX_TCACHE_NONE);
+#ifdef USE_MIMALLOC
+    mi_free(ptr);
+#else
+    je_dallocx(ptr, MALLOCX_ARENA(nhc_arena_index) | MALLOCX_TCACHE_NONE);
+#endif
 }

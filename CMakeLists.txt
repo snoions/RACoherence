@@ -52,23 +52,32 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-omit-frame-pointer")
 
-# Jemalloc library
 include(ExternalProject)
-ExternalProject_Add(jemalloc_proj
+# Jemalloc library
+ExternalProject_Add(jemalloc
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps/jemalloc
-    INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/install
     CONFIGURE_COMMAND ./autogen.sh --disable-cxx --prefix=<INSTALL_DIR> --with-jemalloc-prefix=je_
-    BUILD_COMMAND make
+    BUILD_COMMAND make -j
     INSTALL_COMMAND make install
     BUILD_IN_SOURCE 1
 )
-ExternalProject_Get_Property(jemalloc_proj INSTALL_DIR)
-add_dependencies(racoherence jemalloc_proj)
+ExternalProject_Get_Property(jemalloc INSTALL_DIR)
+add_dependencies(racoherence jemalloc)
 target_link_libraries(racoherence PUBLIC ${INSTALL_DIR}/lib/libjemalloc.so)
 target_include_directories(racoherence PUBLIC ${INSTALL_DIR}/include)
-add_dependencies(racoherence_static jemalloc_proj)
+add_dependencies(racoherence_static jemalloc)
 target_link_libraries(racoherence_static PUBLIC ${INSTALL_DIR}/lib/libjemalloc.so)
 target_include_directories(racoherence_static PUBLIC ${INSTALL_DIR}/include)
+
+# mimalloc library
+set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
+add_subdirectory(deps/mimalloc)
+# smaller segment and slice sizes are more suitable for smaller pool
+target_compile_definitions(mimalloc-static PRIVATE MI_SEGMENT_SLICE_SHIFT=14) # 16 KB
+target_compile_definitions(mimalloc-static PRIVATE MI_SEGMENT_SHIFT=20) # 1 MB
+target_link_libraries(racoherence PUBLIC mimalloc-static)
+target_link_libraries(racoherence_static PUBLIC mimalloc-static)
 
 # Threads library
 set(THREADS_PREFER_PTHREAD_FLAG ON)

@@ -147,6 +147,9 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 // use custom memory pool as allocator for CXL hardware coherent memory
 // #define HC_USE_CUSTOM_POOL
 
+// use mimalloc to allocate NHC and HC CXL memory
+#define USE_MIMALLOC
+
 // use locks instead of atomics in workload
 #define WORKLOAD_USE_LOCKS
 

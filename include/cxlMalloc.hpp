@@ -39,17 +39,21 @@ using CXLHCPool = SlabPool<8, 128>;
 using CXLHCPool = ExtentPool;
 #endif
 struct AllocMeta {
+#ifndef USE_MIMALLOC
     CXLHCPool cxlhc_pool;
     ExtentPool cxlnhc_pool;
+#endif
 };
 
-void cxl_alloc_global_init(AllocMeta *a_meta, char *hc_pool_buf, size_t hc_pool_range, char *nhc_pool_buf, size_t nhc_pool_range);
+#ifndef USE_MIMALLOC
+void print_jemalloc_stats();
+#endif
 
-void cxl_alloc_process_init(AllocMeta *a_meta);
+void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, char *nhc_buf, size_t nhc_range, bool is_first);
 
 void cxl_alloc_thread_init();
 
-void print_jemalloc_stats();
+void cxl_alloc_thread_exit();
 
 template <typename T> 
 class CXLHCAllocator {
