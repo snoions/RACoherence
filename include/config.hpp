@@ -144,9 +144,6 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 // number of logs in a per-node log buffer, must be power of two
 #define LOG_COUNT (LOG_ENTRY_TOTAL/LOG_SIZE)
 
-// use custom memory pool as allocator for CXL hardware coherent memory
-// #define HC_USE_CUSTOM_POOL
-
 // use mimalloc to allocate NHC and HC CXL memory
 #define USE_MIMALLOC
 

@@ -147,7 +147,6 @@ void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, ch
     extent_hooks_t* new_hooks;
     extent_hooks_t* old_hooks = nullptr;
     size_t olen = sizeof(old_hooks);
-#ifndef HC_USE_CUSTOM_POOL
     if ((ret = je_mallctl("arenas.create", &hc_arena_index, &sz, nullptr, 0))) {
         LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
@@ -160,7 +159,6 @@ void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, ch
         LOG_ERROR("je_mallctl " << ss.str() << " returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
     }
-#endif
     if ((ret = je_mallctl("arenas.create", &nhc_arena_index, &sz, nullptr, 0))) {
         LOG_ERROR("je_mallctl arena.create returned " << strerror(ret))
         std::exit(EXIT_FAILURE);
@@ -182,11 +180,7 @@ void cxl_alloc_thread_init() {
     nhc_heap = mi_heap_new_in_arena(nhc_arena);
 #else
     int ret;
-#ifdef HC_USE_CUSTOM_POOL
-    ret = je_mallctl("thread.arena", NULL, NULL, &nhc_arena_index, sizeof(nhc_arena_index));
-#else
     ret = je_mallctl("thread.arena", NULL, NULL, &hc_arena_index, sizeof(hc_arena_index));
-#endif
     if (ret)
         LOG_ERROR("je_mallctl thread.arena returned " << strerror(ret))
     ret = je_mallctl("thread.tcache.flush", NULL, NULL, NULL, 0);
@@ -211,8 +205,6 @@ using namespace RACoherence;
 void *cxlhc_malloc(size_t size) {
 #ifdef USE_MIMALLOC
     return mi_heap_malloc(hc_heap, size);
-#elif defined(HC_USE_CUSTOM_POOL)
-    return alloc_meta->cxlhc_pool.allocate(size);
 #else 
     return je_mallocx(size, MALLOCX_ARENA(hc_arena_index));
 #endif
@@ -221,8 +213,6 @@ void *cxlhc_malloc(size_t size) {
 void cxlhc_free(void *ptr, size_t size) {
 #ifdef USE_MIMALLOC
     mi_free(ptr);
-#elif defined(HC_USE_CUSTOM_POOL)
-    alloc_meta->cxlhc_pool.deallocate(ptr, size);
 #else
     je_dallocx(ptr, MALLOCX_ARENA(hc_arena_index));
 #endif
