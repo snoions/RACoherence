@@ -52,7 +52,7 @@ void cxl_alloc_thread_init();
 void print_jemalloc_stats();
 
 template <typename T> 
-class cxlhc_allocator { 
+class CXLHCAllocator {
 public:// type definitions
 	typedef T value_type;
 	typedef T*       pointer;
@@ -65,7 +65,7 @@ public:// type definitions
 	// rebind allocator to type U
 	template <class U>
 	struct rebind {
-		typedef cxlhc_allocator<U> other;
+		typedef CXLHCAllocator<U> other;
 	};
 
 	// return address of values
@@ -77,23 +77,25 @@ public:// type definitions
 	}
 
     //constructors and destructors
-    cxlhc_allocator() throw() {}
+    CXLHCAllocator() throw() {}
 
-	cxlhc_allocator(const cxlhc_allocator&) throw() {}
+	CXLHCAllocator(const CXLHCAllocator&) throw() {}
 
 	template<typename T2>
-    cxlhc_allocator(const cxlhc_allocator<T2> &/*alloc*/) throw() {}
+    CXLHCAllocator(const CXLHCAllocator<T2> &/*alloc*/) throw() {}
  
-    ~cxlhc_allocator() throw() {}
+    ~CXLHCAllocator() throw() {}
 
 	//operators
-	bool operator!=(const cxlhc_allocator<T> /*other*/) {return true;}
+	bool operator!=(const CXLHCAllocator<T> /*other*/) {return true;}
 
 	// Allocate memory for n objects of type T 
     pointer allocate(size_t n) {
         void *addr = cxlhc_malloc(n * sizeof(T));
-        if (!addr)
-            assert(false && "bad alloc");
+        if (!addr) {
+            std::bad_alloc exception;
+            throw exception;
+        }
         return static_cast<pointer>(addr);
     }
 
@@ -111,18 +113,18 @@ public:// type definitions
 	}
     // Deallocate memory 
     void deallocate(pointer p, size_t n) {
-        cxlhc_free(p, n);
+        cxlhc_free(p, n * sizeof(T));
     }
 };
 
 template<typename K, typename T>
-using cxlhc_map = std::map<K, T, std::less<K>,  cxlhc_allocator<std::pair<const K, T>>> ;
+using cxlhc_map = std::map<K, T, std::less<K>, CXLHCAllocator<std::pair<const K, T>>> ;
 template<typename T>
-using cxlhc_set = std::set<T, std::less<T>, cxlhc_allocator<T>> ;
+using cxlhc_set = std::set<T, std::less<T>, CXLHCAllocator<T>> ;
 template<typename K, typename T>
-using cxlhc_unordered_map = std::unordered_map<K, T, std::hash<K>,  std::equal_to<K>, cxlhc_allocator<std::pair<const K, T>>> ;
+using cxlhc_unordered_map = std::unordered_map<K, T, std::hash<K>,  std::equal_to<K>, CXLHCAllocator<std::pair<const K, T>>> ;
 template<typename T>
-using cxlhc_vector = std::vector<T, cxlhc_allocator<T>>;
+using cxlhc_vector = std::vector<T, CXLHCAllocator<T>>;
 
 } // RACoherence
 

@@ -12,6 +12,9 @@
 
 namespace RACoherence {
 
+using Mutex = MCSLock<CXLHCAllocator>;
+using SharedMutex = MCSSharedLock<CXLHCAllocator>;
+
 extern __thread ThreadOps *thread_ops;
 
 template<typename T>
@@ -59,7 +62,7 @@ public:
     struct InnerData {
         std::atomic<T> atomic_data;
         VectorClock clock;
-        MCSLock mtx;
+        Mutex mtx;
     };
 private:
     InnerData *inner;
@@ -158,7 +161,7 @@ template<typename T, size_t Count>
 class CXLRelaxedMutex {
 public:
     struct InnerData {
-        MCSLock mtx;
+        Mutex mtx;
         unsigned owner_node = NODE_COUNT+1;
     };
 private:
@@ -203,7 +206,7 @@ public:
 class CXLMutex {
 public:
     struct InnerData{
-        MCSLock mtx;
+        Mutex mtx;
         VectorClock clock;
     };
 private:
@@ -255,7 +258,7 @@ public:
 class CXLSharedMutex {
 public:
     struct InnerData{
-        MCSSharedLock mtx;
+        SharedMutex mtx;
         VectorClock clock;
     };
 private:
@@ -372,7 +375,7 @@ public:
 //        std::atomic<int> arrived;
 //        std::atomic<int> phase;
 //        VectorClock clock;
-//        MCSSharedLock mtx;
+//        SharedMutex mtx;
 //    };
 //    InnerData *inner;
 //

@@ -75,6 +75,8 @@ struct alignas(CACHE_LINE_SIZE) PubEntry {
 };
 
 class alignas(CACHE_LINE_SIZE) LogManager {
+    using Mutex = MCSLock<>;
+
     Log buf[LOG_COUNT];
 
     PubEntry pub[LOG_COUNT];
@@ -85,10 +87,10 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     // ensure atomic and mutex arrays are aligned to cache line boundaries
     CacheAligned<std::atomic<idx_t>> heads[NODE_COUNT];
 
-    CacheAligned<MCSLock> head_mtxs[NODE_COUNT];
+    CacheAligned<Mutex> head_mtxs[NODE_COUNT];
 
     alignas(CACHE_LINE_SIZE)
-    MCSLock gc_mtx;
+    Mutex gc_mtx;
 
     // try aligning each bool to different cache line if contention is high
     alignas(CACHE_LINE_SIZE)
@@ -196,7 +198,7 @@ public:
         return t+1;
     }
 
-    MCSLock &get_head_mutex(unsigned nid) {
+    Mutex &get_head_mutex(unsigned nid) {
         return head_mtxs[nid];
     }
 
