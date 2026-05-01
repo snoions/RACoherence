@@ -7,6 +7,7 @@
 #include "clTracker.hpp"
 #include "flushUtils.hpp"
 #include "logManager.hpp"
+#include "mcsLock.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
@@ -15,10 +16,15 @@ namespace RACoherence {
 using AtomicClock = std::atomic<VectorClock::clock_t>[NODE_COUNT];
 
 struct CacheInfo {
+    using Mutex = MCSLock<>;
+
     AtomicClock clock;
+    CacheAligned<Mutex> log_head_mtxs[NODE_COUNT];
+
     // data-race on cach line tracker entries should be ruled out
     // by cache line race freedom.
     CacheLineTracker inv_cls;
+
     // per-node stats
 #ifdef STATS
     std::atomic<unsigned> consumed_count[NODE_COUNT];
@@ -26,6 +32,11 @@ struct CacheInfo {
 #endif
 
     CacheInfo(): clock(), inv_cls(), consumed_count{}, produced_count{0} {};
+
+    Mutex &get_log_head_mutex(unsigned nid) {
+        return log_head_mtxs[nid];
+    }
+
     //void simulate_process_log(Log &log) {
     //    using namespace cl_group;
     //    STATS(auto start = std::chrono::steady_clock::now();)

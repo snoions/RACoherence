@@ -87,8 +87,6 @@ class alignas(CACHE_LINE_SIZE) LogManager {
     // ensure atomic and mutex arrays are aligned to cache line boundaries
     CacheAligned<std::atomic<idx_t>> heads[NODE_COUNT];
 
-    CacheAligned<Mutex> head_mtxs[NODE_COUNT];
-
     alignas(CACHE_LINE_SIZE)
     Mutex gc_mtx;
 
@@ -196,10 +194,6 @@ public:
         entry.log.store(l, std::memory_order_relaxed);
         entry.idx.store(t+1, std::memory_order_release);
         return t+1;
-    }
-
-    Mutex &get_head_mutex(unsigned nid) {
-        return head_mtxs[nid];
     }
 
     //only allows exclusive access on each node 
