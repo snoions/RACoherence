@@ -3,7 +3,6 @@
 #include "cxlMalloc.hpp"
 #include "globalMeta.hpp"
 #include "mimalloc.h"
-#include "mimalloc/cxl.h"
 #include "jemalloc/jemalloc.h"
 
 const char *je_malloc_conf ="narenas:1"; //,retain:false";
@@ -117,8 +116,7 @@ void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, ch
     //align start of hc pool to cache line
     alloc_meta = a_meta;
 #ifdef USE_MIMALLOC
-    //mi_option_set(mi_option_disallow_os_alloc, 1);
-    mi_option_set(mi_option_verbose, 0);
+    mi_option_set(mi_option_purge_delay, -1);
     size_t nhc_meta_size = mi_cxl_meta_region_size(nhc_range);
     size_t hc_meta_size = mi_cxl_meta_region_size(hc_range - nhc_meta_size);
     assert(hc_range > nhc_meta_size + hc_meta_size && "hardware coherent region too small");
@@ -198,6 +196,7 @@ void cxl_alloc_thread_exit() {
     mi_collect(true);
 #endif
 }
+
 } // RACoherence
 
 using namespace RACoherence;
