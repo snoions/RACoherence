@@ -75,8 +75,10 @@ struct alignas(CACHE_LINE_SIZE) PubEntry {
 };
 
 class alignas(CACHE_LINE_SIZE) LogManager {
+public:
     using Mutex = MCSLock<>;
 
+private:
     Log buf[LOG_COUNT];
 
     PubEntry pub[LOG_COUNT];

@@ -7,7 +7,6 @@
 #include "clTracker.hpp"
 #include "flushUtils.hpp"
 #include "logManager.hpp"
-#include "mcsLock.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
@@ -16,7 +15,7 @@ namespace RACoherence {
 using AtomicClock = std::atomic<VectorClock::clock_t>[NODE_COUNT];
 
 struct CacheInfo {
-    using Mutex = MCSLock<>;
+    using Mutex = LogManager::Mutex;
 
     AtomicClock clock;
     CacheAligned<Mutex> log_head_mtxs[NODE_COUNT];
