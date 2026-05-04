@@ -10,7 +10,7 @@ const char *je_malloc_conf ="narenas:1"; //,retain:false";
 namespace RACoherence {
 
 AllocMeta *alloc_meta;
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
 mi_arena_id_t hc_arena;
 mi_arena_id_t nhc_arena;
 __thread mi_heap_t* hc_heap;
@@ -20,7 +20,7 @@ unsigned hc_arena_index;
 unsigned nhc_arena_index;
 #endif
 
-#ifndef USE_MIMALLOC
+#ifndef USE_GLOBAL_MIMALLOC
 inline void* cxlhc_extent_alloc(extent_hooks_t* /*hooks*/,
                              void* /*new_addr*/, size_t size, size_t alignment,
                              bool* zero, bool* commit, unsigned /*arena_ind*/) {
@@ -115,7 +115,7 @@ void print_jemalloc_stats() {
 void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, char *nhc_buf, size_t nhc_range, bool is_first) { 
     //align start of hc pool to cache line
     alloc_meta = a_meta;
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     mi_option_set(mi_option_purge_delay, -1);
     size_t nhc_meta_size = mi_cxl_meta_region_size(nhc_range);
     size_t hc_meta_size = mi_cxl_meta_region_size(hc_range - nhc_meta_size);
@@ -173,7 +173,7 @@ void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, ch
 }
 
 void cxl_alloc_thread_init() {
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     hc_heap = mi_heap_new_in_arena(hc_arena);
     nhc_heap = mi_heap_new_in_arena(nhc_arena);
 #else
@@ -188,7 +188,7 @@ void cxl_alloc_thread_init() {
 }
 
 void cxl_alloc_thread_exit() {
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     mi_heap_collect(hc_heap, true);
     mi_heap_delete(hc_heap);
     mi_heap_collect(nhc_heap, true);
@@ -202,7 +202,7 @@ void cxl_alloc_thread_exit() {
 using namespace RACoherence;
 
 void *cxlhc_malloc(size_t size) {
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     return mi_heap_malloc(hc_heap, size);
 #else 
     return je_mallocx(size, MALLOCX_ARENA(hc_arena_index));
@@ -210,7 +210,7 @@ void *cxlhc_malloc(size_t size) {
 }
 
 void cxlhc_free(void *ptr, size_t size) {
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     mi_free(ptr);
 #else
     je_dallocx(ptr, MALLOCX_ARENA(hc_arena_index));
@@ -218,7 +218,7 @@ void cxlhc_free(void *ptr, size_t size) {
 }
 
 void *cxlnhc_malloc(size_t size) {
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     return mi_heap_malloc(nhc_heap, size);
 #else
     return je_mallocx(size, MALLOCX_ARENA(nhc_arena_index) | MALLOCX_TCACHE_NONE);
@@ -226,7 +226,7 @@ void *cxlnhc_malloc(size_t size) {
 }
 
 void *cxlnhc_cl_aligned_malloc(size_t size) {
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     return mi_heap_malloc_aligned(nhc_heap, size, CACHE_LINE_SIZE);
 #else
     return je_mallocx(size,  MALLOCX_ARENA(nhc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE) | MALLOCX_TCACHE_NONE);
@@ -234,7 +234,7 @@ void *cxlnhc_cl_aligned_malloc(size_t size) {
 }
 
 void cxlnhc_free(void *ptr, size_t size) {
-#ifdef USE_MIMALLOC
+#ifdef USE_GLOBAL_MIMALLOC
     mi_free(ptr);
 #else
     je_dallocx(ptr, MALLOCX_ARENA(nhc_arena_index) | MALLOCX_TCACHE_NONE);

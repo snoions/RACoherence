@@ -144,8 +144,8 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 // number of logs in a per-node log buffer, must be power of two
 #define LOG_COUNT (LOG_ENTRY_TOTAL/LOG_SIZE)
 
-// use mimalloc to allocate NHC and HC CXL memory
-#define USE_MIMALLOC
+// use globally shared mimalloc to allocate NHC and HC CXL memory, otherwise use process-local jemalloc that dosen't support cross-process free
+#define USE_GLOBAL_MIMALLOC
 
 // use locks instead of atomics in workload
 #define WORKLOAD_USE_LOCKS
