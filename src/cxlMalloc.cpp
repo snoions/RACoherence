@@ -136,7 +136,7 @@ void cxl_alloc_process_init(AllocMeta *a_meta, char *hc_buf, size_t hc_range, ch
         hc_range -= padding;
     }
     if (is_first) {
-        new (&a_meta->cxlhc_pool) CXLHCPool(hc_buf, hc_range);
+        new (&a_meta->cxlhc_pool) ExtentPool(hc_buf, hc_range);
         new (&a_meta->cxlnhc_pool) ExtentPool(nhc_buf, nhc_range);
     }
 
