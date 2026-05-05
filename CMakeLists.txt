@@ -32,8 +32,8 @@ target_compile_options(racoherence_static PUBLIC
     -ftls-model=local-exec
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fno-extern-tls-init>
 )
-add_executable(main src/main.cpp src/microbench.cpp)
-target_link_libraries(main PRIVATE racoherence_static)
+add_executable(bench_main src/bench_main.cpp src/microbench.cpp)
+target_link_libraries(bench_main PRIVATE racoherence_static)
 
 include_directories(include)
 # Compile options to improve TLS efficiency

@@ -8,8 +8,11 @@
 
 namespace RACoherence {
 
-static constexpr size_t CXL_POOL_DATA_SIZE = CXL_NHC_RANGE >> 4;
-
+constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
+constexpr uintptr_t CXL_HC_RANGE = 1ull << 26;
+constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
+constexpr size_t CXL_POOL_DATA_SIZE = CXL_NHC_RANGE >> 4;
+constexpr unsigned TOTAL_OPS = 1ull << 28; // Should be power of two
 constexpr unsigned SEQ_OP_FACTOR = 3;
 // ratio of plain operations to acq/rel operations, needs to be power of two
 constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;

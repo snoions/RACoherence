@@ -23,14 +23,9 @@ constexpr uintptr_t VIRTUAL_CL_SHIFT = CACHE_LINE_SHIFT + CL_EXPAND_SHIFT; // lo
 constexpr uintptr_t VIRTUAL_CL_MASK = VIRTUAL_CL_SIZE-1;
 // assuming 64-bit platform
 
-// workload settings
-constexpr unsigned WORKER_PER_NODE = 4;
-constexpr unsigned TOTAL_OPS = 1ull << 28; // Should be power of two
 constexpr uintptr_t CXL_HC_START = 1ull << (VIRTUAL_ADDRESS_BITS-1); // should start at the highest virtual bit for easy comparison
 constexpr uintptr_t CXL_NHC_START = 0b11ull << (VIRTUAL_ADDRESS_BITS-2); // should start at the highest virtual bit for easy comparison
-constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
-constexpr uintptr_t CXL_HC_RANGE = 1ull << 24;
-constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
+
 // NUMA nodes with CPU that threads may run on
 constexpr unsigned CPU_NUMAS[] = {0, 1};
 
@@ -49,7 +44,6 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 
 // number of cache line groups for which a wbinvd is faster than invalidating with clflushopt + mfence
 #define WBINVD_THRESHOLD (2 << 18)
-
 #ifndef NODE_COUNT
 #define NODE_COUNT 8
 #endif
@@ -144,7 +138,9 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 // number of logs in a per-node log buffer, must be power of two
 #define LOG_COUNT (LOG_ENTRY_TOTAL/LOG_SIZE)
 
-// use globally shared mimalloc to allocate NHC and HC CXL memory, otherwise use process-local jemalloc that dosen't support cross-process free
+// use globally shared mimalloc to allocate NHC and HC CXL memory
+// otherwise use process-local jemalloc, which does not support
+// cross-process free, but is more memory efficient.
 #define USE_GLOBAL_MIMALLOC
 
 // use locks instead of atomics in workload
