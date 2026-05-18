@@ -74,6 +74,7 @@ struct alignas(CACHE_LINE_SIZE) PubEntry {
     bool is_rel = false;
 };
 
+//TODO: tail, gc_mtx, freelist, next_round can be put into process-local memory
 class alignas(CACHE_LINE_SIZE) LogManager {
 public:
     using Mutex = MCSLock<>;
@@ -108,7 +109,7 @@ private:
         for (unsigned i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
                 continue;
-            if (!subscribers[i].load(std::memory_order_acquire))
+            if (!is_subscribed(i))
                 continue;
             subscribed = true;
             auto h = next_round(heads[i].load(std::memory_order_acquire));
@@ -155,8 +156,19 @@ public:
         }
     }
 
-    inline void set_subscribed(unsigned nid, bool subscribed) {
-        subscribers[nid].store(subscribed, std::memory_order_release);
+    inline void add_subscriber(unsigned nid) {
+       // reset head to consume next log 
+       // need to hold to prevent gc from advancing 
+       // tail past current bound
+       gc_mtx.lock();
+       unsigned latest = tail.load(std::memory_order_relaxed);
+       heads[nid].store(latest, std::memory_order_relaxed);
+       subscribers[nid].store(true);
+       gc_mtx.unlock();
+    }
+
+    inline void remove_subscriber(unsigned nid) {
+        subscribers[nid].store(false, std::memory_order_release);
     }
 
     inline bool is_subscribed(unsigned nid) {
