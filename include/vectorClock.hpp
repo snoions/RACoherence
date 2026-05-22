@@ -81,6 +81,8 @@ public:
     }
 };
 
+using vc_clock_t = VectorClock::clock_t;
+
 } // RACoherence
 
 #endif

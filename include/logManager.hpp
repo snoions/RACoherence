@@ -15,25 +15,11 @@
 #include "mcsLock.hpp"
 #include "spmcQueue.hpp"
 #include "utils.hpp"
+#include "vectorClock.hpp"
 
 namespace RACoherence {
 
 class LogManager;
-
-//index into LogManager's pub array, monotonically increases
-using idx_t = size_t;
-
-inline idx_t next_round(idx_t idx) {
-    return idx + LOG_COUNT;
-}
-
-inline idx_t prev_round(idx_t idx) {
-    return idx - LOG_COUNT;
-}
-
-inline size_t get_idx(idx_t idx){
-    return idx & (LOG_COUNT -1);
-}
 
 struct alignas(CACHE_LINE_SIZE) Log {
     friend LogManager;
@@ -69,23 +55,27 @@ public:
     }
 };
 
-struct alignas(CACHE_LINE_SIZE) PubEntry {
-    std::atomic<Log *> log;
-    std::atomic<idx_t> idx{0};
-    bool is_rel = false;
-};
-
-struct alignas(CACHE_LINE_SIZE) SubStatus {
-    std::atomic<idx_t> head;
-    std::atomic<bool> is_subbed;
-};
 
 //TODO: tail, gc_mtx, freelist, next_round can be put into process-local memory
 class alignas(CACHE_LINE_SIZE) LogManager {
 public:
+    // vector clock values directly correspond to a wrapping index into LogManager's pub array
+    using idx_t = vc_clock_t;
+
     using Mutex = MCSLock<>;
 
+    struct alignas(CACHE_LINE_SIZE) PubEntry {
+        std::atomic<Log *> log;
+        std::atomic<idx_t> idx{0};
+        bool is_rel = false;
+    };
+
 private:
+    struct alignas(CACHE_LINE_SIZE) SubStatus {
+        std::atomic<idx_t> head;
+        std::atomic<bool> is_subbed;
+    };
+
     Log buf[LOG_COUNT];
 
     PubEntry pub[LOG_COUNT];
@@ -103,6 +93,18 @@ private:
     unsigned node_id;
 
     idx_t bound = next_round(0);
+
+    static idx_t next_round(idx_t idx) {
+        return idx + LOG_COUNT;
+    }
+    
+    static idx_t prev_round(idx_t idx) {
+        return idx - LOG_COUNT;
+    }
+    
+    static size_t get_idx(idx_t idx){
+        return idx & (LOG_COUNT -1);
+    }
 
     inline void perform_gc() {
         idx_t new_b = next_round(bound);
@@ -155,7 +157,6 @@ public:
         }
     }
 
-    //TODO: fix clock_t type name confusion
     inline unsigned add_subscriber(unsigned nid) {
        assert(!is_subscribed(nid)); 
        subs[nid].is_subbed.store(true, std::memory_order_release);
@@ -205,13 +206,13 @@ public:
     }
 
     //returns current release clock
-    clock_t produce_tail(Log *l, bool r) {
+    vc_clock_t produce_tail(Log *l, bool r) {
         auto t = tail.fetch_add(1, std::memory_order_relaxed);
         auto &entry = pub[get_idx(t)];
         entry.is_rel = r;
         entry.log.store(l, std::memory_order_relaxed);
         entry.idx.store(t+1, std::memory_order_release);
-        return (clock_t)t+1;
+        return (vc_clock_t)t+1;
     }
 
     //only allows exclusive access on each node 

@@ -42,9 +42,9 @@ class ThreadOps {
         curr_log->write(cl);
     }
 
-    clock_t write_to_log(bool is_release) {
+    vc_clock_t write_to_log(bool is_release) {
         using namespace cl_group;
-        clock_t clk_val = 0;
+        vc_clock_t clk_val = 0;
 #if DELAY_PUBLISH
         if (!curr_log)
             set_to_new_log(curr_log);
@@ -137,7 +137,7 @@ public:
 
                 auto clk = cache_info->get_clock(i);
                 while(clk < target[i]) {
-                    const PubEntry* entry;
+                    const LogManager::PubEntry* entry;
                     //entry might be null because of logs yet to be produced before the target log
                     while(!(entry = log_mgrs[i].take_head(node_id)));
                     Log *log = entry->log.load(std::memory_order_relaxed);
@@ -199,10 +199,10 @@ public:
 #endif
 
 #if !LOCAL_CL_TABLE
-        clock_t clk_val = log_mgrs[node_id].produce_tail(curr_log, true);
+        vc_clock_t clk_val = log_mgrs[node_id].produce_tail(curr_log, true);
         curr_log = nullptr;
 #else
-        clock_t clk_val = write_to_log(true);
+        vc_clock_t clk_val = write_to_log(true);
 #endif
         //increment
         thread_clock.assign(node_id, clk_val);

@@ -17,9 +17,9 @@ void CacheAgent::run() {
             if (!mtx.try_lock())
                 continue;
 #endif
-            clock_t clk = 0;
+            vc_clock_t clk = 0;
             for (unsigned j=0; j<LOG_MAX_BATCH; j++) {
-                const PubEntry* entry = log_mgrs[i].take_head(node_id);
+                const LogManager::PubEntry* entry = log_mgrs[i].take_head(node_id);
                 if (!entry) {
                     if (idle_rounds >= NODE_COUNT -1) {
                         cpu_pause();

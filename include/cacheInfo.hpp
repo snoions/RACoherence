@@ -12,7 +12,7 @@
 
 namespace RACoherence {
 
-using AtomicClock = std::atomic<VectorClock::clock_t>[NODE_COUNT];
+using AtomicClock = std::atomic<vc_clock_t>[NODE_COUNT];
 
 struct CacheInfo {
     using Mutex = LogManager::Mutex;
@@ -99,11 +99,11 @@ struct CacheInfo {
         }
     }
 
-    inline void update_clock(VectorClock::sized_t i, clock_t val) {
+    inline void update_clock(VectorClock::sized_t i, vc_clock_t val) {
         clock[i].store(val, std::memory_order_relaxed);
     }
 
-    inline void update_clock_monotonic(VectorClock::sized_t i, clock_t val)
+    inline void update_clock_monotonic(VectorClock::sized_t i, vc_clock_t val)
 {       auto old = clock[i].load(std::memory_order_relaxed);
         if (val <= old)
             return;
@@ -114,7 +114,7 @@ struct CacheInfo {
         }
     }
 
-    inline VectorClock::clock_t get_clock(VectorClock::sized_t i) {
+    inline vc_clock_t get_clock(VectorClock::sized_t i) {
         return clock[i].load(std::memory_order_relaxed);
     }
 
