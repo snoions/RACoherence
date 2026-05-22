@@ -103,6 +103,17 @@ struct CacheInfo {
         clock[i].store(val, std::memory_order_relaxed);
     }
 
+    inline void update_clock_monotonic(VectorClock::sized_t i, clock_t val)
+{       auto old = clock[i].load(std::memory_order_relaxed);
+        if (val <= old)
+            return;
+        while(!clock[i].compare_exchange_weak(old, val))
+        {
+            if (val <= old)
+                return;
+        }
+    }
+
     inline VectorClock::clock_t get_clock(VectorClock::sized_t i) {
         return clock[i].load(std::memory_order_relaxed);
     }

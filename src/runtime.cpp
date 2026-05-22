@@ -116,8 +116,9 @@ CXLBarrier *rac_get_root_barrier() {
 
 void rac_subscribe_to_node(unsigned target) {
     assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
-    meta->log_mgrs[target].add_subscriber(node_id);
+    unsigned tail = meta->log_mgrs[target].add_subscriber(node_id);
     wbinvd();
+    cache_info.update_clock_monotonic(target, tail);
 }
 
 void rac_unsubscribe_from_node(unsigned target) {

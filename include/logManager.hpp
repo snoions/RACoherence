@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "config.hpp"
+#include "cxlMalloc.hpp"
 #include "logger.hpp"
 #include "mcsLock.hpp"
 #include "spmcQueue.hpp"
@@ -74,6 +75,11 @@ struct alignas(CACHE_LINE_SIZE) PubEntry {
     bool is_rel = false;
 };
 
+struct alignas(CACHE_LINE_SIZE) SubStatus {
+    std::atomic<idx_t> head;
+    std::atomic<bool> is_subbed;
+};
+
 //TODO: tail, gc_mtx, freelist, next_round can be put into process-local memory
 class alignas(CACHE_LINE_SIZE) LogManager {
 public:
@@ -87,16 +93,11 @@ private:
     alignas(CACHE_LINE_SIZE)
     std::atomic<idx_t> tail{0};
 
-    // ensure atomic and mutex arrays are aligned to cache line boundaries
-    CacheAligned<std::atomic<idx_t>> heads[NODE_COUNT];
+    SubStatus subs[NODE_COUNT];
 
     alignas(CACHE_LINE_SIZE)
     Mutex gc_mtx;
 
-    // try aligning each bool to different cache line if contention is high
-    alignas(CACHE_LINE_SIZE)
-    std::atomic<bool> subscribers[NODE_COUNT];
-    
     spmc_bounded_queue<Log *, LOG_COUNT> freelist;
 
     unsigned node_id;
@@ -112,8 +113,8 @@ private:
             if (!is_subscribed(i))
                 continue;
             subscribed = true;
-            auto h = next_round(heads[i].load(std::memory_order_acquire));
-            if(h < new_b)
+            auto h = next_round(subs[i].head.load(std::memory_order_acquire));
+            if(h < new_b && h >= bound)
                 new_b = h;
         }
 
@@ -147,8 +148,6 @@ private:
 public:
 
     LogManager(unsigned nid): node_id(nid) {
-        for (unsigned i = 0; i < NODE_COUNT; i++)
-            subscribers[i].store(true);
         for (unsigned i = 0; i < LOG_COUNT; i++) {
             pub[i].log.store(&buf[i], std::memory_order_relaxed);
             auto ok = freelist.enqueue(&buf[i]);
@@ -156,23 +155,28 @@ public:
         }
     }
 
-    inline void add_subscriber(unsigned nid) {
-       // reset head to consume next log 
-       // need to hold to prevent gc from advancing 
-       // tail past current bound
-       gc_mtx.lock();
-       unsigned latest = tail.load(std::memory_order_relaxed);
-       heads[nid].store(latest, std::memory_order_relaxed);
-       subscribers[nid].store(true);
-       gc_mtx.unlock();
+    //TODO: fix clock_t type name confusion
+    inline unsigned add_subscriber(unsigned nid) {
+       assert(!is_subscribed(nid)); 
+       subs[nid].is_subbed.store(true, std::memory_order_release);
+       // update head to latest position of tail
+       idx_t t = tail.load(std::memory_order_acquire);
+       subs[nid].head.store(t, std::memory_order_relaxed);
+       // make sure tail does not wrap around the new head 
+       idx_t new_t;
+       while ((new_t = tail.load(std::memory_order_acquire)) > next_round(t)) {
+            t = new_t;
+            subs[nid].head.store(t, std::memory_order_release);
+       }
+       return t;
     }
 
     inline void remove_subscriber(unsigned nid) {
-        subscribers[nid].store(false, std::memory_order_release);
+        subs[nid].is_subbed.store(false, std::memory_order_release);
     }
 
     inline bool is_subscribed(unsigned nid) {
-        return subscribers[nid].load(std::memory_order_acquire);
+        return subs[nid].is_subbed.load(std::memory_order_acquire);
     }
 
     Log *get_new_log() {
@@ -207,13 +211,13 @@ public:
         entry.is_rel = r;
         entry.log.store(l, std::memory_order_relaxed);
         entry.idx.store(t+1, std::memory_order_release);
-        return t+1;
+        return (clock_t)t+1;
     }
 
     //only allows exclusive access on each node 
     const PubEntry *take_head(unsigned nid) {
         //return head, check if overlaps with tail
-        auto h = heads[nid].load(std::memory_order_relaxed);
+        auto h = subs[nid].head.load(std::memory_order_relaxed);
         const auto &entry = pub[get_idx(h)];
         if (entry.idx.load(std::memory_order_acquire) != h+1) {
             return NULL;
@@ -224,8 +228,8 @@ public:
     //only allows exclusive access on each node
     void consume_head(unsigned nid) {
         //move head
-        auto h = heads[nid].load(std::memory_order_relaxed);
-        heads[nid].store(h+1, std::memory_order_release);
+        auto h = subs[nid].head.load(std::memory_order_relaxed);
+        subs[nid].head.store(h+1, std::memory_order_release);
     }
 };
 

@@ -41,6 +41,7 @@ void* rac_get_user_root();
 
 CXLBarrier *rac_get_root_barrier();
 
+// no threads on the current node can access SWC memory when calling rac_subscribe_to_node
 void rac_subscribe_to_node(unsigned target);
 
 void rac_unsubscribe_from_node(unsigned target);
