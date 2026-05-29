@@ -37,7 +37,8 @@ char *cxl_hc_buf;
 size_t cxl_hc_range;
 CacheInfo cache_info;
 pthread_t cache_agent;
-GlobalMeta *meta;
+GlobalHCMeta *hc_meta;
+GlobalNHCMeta *nhc_meta;
 #if TIME_STATS
 std::atomic<uint64_t> thread_cycles; 
 std::atomic<uint64_t> invd_msg_stall_cycles;
@@ -51,8 +52,8 @@ void *rac_thread_func_wrapper(void *arg) {
     }
     cxl_alloc_thread_init();
     auto rac_arg = (RACThreadArg *)arg;
-    unsigned tid = meta->curr_tid.fetch_add(1);
-    thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, rac_arg->nid, tid);
+    unsigned tid = hc_meta->curr_tid.fetch_add(1);
+    thread_ops = new ThreadOps(&nhc_meta->log_mgrs[0], &cache_info, rac_arg->nid, tid);
 #if TIME_STATS
     uint64_t start = __rdtsc();
 #endif
@@ -107,28 +108,28 @@ unsigned rac_get_node_count() {
 }
 
 void *rac_get_user_root() {
-    return meta->user_root;
+    return hc_meta->user_root;
 }
 
 CXLBarrier *rac_get_root_barrier() {
-    return &meta->root_barrier;
+    return &hc_meta->root_barrier;
 }
 
 void rac_subscribe_to_node(unsigned target) {
     assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
-    unsigned tail = meta->log_mgrs[target].add_subscriber(node_id);
+    unsigned tail = nhc_meta->log_mgrs[target].add_subscriber(node_id);
     wbinvd();
     cache_info.update_clock_monotonic(target, tail);
 }
 
 void rac_unsubscribe_from_node(unsigned target) {
     assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
-    meta->log_mgrs[target].remove_subscriber(node_id);
+    nhc_meta->log_mgrs[target].remove_subscriber(node_id);
 }
 
 bool rac_is_subscribed_to_node(unsigned target) {
     assert(target <= 0 && target < NODE_COUNT && "invalid node_id");
-    return meta->log_mgrs[target].is_subscribed(node_id);
+    return nhc_meta->log_mgrs[target].is_subscribed(node_id);
 }
 
 struct CacheAgentArg {
@@ -142,7 +143,7 @@ void *run_cache_agent(void *arg) {
     pin_to_core(carg->cpu_id);
 #endif
     unsigned nid = carg->node_id;
-    CacheAgent(cache_info, &meta->log_mgrs[0], nid).run();
+    CacheAgent(cache_info, &nhc_meta->log_mgrs[0], nid).run();
     return arg;
 }
 
@@ -216,28 +217,33 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
         perror("numa_run_on_node");
         exit(EXIT_FAILURE);
     }
-    meta = (GlobalMeta*)cxl_hc_buf;
-    size_t cxl_hc_off = sizeof(GlobalMeta) + root_size;
+    hc_meta = (GlobalHCMeta*)cxl_hc_buf;
+    nhc_meta = (GlobalNHCMeta*)cxl_nhc_buf;
+    size_t cxl_hc_off = sizeof(GlobalHCMeta) + root_size;
+    size_t cxl_nhc_off = sizeof(GlobalNHCMeta);
     assert(cxl_hc_range > cxl_hc_off && "hardware coherent memory region too small");
+    assert(cxl_nhc_range > cxl_nhc_off && "software coherent memory region too small");
     if (node_id == 0) {
-        meta->user_root = cxl_hc_buf + sizeof(GlobalMeta);
+        hc_meta->user_root = cxl_hc_buf + sizeof(GlobalHCMeta);
 
-        cxl_alloc_process_init(&meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf, cxl_nhc_range, true);
+        cxl_alloc_process_init(&hc_meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf + cxl_nhc_off, cxl_nhc_range - cxl_nhc_off, true);
         cxl_alloc_thread_init();
 
-        new (&meta->log_mgrs[node_id]) LogManager(node_id);
-        meta->curr_tid.store(0);
+        hc_meta->curr_tid.store(0);
+        new (&nhc_meta->log_mgrs[node_id]) LogManager(node_id);
 
-        thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, node_id, meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
-        new (&meta->root_barrier) CXLBarrier(NODE_COUNT);
-        meta->started.store(true);
+        thread_ops = new ThreadOps(&nhc_meta->log_mgrs[0], &cache_info, node_id, hc_meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
+        new (&hc_meta->root_barrier) CXLBarrier(NODE_COUNT);
+        hc_meta->started.store(true);
     } else {
-        while (!meta->started.load()) {} 
+        while (!hc_meta->started.load()) {} 
 
-        cxl_alloc_process_init(&meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf, cxl_nhc_range, false);
+        cxl_alloc_process_init(&hc_meta->alloc_meta, cxl_hc_buf + cxl_hc_off, cxl_hc_range - cxl_hc_off, cxl_nhc_buf + cxl_nhc_off, cxl_nhc_range - cxl_nhc_off, false);
         cxl_alloc_thread_init();
-        new (&meta->log_mgrs[node_id]) LogManager(node_id);
-        thread_ops = new ThreadOps(&meta->log_mgrs[0], &cache_info, node_id, meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
+
+        new (&nhc_meta->log_mgrs[node_id]) LogManager(node_id);
+
+        thread_ops = new ThreadOps(&nhc_meta->log_mgrs[0], &cache_info, node_id, hc_meta->curr_tid.fetch_add(1, std::memory_order_relaxed));
     }
     instrument_lib();
 
@@ -271,9 +277,9 @@ void rac_shutdown() {
     LOG_STATS("invalidation message stall percentage: " << std::fixed << std::setprecision(2) << (double)invd_msg_stall_cycles/thread_cycles * 100);
 #endif
     delete thread_ops;
-    meta->log_mgrs[node_id].~LogManager();
+    nhc_meta->log_mgrs[node_id].~LogManager();
     if (node_id == 0) {
-        meta->root_barrier.~CXLBarrier();
+        hc_meta->root_barrier.~CXLBarrier();
         shm_unlink(SHM_PATH);
         // no need to unmap memory regions - they are released when all processes exit
     }

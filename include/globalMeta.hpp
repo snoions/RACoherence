@@ -8,13 +8,16 @@
 #include "logManager.hpp"
 
 namespace RACoherence {
-struct GlobalMeta {
+struct GlobalHCMeta {
     std::atomic<bool> started;
     std::atomic<unsigned> curr_tid;
-    LogManager log_mgrs[NODE_COUNT];
     void *user_root;
     CXLBarrier root_barrier;
     AllocMeta alloc_meta;
+};
+
+struct GlobalNHCMeta {
+    LogManager log_mgrs[NODE_COUNT];
 };
 
 }
