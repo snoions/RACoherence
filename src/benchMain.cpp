@@ -18,8 +18,9 @@ struct CXLRoot {
 CXLRoot *root;
 WORKLOAD_TYPE workload;
 
-void *run_microbench(void* /*arg*/) {
-    Microbench(*root->cxl_pool, workload).run();
+void *run_microbench(void* arg) {
+    unsigned ltid = *(unsigned*)arg;
+    Microbench(*root->cxl_pool, workload, ltid).run();
     return nullptr;
 }
 
@@ -40,9 +41,12 @@ int main() {
     rac_get_root_barrier()->wait();
 
     pthread_t microbench_group[WORKER_PER_NODE];
+    unsigned tid_arr[WORKER_PER_NODE];
+
     auto start = std::chrono::high_resolution_clock::now();
     for (unsigned i=0; i<WORKER_PER_NODE; i++) {
-       int ret = rac_thread_create(server_idx, &microbench_group[i], run_microbench, nullptr);
+       tid_arr[i] = i;
+       int ret = rac_thread_create(server_idx, &microbench_group[i], run_microbench, &tid_arr[i]);
        assert(!ret);
     }
 
