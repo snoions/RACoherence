@@ -72,8 +72,8 @@ public:
 
 private:
     struct alignas(CACHE_LINE_SIZE) SubStatus {
-        std::atomic<idx_t> head;
-        std::atomic<bool> is_subbed;
+        std::atomic<idx_t> head{0};
+        std::atomic<bool> is_subbed{true};
     };
 
     Log buf[LOG_COUNT];
