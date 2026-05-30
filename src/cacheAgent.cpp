@@ -28,15 +28,18 @@ void CacheAgent::run() {
                     break;
                 }
                 Log* log = entry->log.load(std::memory_order_relaxed);
+                log->invalidate_entries();
 
                 if (entry->is_rel)
                     clk = entry->idx.load(std::memory_order_relaxed);
                 idle_rounds = 0;
+                log_mgrs[i].consume_head(node_id);
+
+                invalidate_fence();
                 cache_info.process_log(*log);
 
                 STATS(cache_info.consumed_count[i]++)
                 LOG_DEBUG("node " << node_id << " consume log " << cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
-                log_mgrs[i].consume_head(node_id);
             }
             if (clk) {
                 // mutex unlock takes care of invalidate fence for CONSUME_HELPING

@@ -65,6 +65,8 @@ class ThreadOps {
             }
 #endif
             curr_log->write(entry);
+            if (curr_log->is_curr_entry_cl_aligned())
+                do_writeback((char *)curr_log->get_curr_entry() - CACHE_LINE_SIZE);
 #if !EAGER_WRITEBACK
             if (is_length_based(entry)) {
                 for (auto cl_addr: LengthCLRange(entry))
@@ -78,7 +80,7 @@ class ThreadOps {
 #endif
         }
 
-        // release store in LogManager::produce_tail acts as writeback fence
+        //fetch_add in LogManager::produce_tail acts as writeback fence
 #if DELAY_PUBLISH
         if (is_release) {
              clk_val = log_mgrs[node_id].produce_tail(curr_log, is_release);
@@ -141,10 +143,13 @@ public:
                     //entry might be null because of logs yet to be produced before the target log
                     while(!(entry = log_mgrs[i].take_head(node_id)));
                     Log *log = entry->log.load(std::memory_order_relaxed);
+                    log->invalidate_entries();
                     if (entry->is_rel)
                         clk = entry->idx.load(std::memory_order_relaxed);
-                    cache_info->process_log(*log);
                     log_mgrs[i].consume_head(node_id);
+                    invalidate_fence();
+                    cache_info->process_log(*log);
+
                     STATS(cache_info->consumed_count[i]++;)
                     LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
                 }

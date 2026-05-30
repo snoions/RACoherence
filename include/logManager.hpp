@@ -8,9 +8,11 @@
 #include <cstddef>
 #include <iostream>
 #include <thread>
+#include <xmmintrin.h>
 
 #include "config.hpp"
 #include "cxlMalloc.hpp"
+#include "flushUtils.hpp"
 #include "logger.hpp"
 #include "mcsLock.hpp"
 #include "spmcQueue.hpp"
@@ -33,17 +35,30 @@ struct alignas(CACHE_LINE_SIZE) Log {
     size_t size = 0;
 
 public:
-    inline size_t get_size() {
+    size_t get_size() {
         return size;
     }
 
-    inline bool is_full() {
+    bool is_full() {
         return size == LOG_SIZE;
     }
 
-    inline void write(uintptr_t cl_addr) {
+    const_iterator get_curr_entry() const {
+        return &entries[size];
+    }
+
+    bool is_curr_entry_cl_aligned() {
+        return ((uintptr_t) &entries[size] & CACHE_LINE_MASK) == 0;
+    }
+
+    void write(uintptr_t cl_addr) {
         assert(size < LOG_SIZE);
         entries[size++] = cl_addr;
+    }
+
+    void invalidate_entries() {
+        for (size_t i = 0; i < size; i+=CACHE_LINE_SIZE/sizeof(Entry))
+            do_invalidate((char*)&entries[i]);
     }
 
     const_iterator begin() const {
@@ -112,12 +127,24 @@ private:
         for (unsigned i = 0; i < NODE_COUNT; i++) {
             if (i == node_id)
                 continue;
+            do_invalidate((char *)&subs[i]);
+        }
+        invalidate_fence();
+
+        for (unsigned i = 0; i < NODE_COUNT; i++) {
+            if (i == node_id)
+                continue;
             if (!is_subscribed(i))
                 continue;
             subscribed = true;
             auto h = next_round(subs[i].head.load(std::memory_order_acquire));
-            if(h < new_b && h >= bound)
+            if(h < new_b) {
+                // possible if new subscriber has not updated its head
+                // retry in this case
+                if (h < bound)
+                    return;    
                 new_b = h;
+            }
         }
 
         assert(bound <= new_b);
@@ -159,16 +186,11 @@ public:
 
     inline unsigned add_subscriber(unsigned nid) {
        assert(!is_subscribed(nid)); 
-       subs[nid].is_subbed.store(true, std::memory_order_release);
-       // update head to latest position of tail
+       do_invalidate((char*)&tail); 
+       invalidate_fence();
        idx_t t = tail.load(std::memory_order_acquire);
-       subs[nid].head.store(t, std::memory_order_relaxed);
-       // make sure tail does not wrap around the new head 
-       idx_t new_t;
-       while ((new_t = tail.load(std::memory_order_acquire)) > next_round(t)) {
-            t = new_t;
-            subs[nid].head.store(t, std::memory_order_release);
-       }
+       subs[nid].is_subbed.store(true, std::memory_order_relaxed);
+       subs[nid].head.store(t, std::memory_order_release);
        return t;
     }
 
@@ -212,14 +234,19 @@ public:
         entry.is_rel = r;
         entry.log.store(l, std::memory_order_relaxed);
         entry.idx.store(t+1, std::memory_order_release);
+        do_writeback((char*)&entry); 
+        writeback_fence();
         return (vc_clock_t)t+1;
     }
 
+    //TODO: support batch take_head
     //only allows exclusive access on each node 
     const PubEntry *take_head(unsigned nid) {
         //return head, check if overlaps with tail
         auto h = subs[nid].head.load(std::memory_order_relaxed);
         const auto &entry = pub[get_idx(h)];
+        do_invalidate((char*)&entry);
+        invalidate_fence();
         if (entry.idx.load(std::memory_order_acquire) != h+1) {
             return NULL;
         }
