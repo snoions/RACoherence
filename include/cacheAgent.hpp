@@ -9,9 +9,9 @@
 namespace RACoherence {
 
 extern std::atomic<bool> complete;
-constexpr size_t LOG_MAX_BATCH = 100;
 
 class CacheAgent {
+    static constexpr size_t LOG_MAX_BATCH = LOG_COUNT;
     unsigned count = 0;
     unsigned node_id;
 

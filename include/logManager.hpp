@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <iostream>
 #include <thread>
-#include <xmmintrin.h>
 
 #include "config.hpp"
 #include "cxlMalloc.hpp"
@@ -79,7 +78,7 @@ public:
 
     using Mutex = MCSLock<>;
 
-    struct alignas(CACHE_LINE_SIZE) PubEntry {
+    struct PubEntry {
         std::atomic<Log *> log;
         std::atomic<idx_t> idx{0};
         bool is_rel = false;
@@ -93,6 +92,7 @@ private:
 
     Log buf[LOG_COUNT];
 
+    alignas(CACHE_LINE_SIZE)
     PubEntry pub[LOG_COUNT];
 
     alignas(CACHE_LINE_SIZE)
@@ -149,7 +149,7 @@ private:
 
         assert(bound <= new_b);
         if (!subscribed) {
-            // hack to avoid race condition with producers
+            // hack to avoid race condition with other producers
             // improve later
             for (idx_t i = bound; i != new_b; i++) {
                 const auto &entry = pub[get_idx(i)];
@@ -239,7 +239,6 @@ public:
         return (vc_clock_t)t+1;
     }
 
-    //TODO: support batch take_head
     //only allows exclusive access on each node 
     const PubEntry *take_head(unsigned nid) {
         //return head, check if overlaps with tail
@@ -253,11 +252,40 @@ public:
         return &entry;
     }
 
+
+    //only allows exclusive access on each node 
+    unsigned take_head_batch(unsigned nid, const PubEntry** entries, size_t size) {
+        static constexpr unsigned entry_per_cl = CACHE_LINE_SIZE/sizeof(PubEntry);
+        static constexpr unsigned entry_per_invd_batch = entry_per_cl << 2;
+        auto h = subs[nid].head.load(std::memory_order_relaxed);
+        for (unsigned i = 0; i < size; i++) {
+            if (i & entry_per_invd_batch-1 == 0) {
+                size_t invd_top = size < i+entry_per_invd_batch? size: i+entry_per_invd_batch;
+                for (unsigned j = i; j < invd_top; j+=entry_per_cl) 
+                    do_invalidate((char*)&pub[get_idx(h+j)]);
+                invalidate_fence();
+            }
+            const auto entry = &pub[get_idx(h+i)];
+            if (entry->idx.load(std::memory_order_acquire) != h+i+1) {
+                return i;
+            }
+            entries[i] = entry;
+        }
+        return size;
+    }
+
     //only allows exclusive access on each node
     void consume_head(unsigned nid) {
         //move head
         auto h = subs[nid].head.load(std::memory_order_relaxed);
         subs[nid].head.store(h+1, std::memory_order_release);
+    }
+
+    //only allows exclusive access on each node
+    void consume_head_batch(unsigned nid, size_t size) {
+        //move head
+        auto h = subs[nid].head.load(std::memory_order_relaxed);
+        subs[nid].head.store(h+size, std::memory_order_release);
     }
 };
 
