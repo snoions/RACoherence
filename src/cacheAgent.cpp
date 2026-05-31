@@ -19,15 +19,15 @@ void CacheAgent::run() {
                 continue;
 #endif
             vc_clock_t clk = 0;
-            size_t taken = log_mgrs[i].take_head_batch(node_id, entries, LOG_MAX_BATCH);
+            unsigned taken = log_mgrs[i].take_head_batch(node_id, entries, LOG_MAX_BATCH);
             if (!taken) {
-                 if (idle_rounds >= NODE_COUNT -1) {
+                 if (idle_rounds >= NODE_COUNT -1)
                      cpu_pause();
-                 } else
-                     idle_rounds ++;
-                 continue;
-            } 
-            idle_rounds = 0;
+                 idle_rounds++;
+            } else {
+                idle_rounds = 0;
+            }
+
             for (unsigned j=0; j<taken; j++) {
                 auto entry = entries[j];
                 Log* log = entry->log.load(std::memory_order_relaxed);
@@ -48,7 +48,8 @@ void CacheAgent::run() {
                 STATS(cache_info.consumed_count[i]++)
                 LOG_DEBUG("node " << node_id << " consume log " << cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
             }
-            log_mgrs[i].consume_head_batch(node_id, taken);
+            if (taken)
+                log_mgrs[i].consume_head_batch(node_id, taken);
             //for (unsigned j=0; j<LOG_MAX_BATCH; j++) {
             //    const LogManager::PubEntry* entry = log_mgrs[i].take_head(node_id);
             //    if (!entry) {

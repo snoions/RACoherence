@@ -110,11 +110,13 @@ public:
 #endif 
 
     inline void help_consume(const VectorClock &target) {
+        static constexpr unsigned LOG_MAX_BATCH = LOG_COUNT;
 #if TIME_STATS
         uint64_t start = __rdtsc();
 #endif
         bool done = false;
         bool node_done[NODE_COUNT] = {false};
+        const LogManager::PubEntry* entries[LOG_MAX_BATCH];
         while (!done) {
             done = true;
             for (unsigned i=NODE_COUNT; i-- > 0;) {
@@ -139,19 +141,41 @@ public:
 
                 auto clk = cache_info->get_clock(i);
                 while(clk < target[i]) {
-                    const LogManager::PubEntry* entry;
-                    //entry might be null because of logs yet to be produced before the target log
-                    while(!(entry = log_mgrs[i].take_head(node_id)));
-                    Log *log = entry->log.load(std::memory_order_relaxed);
-                    log->invalidate_entries();
-                    if (entry->is_rel)
-                        clk = entry->idx.load(std::memory_order_relaxed);
-                    log_mgrs[i].consume_head(node_id);
+                    unsigned taken = log_mgrs[i].take_head_batch(node_id, entries, LOG_MAX_BATCH);
+                    for (unsigned j=0; j<taken; j++) {
+                        auto entry = entries[j];
+                        Log* log = entry->log.load(std::memory_order_relaxed);
+                        log->invalidate_entries();
+                    }
                     invalidate_fence();
-                    cache_info->process_log(*log);
+                    for (unsigned j=0; j<taken; j++) {
+                        auto entry = entries[j];
+                        Log* log = entry->log.load(std::memory_order_relaxed);
 
-                    STATS(cache_info->consumed_count[i]++;)
-                    LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
+                        if (entry->is_rel)
+                            clk = entry->idx.load(std::memory_order_relaxed);
+
+                        cache_info->process_log(*log);
+
+                        STATS(cache_info.consumed_count[i]++)
+                        LOG_DEBUG("node " << node_id << " consume log " << cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
+                    }
+                    if (taken)
+                        log_mgrs[i].consume_head_batch(node_id, taken);
+
+                    //const LogManager::PubEntry* entry;
+                    ////entry might be null because of logs yet to be produced before the target log
+                    //while(!(entry = log_mgrs[i].take_head(node_id)));
+                    //Log *log = entry->log.load(std::memory_order_relaxed);
+                    //log->invalidate_entries();
+                    //if (entry->is_rel)
+                    //    clk = entry->idx.load(std::memory_order_relaxed);
+                    //log_mgrs[i].consume_head(node_id);
+                    //invalidate_fence();
+                    //cache_info->process_log(*log);
+
+                    //STATS(cache_info->consumed_count[i]++;)
+                    //LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
                 }
                 node_done[i] = true;
                 cache_info->update_clock(i, clk);

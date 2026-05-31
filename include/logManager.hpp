@@ -254,24 +254,25 @@ public:
 
 
     //only allows exclusive access on each node 
-    unsigned take_head_batch(unsigned nid, const PubEntry** entries, size_t size) {
+    unsigned take_head_batch(unsigned nid, const PubEntry** entries, unsigned size) {
         static constexpr unsigned entry_per_cl = CACHE_LINE_SIZE/sizeof(PubEntry);
         static constexpr unsigned entry_per_invd_batch = entry_per_cl << 2;
         auto h = subs[nid].head.load(std::memory_order_relaxed);
-        for (unsigned i = 0; i < size; i++) {
+        unsigned i = 0;
+        for (; i < size; i++) {
             if (i & entry_per_invd_batch-1 == 0) {
-                size_t invd_top = size < i+entry_per_invd_batch? size: i+entry_per_invd_batch;
+                unsigned invd_top = size < i+entry_per_invd_batch? size: i+entry_per_invd_batch;
                 for (unsigned j = i; j < invd_top; j+=entry_per_cl) 
                     do_invalidate((char*)&pub[get_idx(h+j)]);
                 invalidate_fence();
             }
             const auto entry = &pub[get_idx(h+i)];
             if (entry->idx.load(std::memory_order_acquire) != h+i+1) {
-                return i;
+                break;
             }
             entries[i] = entry;
         }
-        return size;
+        return i;
     }
 
     //only allows exclusive access on each node
@@ -282,7 +283,7 @@ public:
     }
 
     //only allows exclusive access on each node
-    void consume_head_batch(unsigned nid, size_t size) {
+    void consume_head_batch(unsigned nid, unsigned size) {
         //move head
         auto h = subs[nid].head.load(std::memory_order_relaxed);
         subs[nid].head.store(h+size, std::memory_order_release);
