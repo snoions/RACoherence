@@ -32,10 +32,9 @@ void CacheAgent::run() {
                 auto entry = entries[j];
                 Log* log = entry->log.load(std::memory_order_relaxed);
                 log->invalidate_entries();
-                invalidate_fence();
             }
+            invalidate_fence();
 
-                invalidate_fence();
             for (unsigned j=0; j<taken; j++) {
                 auto entry = entries[j];
                 Log* log = entry->log.load(std::memory_order_relaxed);
@@ -50,29 +49,6 @@ void CacheAgent::run() {
             }
             if (taken)
                 log_mgrs[i].consume_head_batch(node_id, taken);
-            //for (unsigned j=0; j<LOG_MAX_BATCH; j++) {
-            //    const LogManager::PubEntry* entry = log_mgrs[i].take_head(node_id);
-            //    if (!entry) {
-            //        if (idle_rounds >= NODE_COUNT -1) {
-            //            cpu_pause();
-            //        } else
-            //            idle_rounds ++;
-            //        break;
-            //    }
-            //    Log* log = entry->log.load(std::memory_order_relaxed);
-            //    log->invalidate_entries();
-
-            //    if (entry->is_rel)
-            //        clk = entry->idx.load(std::memory_order_relaxed);
-            //    idle_rounds = 0;
-            //    log_mgrs[i].consume_head(node_id);
-
-            //    invalidate_fence();
-            //    cache_info.process_log(*log);
-
-            //    STATS(cache_info.consumed_count[i]++)
-            //    LOG_DEBUG("node " << node_id << " consume log " << cache_info.consumed_count[i] << " from " << i << " clock=" << cache_info.get_clock(i))
-            //}
             if (clk) {
                 // mutex unlock takes care of invalidate fence for CONSUME_HELPING
 #if EAGER_INVALIDATE && ! (CONSUME_HELPING || CONSUME_HELPING_IN_LOCK)

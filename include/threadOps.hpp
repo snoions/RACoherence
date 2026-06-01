@@ -40,6 +40,8 @@ class ThreadOps {
             set_to_new_log(curr_log);
         }
         curr_log->write(cl);
+        if (curr_log->is_curr_entry_cl_aligned())
+            do_writeback((char *)curr_log->get_curr_entry() - CACHE_LINE_SIZE);
     }
 
     vc_clock_t write_to_log(bool is_release) {
@@ -162,20 +164,6 @@ public:
                     }
                     if (taken)
                         log_mgrs[i].consume_head_batch(node_id, taken);
-
-                    //const LogManager::PubEntry* entry;
-                    ////entry might be null because of logs yet to be produced before the target log
-                    //while(!(entry = log_mgrs[i].take_head(node_id)));
-                    //Log *log = entry->log.load(std::memory_order_relaxed);
-                    //log->invalidate_entries();
-                    //if (entry->is_rel)
-                    //    clk = entry->idx.load(std::memory_order_relaxed);
-                    //log_mgrs[i].consume_head(node_id);
-                    //invalidate_fence();
-                    //cache_info->process_log(*log);
-
-                    //STATS(cache_info->consumed_count[i]++;)
-                    //LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
                 }
                 node_done[i] = true;
                 cache_info->update_clock(i, clk);

@@ -240,6 +240,7 @@ public:
     }
 
     //only allows exclusive access on each node 
+    [[maybe_unused]]
     const PubEntry *take_head(unsigned nid) {
         //return head, check if overlaps with tail
         auto h = subs[nid].head.load(std::memory_order_relaxed);
@@ -261,8 +262,8 @@ public:
         unsigned i = 0;
         for (; i < size; i++) {
             if (i & entry_per_invd_batch-1 == 0) {
-                unsigned invd_top = size < i+entry_per_invd_batch? size: i+entry_per_invd_batch;
-                for (unsigned j = i; j < invd_top; j+=entry_per_cl) 
+                unsigned entry_max = size < i+entry_per_invd_batch? size: i+entry_per_invd_batch;
+                for (unsigned j = i; j < entry_max; j+=entry_per_cl)
                     do_invalidate((char*)&pub[get_idx(h+j)]);
                 invalidate_fence();
             }
@@ -276,6 +277,7 @@ public:
     }
 
     //only allows exclusive access on each node
+    [[maybe_unused]]
     void consume_head(unsigned nid) {
         //move head
         auto h = subs[nid].head.load(std::memory_order_relaxed);
