@@ -12,7 +12,7 @@ constexpr uintptr_t CXL_NHC_RANGE = 1ull << 34;
 constexpr uintptr_t CXL_HC_RANGE = 1ull << 26;
 constexpr uintptr_t CXL_SYNC_RANGE = 1ull << 4;
 constexpr size_t CXL_POOL_DATA_SIZE = CXL_NHC_RANGE >> 4;
-constexpr unsigned TOTAL_OPS = 1ull << 28; // Should be power of two
+constexpr unsigned TOTAL_OPS = 1ull << 25; // Should be power of two
 constexpr unsigned SEQ_OP_FACTOR = 3;
 // ratio of plain operations to acq/rel operations, needs to be power of two
 constexpr uintptr_t PLAIN_ACQ_RLS_RATIO = 1ull << 8;
@@ -104,8 +104,7 @@ extern __thread ThreadOps *thread_ops;
 class Microbench {
     CXLPool &cxl_pool;
     WORKLOAD_TYPE &workload;
-    unsigned node_id;
-    unsigned thread_id;
+    unsigned local_thread_id;
     unsigned locked_offset;
 
     // user stats
@@ -121,7 +120,7 @@ class Microbench {
     void use_locks(UserOp &op);
 
 public:
-    Microbench(CXLPool &pool, WORKLOAD_TYPE &wl): cxl_pool(pool), workload(wl), node_id(thread_ops->get_node_id()), thread_id(thread_ops->get_thread_id()), locked_offset(CXL_SYNC_RANGE){}
+    Microbench(CXLPool &pool, WORKLOAD_TYPE &wl, unsigned ltid): cxl_pool(pool), workload(wl), local_thread_id(ltid), locked_offset(CXL_SYNC_RANGE){}
 
     void run();
 };

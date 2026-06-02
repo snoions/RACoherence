@@ -1,3 +1,5 @@
+//#include <iostream>
+
 #include "microbench.hpp"
 #include "runtime.hpp"
 #include "logger.hpp"
@@ -17,8 +19,25 @@ inline void Microbench::use_locks(UserOp &op) {
     }
 }
 
+//TODO: refactor into multiple variants
 void Microbench::run() {
+    //int unsubbed = -1;
+    //int node_id = rac_get_node_id();
     for (int i =0; i < TOTAL_OPS; i++) {
+        //TODO: use barrier to make sure consume helping does not conflict with (un)subscribing
+        //if (local_thread_id == 0 && i % (TOTAL_OPS/10) == 0) {
+        //    if (unsubbed != -1) {
+        //        rac_subscribe_to_node(unsubbed);
+        //        std::cout << node_id << " subscribe to " << unsubbed << std::endl;
+        //    }
+        //    unsubbed = (unsubbed+1)%NODE_COUNT;
+        //    unsigned node_id = rac_get_node_id();
+        //    if (unsubbed == node_id)
+        //        unsubbed = (unsubbed+1)%NODE_COUNT;
+        //    rac_unsubscribe_from_node(unsubbed);
+        //    std::cout << node_id << " unsubscribe from " << unsubbed << std::endl;
+        //}
+
         UserOp op = workload.getNextOp(i);
 #ifdef WORKLOAD_USE_LOCKS
         use_locks(op);
