@@ -10,6 +10,14 @@
 #include "utils.hpp"
 #include "vectorClock.hpp"
 
+#ifdef LOCATION_CLOCK_MERGE
+#define LOCATION_CLOCK_UPDATE(to, from) \
+    to.merge(from)
+#else
+#define LOCATION_CLOCK_UPDATE(to, from) \
+    to = from
+#endif
+
 namespace RACoherence {
 
 using Mutex = MCSLock<CXLHCAllocator>;
@@ -85,11 +93,7 @@ public:
             thread_ops->thread_release();
             const VectorClock &thread_clock = thread_ops->get_clock();
             inner->mtx.lock();
-#ifdef LOCATION_CLOCK_MERGE
-            inner->clock.merge(thread_clock);
-#else
-            inner->clock = thread_clock;
-#endif
+            LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
             inner->atomic_data.store(desired, order);
             inner->mtx.unlock();
 #endif
@@ -125,7 +129,7 @@ public:
                 thread_ops->thread_release();
                 inner->mtx.lock();
                 ret = inner->atomic_data.fetch_add(arg, order);
-                 inner->clock.merge(thread_ops->get_clock());
+                inner->clock.merge(thread_ops->get_clock());
                 const VectorClock clock = inner->clock;
                 inner->mtx.unlock();
                 thread_ops->thread_acquire(clock);
@@ -241,11 +245,8 @@ public:
 #else
         thread_ops->thread_release(); 
         const auto &thread_clock = thread_ops->get_clock();
-#ifdef LOCATION_CLOCK_MERGE
-        inner->clock.merge(thread_clock);
-#else
-        inner->clock = thread_clock;
-#endif
+
+        LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
 #endif
         inner->mtx.unlock();
     }
@@ -310,11 +311,8 @@ public:
 #else
         thread_ops->thread_release();
         const auto &thread_clock = thread_ops->get_clock();
-#ifdef LOCATION_CLOCK_MERGE
-        inner->clock.merge(thread_clock);
-#else
-        inner->clock = thread_clock;
-#endif
+
+        LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
 #endif
         inner->mtx.unlock();
     }
@@ -325,11 +323,7 @@ public:
 #else
         thread_ops->thread_release();
         const auto &thread_clock = thread_ops->get_clock();
-#ifdef LOCATION_CLOCK_MERGE
-        inner->clock.merge(thread_clock);
-#else
-        inner->clock = thread_clock;
-#endif
+        LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
 #endif
         inner->mtx.unlock_shared();
     }
@@ -367,71 +361,6 @@ public:
         }
     }
 };
-
-// inlined version of CXLBarrier, slower than non-inlined version 
-//class CXLBarrier {
-//    struct InnerData {
-//        std::atomic<int> target;
-//        std::atomic<int> arrived;
-//        std::atomic<int> phase;
-//        VectorClock clock;
-//        SharedMutex mtx;
-//    };
-//    InnerData *inner;
-//
-//public:
-//    CXLBarrier(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
-//    CXLBarrier(int count): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {
-//        init(count);
-//    }
-//
-//    inline void init(int count) {
-//        inner->target.store(count, std::memory_order_relaxed);
-//        inner->arrived.store(0, std::memory_order_release);
-//        inner->phase.store(0, std::memory_order_release);
-//    }
-//
-//    inline void wait() {
-//        int local_phase = inner->phase.load(std::memory_order_acquire);
-//        int local_arrived = inner->arrived.fetch_add(1, std::memory_order_acq_rel) + 1;
-//
-//#if PROTOCOL_OFF
-//        writeback_fence();
-//#else
-//        const auto &thread_clock = thread_ops->get_clock();
-//        inner->mtx.lock();
-//#ifdef LOCATION_CLOCK_MERGE
-//        inner->clock.merge(thread_clock);
-//#else
-//        inner->clock = thread_clock;
-//#endif
-//        inner->mtx.unlock();
-//#endif
-//
-//        if (local_arrived == inner->target.load(std::memory_order_relaxed)) {
-//            inner->arrived.store(0, std::memory_order_relaxed);
-//            inner->phase.fetch_add(1, std::memory_order_acq_rel);
-//        } else {
-//            while (inner->phase.load(std::memory_order_acquire) == local_phase) {
-//#if PROTOCOL_OFF
-//                  std::this_thread::yield();
-//#else
-//                  inner->mtx.lock_shared();
-//                  VectorClock clock = inner->clock;
-//                  inner->mtx.unlock_shared();
-//                  thread_ops->thread_acquire(clock);
-//#endif
-//            }
-//        }
-//
-//#if !PROTOCOL_OFF
-//        inner->mtx.lock_shared();
-//        VectorClock clock = inner->clock;
-//        inner->mtx.unlock_shared();
-//        thread_ops->thread_acquire(clock);
-//#endif
-//    }
-//};
 
 } // RACoherence
 

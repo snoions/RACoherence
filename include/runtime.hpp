@@ -109,63 +109,54 @@ inline void rac_load_pre_invalidate(void *begin, void *end) {
 
 using namespace RACoherence;
 
-//TODO: handle rare unaligned accesses for sizes larger than 8
 #if PROTOCOL_OFF
-#define RACLOAD(size) \
-    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        if (in_cxl_nhc_mem(addr)) { \
-            do_invalidate((char *)addr); \
-            invalidate_fence(); \
-        } \
-        return *((uint ## size ## _t*)addr); \
-    }
-#elif EAGER_INVALIDATE
-#define RACLOAD(size) \
-    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        return *((uint ## size ## _t*)addr); \
-    }
+
+#define DO_INVALIDATE(x) do_invalidate(x)
+#define INVALIDATE_FENCE() invalidate_fence()
+#define DO_WRITEBACK(x) do_writeback(x)
+#define CHECK_INVALIDATE(x) do {} while(0)
+#define LOG_STORE(x) do {} while(0)
+
 #else
-#define RACLOAD(size) \
-    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
-        if (in_cxl_nhc_mem(addr)) { \
-            check_invalidate((char *)addr); \
-        } \
-        return *((uint ## size ## _t*)addr); \
-    }
+
+#define DO_INVALIDATE(x) do {} while(0)
+#define INVALIDATE_FENCE() do {} while(0)
+#define DO_WRITEBACK(x) do {} while(0)
+
+#if EAGER_INVALIDATE
+#define CHECK_INVALIDATE(x) do {} while(0)
+#else
+#define CHECK_INVALIDATE(x) check_invalidate(x)
 #endif
 
-#if PROTOCOL_OFF
+#define LOG_STORE(x) thread_ops->log_store(x)
+
+#endif
+
+// extern "C" APIs to be inserted by compiler instrumentation. Do not use directly.
+#define RACLOAD(size) \
+    inline __attribute__((used)) uint ## size ## _t rac_load ## size(void * addr, const char * /*position*/) { \
+        if (in_cxl_nhc_mem(addr)) { \
+            DO_INVALIDATE((char *)addr); \
+            INVALIDATE_FENCE(); \
+            CHECK_INVALIDATE((char *)addr); \
+        } \
+        return *((uint ## size ## _t*)addr); \
+    }
+
 #define RACSTORE(size) \
     inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
         bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
         if (in_cxl_nhc) { \
-            do_invalidate((char *)addr); \
-            invalidate_fence(); \
+            DO_INVALIDATE((char *)addr); \
+            INVALIDATE_FENCE(); \
+            CHECK_INVALIDATE((char *)addr); \
+            LOG_STORE((char *)addr); \
         } \
         *((uint ## size ## _t*)addr) = val; \
         if (in_cxl_nhc) \
-            do_writeback((char *)addr); \
+            DO_WRITEBACK((char *)addr); \
     }
-#elif EAGER_INVALIDATE
-#define RACSTORE(size) \
-    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-        if (in_cxl_nhc) { \
-            thread_ops->log_store((char *)addr); \
-        } \
-        *((uint ## size ## _t*)addr) = val; \
-    }
-#else 
-#define RACSTORE(size) \
-    inline __attribute__((used)) void rac_store ## size(void * addr, uint ## size ## _t val, const char * /*position*/) {  \
-        bool in_cxl_nhc = in_cxl_nhc_mem(addr); \
-        if (in_cxl_nhc) { \
-            check_invalidate((char *)addr); \
-            thread_ops->log_store((char *)addr); \
-        } \
-        *((uint ## size ## _t*)addr) = val; \
-    }
-#endif
 
 RACSTORE(8)
 RACSTORE(16)
