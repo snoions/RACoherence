@@ -209,6 +209,14 @@ void *cxlhc_malloc(size_t size) {
 #endif
 }
 
+void *cxlhc_cl_aligned_malloc(size_t size) {
+#ifdef USE_GLOBAL_MIMALLOC
+    return mi_heap_malloc_aligned(hc_heap, size, CACHE_LINE_SIZE);
+#else
+    return je_mallocx(size,  MALLOCX_ARENA(hc_arena_index) | MALLOCX_ALIGN(CACHE_LINE_SIZE) | MALLOCX_TCACHE_NONE);
+#endif
+}
+
 void cxlhc_free(void *ptr, size_t size) {
 #ifdef USE_GLOBAL_MIMALLOC
     mi_free(ptr);

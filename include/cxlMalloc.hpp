@@ -15,6 +15,8 @@ void cxlnhc_free(void *ptr, size_t size);
 
 void *cxlhc_malloc(size_t size);
 
+void *cxlhc_cl_aligned_malloc(size_t size);
+
 void cxlhc_free(void *ptr, size_t size);
 
 #if __cplusplus

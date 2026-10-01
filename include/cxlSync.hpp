@@ -6,6 +6,7 @@
 #include "cxlMalloc.hpp"
 #include "flushUtils.hpp"
 #include "mcsLock.hpp"
+#include "seqlock.hpp"
 #include "threadOps.hpp"
 #include "utils.hpp"
 #include "vectorClock.hpp"
@@ -173,7 +174,7 @@ private:
     T *data;
 
 public:
-    CXLRelaxedMutex(T *d): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()), data(d) {}
+    CXLRelaxedMutex(T *d): inner(new(cxlhc_cl_aligned_malloc(sizeof(InnerData))) InnerData()), data(d) {}
     CXLRelaxedMutex(InnerData *ptr, T *d): inner(new(ptr) InnerData()), data(d) {}
 
     ~CXLRelaxedMutex() {
@@ -217,7 +218,7 @@ private:
     InnerData *inner;
 
 public:
-    CXLMutex(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLMutex(): inner(new(cxlhc_cl_aligned_malloc(sizeof(InnerData))) InnerData()) {}
     CXLMutex(InnerData *ptr): inner(new(ptr) InnerData()) {}
 
     ~CXLMutex() {
@@ -266,7 +267,7 @@ private:
     InnerData *inner;
 
 public:
-    CXLSharedMutex(): inner(new(cxlhc_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLSharedMutex(): inner(new(cxlhc_cl_aligned_malloc(sizeof(InnerData))) InnerData()) {}
     CXLSharedMutex(void* ptr): inner(new(ptr) InnerData()) {}
 
     ~CXLSharedMutex() {
@@ -311,7 +312,6 @@ public:
 #else
         thread_ops->thread_release();
         const auto &thread_clock = thread_ops->get_clock();
-
         LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
 #endif
         inner->mtx.unlock();
@@ -326,6 +326,58 @@ public:
         LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
 #endif
         inner->mtx.unlock_shared();
+    }
+
+    inline void unlock_shared_relaxed() {
+        inner->mtx.unlock_shared();
+    }
+};
+
+class CXLSeqLock {
+public:
+    struct InnerData{
+        SeqLock lock;
+        VectorClock clock;
+    };
+private:
+    InnerData *inner;
+
+public:
+    CXLSeqLock(): inner(new(cxlhc_cl_aligned_malloc(sizeof(InnerData))) InnerData()) {}
+    CXLSeqLock(void* ptr): inner(new(ptr) InnerData()) {}
+
+    ~CXLSeqLock() {
+        inner->~InnerData();
+        cxlhc_free(inner, sizeof(InnerData));
+    }
+
+    void write_lock() {
+        inner->lock.write_lock();
+#if !PROTOCOL_OFF
+        thread_ops->thread_acquire(inner->clock);
+#endif
+    }
+
+    void write_unlock() {
+#if PROTOCOL_OFF
+        writeback_fence();
+#else
+        thread_ops->thread_release(); 
+        const auto &thread_clock = thread_ops->get_clock();
+
+        LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
+#endif
+        inner->lock.write_unlock();
+    }
+ 
+    uint32_t read_begin() const {
+        auto ret = inner->lock.read_begin();
+        thread_ops->thread_acquire(inner->clock);
+        return ret;
+    }
+ 
+    bool read_retry(uint32_t start) const {
+        return inner->lock.read_retry(start);
     }
 };
 
