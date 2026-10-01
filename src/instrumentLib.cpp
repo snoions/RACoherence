@@ -60,19 +60,15 @@ void * memcpy(void * dst, const void * src, size_t n) {
     bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc_src)
-        do_range_invalidate((char *)src, n);
-    if (is_in_cxl_nhc_dst)
-        invalidate_boundaries(dst_begin, dst_end); 
-#elif !EAGER_INVALIDATE
     char *src_begin = (char *)src;
     char *src_end = src_begin + n;
-    if (is_in_cxl_nhc_src)
-        check_range_invalidate(src_begin, src_end);
+    if (is_in_cxl_nhc_src) {
+        DO_RANGE_INVALIDATE((char *)src, n);
+        CHECK_RANGE_INVALIDATE(src_begin, src_end);
+    }
     if (is_in_cxl_nhc_dst)
         invalidate_boundaries(dst_begin, dst_end); 
-#endif
+
     if (((uintptr_t)memcpy_real) < 2) {
         for(unsigned i=0;i<n;i++) {
             ((volatile char *)dst)[i] = ((char *)src)[i];
@@ -80,15 +76,10 @@ void * memcpy(void * dst, const void * src, size_t n) {
         ret = dst;
     } else
         ret = memcpy_real(dst, src, n);
+
     if (is_in_cxl_nhc_dst) {
-#if PROTOCOL_OFF
-        do_range_writeback((char *)dst, n);
-#elif EAGER_WRITE_BACK
-        do_range_writeback((char *)dst, n);
-        thread_ops->log_range_store(dst_begin, dst_end);
-#else
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
+        DO_RANGE_WRITEBACK((char *)dst, n);
+        LOG_RANGE_STORE(dst_begin, dst_end);
     }
     return ret;
 }
@@ -99,19 +90,15 @@ void * memmove(void *dst, const void *src, size_t n) {
     bool is_in_cxl_nhc_dst = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
-    if (is_in_cxl_nhc_src)
-        do_range_invalidate((char *)src, n);
-    if (is_in_cxl_nhc_dst)
-        invalidate_boundaries(dst_begin, dst_end); 
-#elif !EAGER_INVALIDATE
     char *src_begin = (char *)src;
     char *src_end = src_begin + n;
-    if (is_in_cxl_nhc_src)
-        check_range_invalidate(src_begin, src_end);
+    if (is_in_cxl_nhc_src) {
+        DO_RANGE_INVALIDATE((char *)src, n);
+        CHECK_RANGE_INVALIDATE(src_begin, src_end);
+    }
     if (is_in_cxl_nhc_dst)
         invalidate_boundaries(dst_begin, dst_end); 
-#endif
+
     if (((uintptr_t)memmove_real) < 2) {
         if (((uintptr_t)dst) < ((uintptr_t)src))
             for(unsigned i=0;i<n;i++) {
@@ -125,15 +112,10 @@ void * memmove(void *dst, const void *src, size_t n) {
         ret = dst;
     } else
         ret = memmove_real(dst, src, n);
+
     if (is_in_cxl_nhc_dst) {
-#if PROTOCOL_OFF
-        do_range_writeback((char *)dst, n);
-#elif EAGER_WRITE_BACK
-        do_range_writeback((char *)dst, n);
-        thread_ops->log_range_store(dst_begin, dst_end);
-#else
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
+        DO_RANGE_WRITEBACK((char *)dst, n);
+        LOG_RANGE_STORE(dst_begin, dst_end);
     }
     return ret;
 }
@@ -143,13 +125,9 @@ void * memset(void *dst, int c, size_t n) {
     bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
     if (is_in_cxl_nhc)
         invalidate_boundaries(dst_begin, dst_end);
-#elif !EAGER_INVALIDAE
-    if(is_in_cxl_nhc)
-        invalidate_boundaries(dst_begin, dst_end);
-#endif
+
     if (((uintptr_t)memset_real) < 2) {
         for(unsigned i=0;i<n;i++) {
             ((volatile char *)dst)[i] = (char) c;
@@ -158,14 +136,8 @@ void * memset(void *dst, int c, size_t n) {
     } else
         ret = memset_real(dst, c, n);
     if (is_in_cxl_nhc) {
-#if PROTOCOL_OFF
-        do_range_writeback((char *)dst, n);
-#elif EAGER_WRITE_BACK
-        do_range_writeback((char *)dst, n);
-        thread_ops->log_range_store(dst_begin, dst_end);
-#else
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
+        DO_RANGE_WRITEBACK((char *)dst, n);
+        LOG_RANGE_STORE(dst_begin, dst_end);
     }
     return ret;
 }
@@ -175,28 +147,19 @@ void bzero(void *dst, size_t n) {
     bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)dst);
     char *dst_begin = (char *)dst;
     char *dst_end = dst_begin + n;
-#if PROTOCOL_OFF
     if (is_in_cxl_nhc)
         invalidate_boundaries(dst_begin, dst_end);
-#elif !EAGER_INVALIDATE
-    if(is_in_cxl_nhc)
-        invalidate_boundaries(dst_begin, dst_end);
-#endif
+
     if (((uintptr_t)bzero_real) < 2) {
         for(size_t s=0;s<n;s++) {
             ((volatile char *)dst)[s] = 0;
         }
     } else
         bzero_real(dst, n);
+
     if (is_in_cxl_nhc) {
-#if PROTOCOL_OFF
-        do_range_writeback((char *)dst, n);
-#elif EAGER_WRITE_BACK
-        do_range_writeback((char *)dst, n);
-        thread_ops->log_range_store(dst_begin, dst_end);
-#else
-        thread_ops->log_range_store(dst_begin, dst_end);
-#endif
+        DO_RANGE_WRITEBACK((char *)dst, n);
+        LOG_RANGE_STORE(dst_begin, dst_end);
     }
 }
 
@@ -213,13 +176,10 @@ char * strcpy(char *dst, const char *src) {
 #endif
     if (((uintptr_t)strcpy_real) < 2 || need_invalidate) {
         while (true) {
-#if PROTOCOL_OFF
-            if (is_in_cxl_nhc_src)
-                do_invalidate((char *)&src[n]);
-#elif !EAGER_INVALIDATE
-            if (is_in_cxl_nhc_src)
-                check_invalidate((char *)&src[n]);
-#endif
+            if (is_in_cxl_nhc_src) {
+                DO_INVALIDATE((char *)&src[n]);
+                CHECK_INVALIDATE((char *)&src[n]);
+            }
             bool end = false;
             for(;((uintptr_t)&src[n] & CACHE_LINE_MASK); n++) {
                 if (src[n] == '\0') {
@@ -231,13 +191,9 @@ char * strcpy(char *dst, const char *src) {
             if (end)
                 break;
         }
-#if PROTOCOL_OFF
+
         if (is_in_cxl_nhc_dst)
             invalidate_boundaries(dst, (char *)&dst[n]);
-#elif !EAGER_INVALIDATE
-        if (is_in_cxl_nhc_dst)
-            invalidate_boundaries(dst, (char *)&dst[n]);
-#endif
         for (int i; i < n; i++)
             ((volatile char *)dst)[i] = ((char *)src)[i];
         ret = dst;
@@ -245,15 +201,10 @@ char * strcpy(char *dst, const char *src) {
         ret = strcpy_real(dst, src);
         while (src[n]!= '\0') n++;
     }
+
     if (is_in_cxl_nhc_dst) {
-#if PROTOCOL_OFF
-        do_range_writeback((char *)dst, n);
-#elif EAGER_WRITE_BACK
-        do_range_writeback((char *)dst, n);
-        thread_ops->log_range_store(dst, (char *)dst+n);
-#else
-        thread_ops->log_range_store(dst, (char *)dst+n);
-#endif
+        DO_RANGE_WRITEBACK((char *)dst, n);
+        LOG_RANGE_STORE((char *)dst, (char*)&dst[n]);
     }
     return ret;
 }
@@ -263,27 +214,18 @@ ssize_t read(int fd, void* buf, size_t count) {
     bool is_in_cxl_nhc = in_cxl_nhc_mem((char *)buf);
     char *buf_begin = (char *)buf;
     char *buf_end = buf_begin + count;
-#if PROTOCOL_OFF
     if (is_in_cxl_nhc)
         invalidate_boundaries(buf_begin, buf_end);
-#elif !EAGER_INVALIDATE
-    if(is_in_cxl_nhc)
-        invalidate_boundaries(buf_begin, buf_end);
-#endif
+
     if (((uintptr_t)read_real) < 2) {
         LOG_ERROR("unable to find read() with dlsym") 
         exit(EXIT_FAILURE); 
     } else
         ret = read_real(fd, buf, count);
+
     if (is_in_cxl_nhc) {
-#if PROTOCOL_OFF
-        do_range_writeback((char *)buf, count);
-#elif EAGER_WRITE_BACK
-        do_range_writeback((char *)buf, count);
-        thread_ops->log_range_store(buf_begin, buf_end);
-#else
-        thread_ops->log_range_store(buf_begin, buf_end);
-#endif
+        DO_RANGE_WRITEBACK((char *)buf, count);
+        LOG_RANGE_STORE(buf_begin, buf_end);
     }
     return ret;
 }

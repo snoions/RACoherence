@@ -24,6 +24,45 @@ void rac_store64(void * addr, uint64_t val, const char *);
 }
 #endif
 
+#if PROTOCOL_OFF
+
+#define INVALIDATE_FENCE() invalidate_fence()
+#define DO_INVALIDATE(x) do_invalidate(x)
+#define DO_RANGE_INVALIDATE(x, y) do_range_invalidate(x, y)
+#define DO_WRITEBACK(x) do_writeback(x)
+#define DO_RANGE_WRITEBACK(x, y) do_range_writeback(x, y)
+#define CHECK_INVALIDATE(x) do {} while(0)
+#define CHECK_RANGE_INVALIDATE(x, y) do {} while(0)
+#define LOG_STORE(x) do {} while(0)
+#define LOG_RANGE_STORE(x, y) do {} while(0)
+
+#else
+
+#define INVALIDATE_FENCE() do {} while(0)
+#define DO_INVALIDATE(x) do {} while(0)
+#define DO_RANGE_INVALIDATE(x, y) do {} while(0)
+#define DO_WRITEBACK(x) do {} while(0)
+
+#if EAGER_WRITEBACK
+// eager writeback's implicit mechanisms cannot handle ranges - need to call range_writeback explitictly
+#define DO_RANGE_WRITEBACK(x, y) do_range_writeback(x, y)
+#else
+#define DO_RANGE_WRITEBACK(x, y) do {} while(0)
+#endif
+
+#if EAGER_INVALIDATE
+#define CHECK_INVALIDATE(x) do {} while(0)
+#define CHECK_RANGE_INVALIDATE(x, y) do {} while(0)
+#else
+#define CHECK_INVALIDATE(x) check_invalidate(x)
+#define CHECK_RANGE_INVALIDATE(x, y) check_range_invalidate(x, y)
+#endif
+
+#define LOG_STORE(x) thread_ops->log_store(x)
+#define LOG_RANGE_STORE(x, y) thread_ops->log_range_store(x, y)
+
+#endif
+
 namespace RACoherence {
 
 extern char *cxl_nhc_buf;
@@ -58,80 +97,42 @@ inline bool in_cxl_nhc_mem(void *addr) {
 }
 
 inline void rac_post_writeback(void *begin, void *end) {
-#if PROTOCOL_OFF || EAGER_WRITEBACK
-    if (in_cxl_nhc_mem((char*)begin))
-        do_range_writeback((char *)begin, (char *)end - (char *)begin);
-#endif
-#if !PROTOCOL_OFF
-    if (in_cxl_nhc_mem((char*)begin))
-        thread_ops->log_range_store((char *)begin, (char *)end);
-#endif
+    if (in_cxl_nhc_mem((char*)begin)) {
+        DO_RANGE_WRITEBACK((char *)begin, (char *)end - (char *)begin);
+        LOG_RANGE_STORE((char *)begin, (char *)end);
+    }
 }
 
 //invalidate part of dst that partially covers cache lines
 inline void invalidate_boundaries(char *begin, char *end) {
     uintptr_t bptr = (uintptr_t) begin;
     uintptr_t eptr = (uintptr_t) end;
-    if (bptr & CACHE_LINE_MASK)
-#if PROTOCOL_OFF
-        do_invalidate(begin);
-#else
-        check_invalidate(begin);
-#endif
+    if (bptr & CACHE_LINE_MASK) {
+        DO_INVALIDATE(begin);
+        CHECK_INVALIDATE(begin);
+    }
     if (eptr & CACHE_LINE_MASK &&
-        (bptr & CACHE_LINE_MASK) != (eptr & CACHE_LINE_MASK))
-#if PROTOCOL_OFF
-        do_invalidate(end);
-#else
-        check_invalidate(begin);
-#endif
+        (bptr & CACHE_LINE_MASK) != (eptr & CACHE_LINE_MASK)) {
+        DO_INVALIDATE(end);
+        CHECK_INVALIDATE(begin);
+    }
 }
 
 inline void rac_store_pre_invalidate(void *begin, void *end) {
-#if PROTOCOL_OFF || !EAGER_INVALIDATE
     if (in_cxl_nhc_mem((char*)begin))
         invalidate_boundaries((char*)begin, (char*)end);
-#endif
 }
 
 inline void rac_load_pre_invalidate(void *begin, void *end) {
-#if PROTOCOL_OFF
-    if (in_cxl_nhc_mem((char*)begin))
-        do_range_invalidate((char*)begin, (char*)end-(char*)begin);
-#endif
-#if !EAGER_INVALIDATE
-    if (in_cxl_nhc_mem((char*)begin))
-        check_range_invalidate((char*)begin, (char*)end);
-#endif
+    if (in_cxl_nhc_mem((char*)begin)) {
+        DO_RANGE_INVALIDATE((char*)begin, (char*)end-(char*)begin);
+        CHECK_RANGE_INVALIDATE((char*)begin, (char*)end);
+    }
 }
 
 } // RACoherence
 
 using namespace RACoherence;
-
-#if PROTOCOL_OFF
-
-#define DO_INVALIDATE(x) do_invalidate(x)
-#define INVALIDATE_FENCE() invalidate_fence()
-#define DO_WRITEBACK(x) do_writeback(x)
-#define CHECK_INVALIDATE(x) do {} while(0)
-#define LOG_STORE(x) do {} while(0)
-
-#else
-
-#define DO_INVALIDATE(x) do {} while(0)
-#define INVALIDATE_FENCE() do {} while(0)
-#define DO_WRITEBACK(x) do {} while(0)
-
-#if EAGER_INVALIDATE
-#define CHECK_INVALIDATE(x) do {} while(0)
-#else
-#define CHECK_INVALIDATE(x) check_invalidate(x)
-#endif
-
-#define LOG_STORE(x) thread_ops->log_store(x)
-
-#endif
 
 // extern "C" APIs to be inserted by compiler instrumentation. Do not use directly.
 #define RACLOAD(size) \
