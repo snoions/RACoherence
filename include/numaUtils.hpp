@@ -25,17 +25,36 @@ static int pin_to_core(int core_id) {
     return 0;
 }
 
-static int find_cpu_on_numa(unsigned &cpu_id, int target_numa_id) {
-    if (target_numa_id == -1)
-        return 0;
-    for (int numa_id = -1; numa_id != target_numa_id; cpu_id++) {
-        numa_id = numa_node_of_cpu(cpu_id);
-        if (numa_id == -1){
-            LOG_ERROR("Failed to find NUMA node of cpu" << cpu_id << strerror(errno))
-            return -1;
+static int find_nth_core_on_numa(int numa_id, int n) {
+    if (numa_available() < 0) {
+        LOG_ERROR("NUMA is not available on this system.")
+        return -1;
+    }
+
+    // Get the bitmask of CPUs for the specified NUMA node
+    struct bitmask* cpu_mask = numa_allocate_cpumask();
+    if (numa_node_to_cpus(numa_id, cpu_mask) < 0) {
+        LOG_ERROR("Failed to get CPUs for NUMA node " << numa_id)
+        numa_free_cpumask(cpu_mask);
+        return -1;
+    }
+
+    int current_count = 0;
+    int target_cpu = -1;
+
+    // Iterate through all possible CPU IDs in the bitmask size
+    for (unsigned int i = 0; i <= cpu_mask->size; ++i) {
+        if (numa_bitmask_isbitset(cpu_mask, i)) {
+            if (current_count == n) {
+                target_cpu = i;
+                break;
+            }
+            current_count++;
         }
     }
-    return 0;
+
+    numa_free_cpumask(cpu_mask);
+    return target_cpu; // Returns -1 if N exceeds available cores on this node
 }
 
 } // RACoherence

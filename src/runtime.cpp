@@ -242,14 +242,13 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
     instrument_lib();
 
 #if !PROTOCOL_OFF
-    unsigned cpu_id = node_id;
-    int ret;
+    unsigned cpu_id = 0;
 #ifdef CACHE_AGENT_AFFINITY
-    ret = find_cpu_on_numa(cpu_id, LOCAL_NUMA_NODE_ID);
-    assert(!ret);
+    cpu_id = find_nth_core_on_numa(LOCAL_NUMA_NODE_ID, node_id);
+    assert(cpu_id != -1);
 #endif
     auto arg = new CacheAgentArg{node_id, cpu_id};
-    ret = pthread_create(&cache_agent, nullptr, run_cache_agent, arg);
+    int ret = pthread_create(&cache_agent, nullptr, run_cache_agent, arg);
     assert(!ret);
 #endif
 }
