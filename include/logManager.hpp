@@ -215,22 +215,28 @@ public:
         return (vc_clock_t)t+1;
     }
 
-    //only allows exclusive access on each node 
-    const PubEntry *take_head(unsigned nid) {
-        //return head, check if overlaps with tail
-        auto h = subs[nid].head.load(std::memory_order_relaxed);
-        const auto &entry = pub[get_idx(h)];
-        if (entry.idx.load(std::memory_order_acquire) != h+1) {
-            return NULL;
-        }
-        return &entry;
+    // Entry at index j if it has been published, nullptr otherwise. Consumers claim logs by
+    // index (CacheInfo::consume_logs), so several threads of a node can consume the same
+    // queue concurrently. The check is exact: slot get_idx(j) holds idx == j + 1 only while
+    // it holds log j.
+    const PubEntry *published_entry(idx_t j) const {
+        const auto &entry = pub[get_idx(j)];
+        return entry.idx.load(std::memory_order_acquire) == j + 1 ? &entry : nullptr;
     }
 
-    //only allows exclusive access on each node
-    void consume_head(unsigned nid) {
-        //move head
-        auto h = subs[nid].head.load(std::memory_order_relaxed);
-        subs[nid].head.store(h+1, std::memory_order_release);
+    // Subscriber nid's head: every log below it has been fully processed by node nid.
+    idx_t get_head(unsigned nid) const {
+        return subs[nid].head.load(std::memory_order_acquire);
+    }
+
+    // Move subscriber nid's head forward to h, never backward. Committers of consecutive
+    // logs may call this out of order; the GC must never see the head move back, or it
+    // could recycle a log that is still being processed.
+    void advance_head(unsigned nid, idx_t h) {
+        idx_t cur = subs[nid].head.load(std::memory_order_relaxed);
+        while (cur < h &&
+               !subs[nid].head.compare_exchange_weak(cur, h, std::memory_order_release, std::memory_order_relaxed)) {
+        }
     }
 };
 
