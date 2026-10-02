@@ -19,16 +19,11 @@ struct CacheInfo {
 
     AtomicClock clock;
     CacheAligned<Mutex> log_head_mtxs[NODE_COUNT];
-
-    // data-race on cach line tracker entries should be ruled out
-    // by cache line race freedom.
     CacheLineTracker inv_cls;
 
     // per-node stats
-#ifdef STATS
     std::atomic<unsigned> consumed_count[NODE_COUNT];
     std::atomic<unsigned> produced_count;
-#endif
 
     CacheInfo(): clock(), inv_cls(), consumed_count{}, produced_count{0} {};
 
@@ -36,36 +31,39 @@ struct CacheInfo {
         return log_head_mtxs[nid];
     }
 
-    //void simulate_process_log(Log &log) {
-    //    using namespace cl_group;
-    //    STATS(auto start = std::chrono::steady_clock::now();)
-    //    for (auto entry: log) {
-    //        if (is_length_based(entry)) {
-    //            unsigned length = get_length(entry);
-    //            uintptr_t cl_addr = get_ptr(entry);
-    //            for (unsigned i = 0; i < length * GROUP_SIZE * CL_EXPAND_FACTOR; i++) {
-    //                __rdtsc();
-    //                __rdtsc();
-    //            }
-    //        } else {
-    //            for (auto cl_addr: MaskCLRange(get_ptr(entry), get_mask16(entry)))
-    //                // should be unrolled, manually unroll if not
-    //                for (unsigned i = 0; i < CL_EXPAND_FACTOR; i++) {
-    //                   __rdtsc();
-    //                   __rdtsc();
-    //                }
-    //        }
-    //    }
-    //    STATS(
-    //        auto end = std::chrono::steady_clock::now();
-    //        process_log_duration += end - start;
-    //        process_log_count++;
-    //    )
-    //}
-
     void process_log(Log &log) {
+        for (const auto &entry: log)
+            process_log_entry(entry);
+    }
+
+    inline void update_clock(VectorClock::sized_t i, vc_clock_t val) {
+        clock[i].store(val, std::memory_order_relaxed);
+    }
+
+    inline void update_clock_monotonic(VectorClock::sized_t i, vc_clock_t val)
+{       auto old = clock[i].load(std::memory_order_relaxed);
+        if (val <= old)
+            return;
+        while(!clock[i].compare_exchange_weak(old, val))
+        {
+            if (val <= old)
+                return;
+        }
+    }
+
+    inline vc_clock_t get_clock(VectorClock::sized_t i) {
+        return clock[i].load(std::memory_order_relaxed);
+    }
+
+    void dump_stats() {
+        for (int i = 0; i < NODE_COUNT; i++)
+	        LOG_STATS("consumed count from node " << i << ": " << consumed_count[i].load());
+    }
+
+private:
+
+    void process_log_entry(const cl_group_t entry) {
         using namespace cl_group;
-        for (auto entry: log) {
 #if !LOCAL_CL_TABLE
             do_invalidate((char *)(entry << VIRTUAL_CL_SHIFT));
 #else
@@ -96,31 +94,6 @@ struct CacheInfo {
 #endif
             }
 #endif
-        }
-    }
-
-    inline void update_clock(VectorClock::sized_t i, vc_clock_t val) {
-        clock[i].store(val, std::memory_order_relaxed);
-    }
-
-    inline void update_clock_monotonic(VectorClock::sized_t i, vc_clock_t val)
-{       auto old = clock[i].load(std::memory_order_relaxed);
-        if (val <= old)
-            return;
-        while(!clock[i].compare_exchange_weak(old, val))
-        {
-            if (val <= old)
-                return;
-        }
-    }
-
-    inline vc_clock_t get_clock(VectorClock::sized_t i) {
-        return clock[i].load(std::memory_order_relaxed);
-    }
-
-    void dump_stats() {
-        for (int i = 0; i < NODE_COUNT; i++)
-	        LOG_STATS("consumed count from node " << i << ": " << consumed_count[i].load());
     }
 };
 
