@@ -39,7 +39,8 @@ public:
     // Merge this vector clock with another (element-wise max)
     void merge(const VectorClock& other) {
         for (sized_t i = 0; i < NODE_COUNT; ++i) {
-            vc[i] = vc[i] > other.vc[i]? vc[i] : other.vc[i];
+            if (vc[i] < other.vc[i]) 
+                vc[i] = other.vc[i];
         }
     }
 
