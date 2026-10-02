@@ -129,7 +129,7 @@ public:
                     continue;
                 }
 
-                auto &mtx = cache_info->get_log_head_mutex(node_id);
+                auto &mtx = cache_info->get_log_head_mutex(i);
                 if (!mtx.try_lock()) {
                     done = false;
                     continue;
