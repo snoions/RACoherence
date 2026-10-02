@@ -44,8 +44,14 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 
 // number of cache line groups for which a wbinvd is faster than invalidating with clflushopt + mfence
 #define WBINVD_THRESHOLD (2 << 18)
+
 #ifndef NODE_COUNT
 #define NODE_COUNT 8
+#endif
+
+// number of cache agent to spawn on each node
+#ifndef CACHE_AGENT_PER_NODE
+#define CACHE_AGENT_PER_NODE 1
 #endif
 
 // whether to collect statistics

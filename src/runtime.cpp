@@ -36,7 +36,7 @@ size_t cxl_nhc_range;
 char *cxl_hc_buf;
 size_t cxl_hc_range;
 CacheInfo cache_info;
-pthread_t cache_agent;
+pthread_t cache_agent[CACHE_AGENT_PER_NODE];
 GlobalMeta *meta;
 #if TIME_STATS
 std::atomic<uint64_t> thread_cycles; 
@@ -134,6 +134,8 @@ bool rac_is_subscribed_to_node(unsigned target) {
 struct CacheAgentArg {
     unsigned node_id;
     unsigned cpu_id;
+    unsigned target_node_begin;
+    unsigned target_node_end;
 };
 
 void *run_cache_agent(void *arg) {
@@ -142,7 +144,7 @@ void *run_cache_agent(void *arg) {
     pin_to_core(carg->cpu_id);
 #endif
     unsigned nid = carg->node_id;
-    CacheAgent(cache_info, &meta->log_mgrs[0], nid).run();
+    CacheAgent(cache_info, &meta->log_mgrs[0], nid, carg->target_node_begin, carg->target_node_end).run();
     return arg;
 }
 
@@ -242,27 +244,37 @@ void rac_init(unsigned nid, size_t cxl_hc_rg, size_t cxl_nhc_rg, size_t root_siz
     instrument_lib();
 
 #if !PROTOCOL_OFF
-    unsigned cpu_id = 0;
+    unsigned target_begin = 0;
+    unsigned target_end = 0;
+    for (int i = 0; i < CACHE_AGENT_PER_NODE; i++) {
 #ifdef CACHE_AGENT_AFFINITY
-    cpu_id = find_nth_core_on_numa(LOCAL_NUMA_NODE_ID, node_id);
-    assert(cpu_id != -1);
+        unsigned cpu_id = find_nth_core_on_numa(LOCAL_NUMA_NODE_ID, node_id * CACHE_AGENT_PER_NODE + i);
+        assert(cpu_id != -1);
 #endif
-    auto arg = new CacheAgentArg{node_id, cpu_id};
-    int ret = pthread_create(&cache_agent, nullptr, run_cache_agent, arg);
-    assert(!ret);
+        target_end += (NODE_COUNT-1) / CACHE_AGENT_PER_NODE;
+        if (i < (NODE_COUNT-1) % CACHE_AGENT_PER_NODE) target_end++;
+        if (target_begin <= node_id && target_end > node_id) target_end++;
+
+        auto arg = new CacheAgentArg{node_id, cpu_id, target_begin, target_end};
+        int ret = pthread_create(&cache_agent[i], nullptr, run_cache_agent, arg);
+        assert(!ret);
+        target_begin = target_end;
+    }
 #endif
 }
 
 void rac_shutdown() {
 #if !PROTOCOL_OFF
     complete.store(true);
-    void *arg;
-    int ret = pthread_join(cache_agent, &arg);
-    assert(!ret);
-    delete (CacheAgentArg*)arg;
+    for (int i = 0; i < CACHE_AGENT_PER_NODE; i++) {
+        void *arg;
+        int ret = pthread_join(cache_agent[i], &arg);
+        assert(!ret);
+        delete (CacheAgentArg*)arg;
+    }
 #endif
     STATS(
-        LOG_STATS("node " << i << " stats:");
+        LOG_STATS("node " << node_id << " stats:");
         cache_info.dump_stats();
     )
     //print_jemalloc_stats();
