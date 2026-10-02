@@ -55,7 +55,7 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 #endif
 
 // whether to collect statistics
-//#define STATS(s) {s}
+// #define STATS(s) {s}
 #define STATS(s)
 
 // collect time-related statistics
@@ -66,6 +66,14 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 // user threads consume logs to when it's blocked due to insufficient progress by cach cagent, at the expense of contention
 #ifndef CONSUME_HELPING
 #define CONSUME_HELPING 1
+#endif
+
+// logs a cache agent claims per consume_logs() call. Kept small so that a log a helping
+// thread needs is never stuck behind a large batch an agent has claimed: a batch is only
+// committed after all of it is processed and fenced. Helpers claim everything below their
+// target.
+#ifndef AGENT_CLAIM_BATCH
+#define AGENT_CLAIM_BATCH 8
 #endif
 
 // user threads consume logs to when it's waiting for lock, at the expense of contention

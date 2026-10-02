@@ -107,6 +107,11 @@ public:
     uint64_t invd_msg_stall_cycles;
 #endif 
 
+    // Wait until this node has processed every log `target` depends on, processing them
+    // ourselves rather than waiting for the cache agents. Claims only logs the target needs
+    // (index < target[i]), so a helper never takes on work past its own acquire. When nothing
+    // below the target is left to claim, the remaining logs are being processed by other
+    // threads (or not yet published), and we pause until the committed prefix catches up.
     inline void help_consume(const VectorClock &target) {
 #if TIME_STATS
         uint64_t start = __rdtsc();
@@ -129,29 +134,9 @@ public:
                     continue;
                 }
 
-                auto &mtx = cache_info->get_log_head_mutex(i);
-                if (!mtx.try_lock()) {
-                    done = false;
-                    continue;
-                }
-
-                auto clk = cache_info->get_clock(i);
-                while(clk < target[i]) {
-                    const LogManager::PubEntry* entry;
-                    //entry might be null because of logs yet to be produced before the target log
-                    while(!(entry = log_mgrs[i].take_head(node_id)));
-                    Log *log = entry->log.load(std::memory_order_relaxed);
-                    if (entry->is_rel)
-                        clk = entry->idx.load(std::memory_order_relaxed);
-                    cache_info->process_log(*log);
-                    log_mgrs[i].consume_head(node_id);
-                    STATS(cache_info->consumed_count[i]++;)
-                    LOG_DEBUG("node " << node_id << " consume log " << cache_info->consumed_count[i] << " from " << i)
-                }
-                node_done[i] = true;
-                cache_info->update_clock(i, clk);
-                mtx.unlock();
-                // mutex unlock takes care of invalidate fence
+                done = false;
+                if (cache_info->consume_logs(log_mgrs, node_id, i, LOG_MAX_BATCH, target[i]) == 0)
+                    cpu_pause();
             }
         }
 #if TIME_STATS
