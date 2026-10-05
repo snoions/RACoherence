@@ -47,9 +47,11 @@ namespace cl_group {
         return cg >> GROUP_INDEX_SHIFT;
     }
 
+    // Position, in lines, of a 16-line group within a 64-line CacheLineTracker leaf: 16 times
+    // the group's index modulo 4 (a leaf holds 4 groups), i.e. 0, 16, 32 or 48. Takes a mask
+    // entry, whose low bits are the group index, or a group index itself.
     inline uint64_t get_mask16_to_64_shift(cl_group_t cg) {
-        uint8_t diff = cg & 2; //2 = 1 << (log(64/16)-1)
-        return GROUP_SIZE_SHIFT * diff;
+        return (cg & 3) << GROUP_SIZE_SHIFT;
     }
 
     inline cl_group_t try_coalesce(cl_group_idx index1, cl_group_idx index2, size_t len1, size_t len2) {
