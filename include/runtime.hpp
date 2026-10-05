@@ -1,16 +1,15 @@
 #ifndef _USER_H_
 #define _USER_H_
 
+#include <atomic>
 #include "stdint.h"
 #include "flushUtils.hpp"
 #include "cxlMalloc.hpp"
 #include "cxlSync.hpp"
 #include "threadOps.hpp"
 
-#if __cplusplus
 extern "C" {
-#endif
-// instrumentation functions
+// instrumented memory accesse
 uint8_t rac_load8(void *addr, const char *);
 uint16_t rac_load16(void *addr, const char *);
 uint32_t rac_load32(void *addr, const char *);
@@ -20,9 +19,7 @@ void rac_store8(void * addr, uint8_t val, const char *);
 void rac_store16(void * addr, uint16_t val, const char *);
 void rac_store32(void * addr, uint32_t val, const char *);
 void rac_store64(void * addr, uint64_t val, const char *);
-#if __cplusplus
 }
-#endif
 
 #if PROTOCOL_OFF
 
@@ -129,6 +126,32 @@ inline void rac_load_pre_invalidate(void *begin, void *end) {
         CHECK_RANGE_INVALIDATE((char*)begin, (char*)end);
     }
 }
+
+// non-synchronizing atomics in NHC memory, needed inside
+// optimistic synchronization blocks such as under seqlocks
+template<typename T>
+class CXLNHCAtomic {
+    std::atomic<T> inner;
+public:
+    T load(std::memory_order order = std::memory_order_seq_cst )
+        noexcept
+    {
+
+        DO_INVALIDATE((char *)&inner);
+        INVALIDATE_FENCE();
+        CHECK_INVALIDATE((char *)&inner);
+        return inner.load(order);
+    }
+
+    void store(T desired, std::memory_order order = std::memory_order_seq_cst ) noexcept
+    {
+        DO_INVALIDATE((char *)&inner);
+        INVALIDATE_FENCE();
+        CHECK_INVALIDATE((char *)&inner);
+        LOG_STORE((char *)&inner);    
+        inner.store(desired, order);
+    }
+};
 
 } // RACoherence
 
