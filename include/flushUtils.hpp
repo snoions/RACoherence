@@ -2,6 +2,8 @@
 #define _CACHE_OPS_H_
 
 #include <stdio.h>
+#include <atomic>
+#include <cstdint>
 #include <cstdlib>
 #include "config.hpp"
 
@@ -19,6 +21,40 @@ namespace RACoherence {
 constexpr long WRITE_LATENCY_IN_NS = 0;
 constexpr long CPU_FREQ_MHZ = 2100;
 
+// Invalidation statistics (STATS builds), per process, i.e. per node:
+//   invalidated - cache lines (CACHE_LINE_SIZE each) passed to do_invalidate(), in either
+//                 mode: by log processing in eager mode, on access in lazy mode
+//                 (CacheLineTracker), and by do_range_invalidate();
+//   named       - cache lines named by the logs this node consumed: what eager mode
+//                 invalidates and lazy mode marks dirty (CacheInfo::process_log_entry).
+// Counted per thread without atomics; each thread adds its counts to the totals when it exits,
+// and rac_shutdown() adds the calling thread's before printing. Lines covered by WBINVD_PATH's
+// wbinvd() are named but not counted as invalidated.
+struct InvalidationStats {
+    uint64_t invalidated = 0;
+    uint64_t named = 0;
+
+    static std::atomic<uint64_t> &total_invalidated() {
+        static std::atomic<uint64_t> total{0};
+        return total;
+    }
+    static std::atomic<uint64_t> &total_named() {
+        static std::atomic<uint64_t> total{0};
+        return total;
+    }
+    void add_to_totals() {
+        total_invalidated().fetch_add(invalidated, std::memory_order_relaxed);
+        total_named().fetch_add(named, std::memory_order_relaxed);
+        invalidated = named = 0;
+    }
+    ~InvalidationStats() { add_to_totals(); }
+};
+
+inline InvalidationStats &thread_inv_stats() {
+    thread_local InvalidationStats stats;
+    return stats;
+}
+
 static inline void do_writeback(char *ptr)
 {
 #if WRITEBACK_INST == CLFLUSH
@@ -32,6 +68,7 @@ static inline void do_writeback(char *ptr)
 
 static inline void do_invalidate(char *ptr)
 {
+    STATS(thread_inv_stats().invalidated++;)
 #if INVALIDATE_INST == CLFLUSH
     __asm__ volatile("clflush %0" : "+m" (*(volatile char *)ptr));
 #elif INVALIDATE_INST == CLFLUSHOPT
