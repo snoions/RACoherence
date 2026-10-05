@@ -75,13 +75,14 @@ private:
                     return;
                 }
 #endif
-                uintptr_t cl_addr = get_ptr(entry);
 #if EAGER_INVALIDATE
+                uintptr_t cl_addr = get_ptr(entry);
                 for (unsigned i = 0; i < length * GROUP_SIZE * CL_EXPAND_FACTOR; i++)
                     do_invalidate((char *)cl_addr + i * CACHE_LINE_SIZE);
 #else
-                for (unsigned i = 0; i < length; i++)
-                    inv_cls.mark_dirty(cl_addr + i, FULL_MASK << get_mask16_to_64_shift(cl_addr));
+                // Every group of the run, each at its own position in its tracker leaf.
+                for (auto group_addr: LengthCLRange(entry))
+                    inv_cls.mark_dirty(group_addr, FULL_MASK << get_mask16_to_64_shift(group_addr >> GROUP_SHIFT));
 #endif
             } else {
 #if EAGER_INVALIDATE
