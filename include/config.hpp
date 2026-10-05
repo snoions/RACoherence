@@ -55,8 +55,11 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 #endif
 
 // whether to collect statistics
-// #define STATS(s) {s}
+#if ENABLE_STATS
+#define STATS(s) {s}
+#else
 #define STATS(s)
+#endif
 
 // collect time-related statistics
 #ifndef TIME_STATS

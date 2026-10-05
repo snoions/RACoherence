@@ -269,6 +269,13 @@ void rac_shutdown() {
     STATS(
         LOG_STATS("node " << node_id << " stats:");
         cache_info.dump_stats();
+        // Agents are joined above and user threads by rac_thread_join(), so their counts are
+        // already in the totals; add this thread's own.
+        thread_inv_stats().add_to_totals();
+        const uint64_t named = InvalidationStats::total_named().load();
+        const uint64_t invalidated = InvalidationStats::total_invalidated().load();
+        LOG_STATS("lines named by consumed logs: " << named << ", lines invalidated: " << invalidated
+                  << (named ? " (" : "") << (named ? 100.0 * invalidated / named : 0.0) << (named ? "% of named)" : ""));
     )
     //print_jemalloc_stats();
 #if TIME_STATS

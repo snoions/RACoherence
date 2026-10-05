@@ -209,8 +209,22 @@ private:
         return (static_cast<uint64_t>(j + 1) << 1) | (is_rel ? 1u : 0u);
     }
 
+    // Cache lines (CACHE_LINE_SIZE each) an entry names: the number eager mode invalidates.
+    static uint64_t lines_named(const cl_group_t entry) {
+        using namespace cl_group;
+#if !LOCAL_CL_TABLE
+        (void)entry;
+        return 1;
+#else
+        if (is_length_based(entry))
+            return static_cast<uint64_t>(get_length(entry)) * GROUP_SIZE * CL_EXPAND_FACTOR;
+        return static_cast<uint64_t>(__builtin_popcountll(get_mask16(entry))) * CL_EXPAND_FACTOR;
+#endif
+    }
+
     void process_log_entry(const cl_group_t entry) {
         using namespace cl_group;
+        STATS(thread_inv_stats().named += lines_named(entry);)
 #if !LOCAL_CL_TABLE
             do_invalidate((char *)(entry << VIRTUAL_CL_SHIFT));
 #else
