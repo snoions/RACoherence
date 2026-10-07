@@ -76,7 +76,7 @@ constexpr unsigned CPU_NUMAS[] = {0, 1};
 // committed after all of it is processed and fenced. Helpers claim everything below their
 // target.
 #ifndef AGENT_CLAIM_BATCH
-#define AGENT_CLAIM_BATCH 8
+#define AGENT_CLAIM_BATCH 64
 #endif
 
 // user threads consume logs to when it's waiting for lock, at the expense of contention
