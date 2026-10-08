@@ -323,7 +323,7 @@ public:
 #else
         thread_ops->thread_release();
         const auto &thread_clock = thread_ops->get_clock();
-        LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
+        inner->clock.merge(thread_clock);
 #endif
         inner->mtx.unlock_shared();
     }
