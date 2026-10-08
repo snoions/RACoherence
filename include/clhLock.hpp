@@ -139,7 +139,7 @@ class CLHSharedLock {
     using wMutex = CLHLock<Allocator>;
 
     wMutex wlock;
-    char padding2[60]; // avoid false sharing
+    char padding2[56]; // avoid false sharing
     std::atomic<int> active_readers{0};
 
 public:
