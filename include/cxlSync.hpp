@@ -260,8 +260,12 @@ public:
 class CXLSharedMutex {
 public:
     struct InnerData{
+        // the layout is significant 
+        // mtx is used together with clock and excl_mtx together with read_clock
         SharedMutex mtx;
         VectorClock clock;
+        Mutex excl_mtx;
+        VectorClock read_clock;
     };
 private:
     InnerData *inner;
@@ -277,30 +281,20 @@ public:
 
     inline void lock() {
 #if !PROTOCOL_OFF
-#if CONSUME_HELP_IN_LOCK 
-        VectorClock clock = inner->clock;
-        inner->mtx.lock_with_help(clock);
-#else
         inner->mtx.lock_shared();
         thread_ops->thread_acquire(inner->clock);
         inner->mtx.unlock_shared();
  
         inner->mtx.lock(); 
         thread_ops->thread_acquire(inner->clock);
-#endif
+        thread_ops->thread_acquire(inner->read_clock);
 #else
         inner->mtx.lock();
 #endif
     }
 
     inline void lock_shared() {
-#if CONSUME_HELP_IN_LOCK && !PROTOCOL_OFF
-        VectorClock clock = inner->clock;
-        inner->mtx.lock_shared_with_help(clock);
-#else
         inner->mtx.lock_shared();
-#endif
-
 #if !PROTOCOL_OFF
         thread_ops->thread_acquire(inner->clock);
 #endif
@@ -323,11 +317,14 @@ public:
 #else
         thread_ops->thread_release();
         const auto &thread_clock = thread_ops->get_clock();
-        LOCATION_CLOCK_UPDATE(inner->clock, thread_clock);
+        inner->excl_mtx.lock();
+        inner->read_clock.merge(thread_clock);
+        inner->excl_mtx.unlock();
 #endif
         inner->mtx.unlock_shared();
     }
 
+    // a version of unlock_shared() that does not synchronize with a later lock()
     inline void unlock_shared_relaxed() {
         inner->mtx.unlock_shared();
     }
