@@ -100,7 +100,7 @@ struct CacheInfo {
     }
 
     inline void update_clock(VectorClock::sized_t i, vc_clock_t val) {
-        clock[i].store(val, std::memory_order_relaxed);
+        clock[i].store(val, std::memory_order_release);
     }
 
     inline void update_clock_monotonic(VectorClock::sized_t i, vc_clock_t val)
@@ -115,7 +115,7 @@ struct CacheInfo {
     }
 
     inline vc_clock_t get_clock(VectorClock::sized_t i) {
-        return clock[i].load(std::memory_order_relaxed);
+        return clock[i].load(std::memory_order_acquire);
     }
 
     void dump_stats() {
